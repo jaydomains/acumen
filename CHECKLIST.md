@@ -28,11 +28,11 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| All SPEC §5 entities + supporting tables | P1 | AC-CD4 | `app/models.py` | missing | |
-| First migration up/down clean | P1 | AC-CD3 | `alembic/versions/` | missing | |
-| pgvector extension + `vector(1536)` | P1 | AC-CD4; AC-D22 | `infra/postgres/init.sql`, `app/models.py` | missing | |
-| `system_settings` v1.2 defaults | P1 | AC-D9,20,27 | `app/models.py` | missing | |
-| Table-set + defaults assertion test | P1 | AC-CD4 | `tests/unit/` | missing | |
+| All SPEC §5 entities + supporting tables | P1 | AC-CD4 | `app/models.py` | built | `app/models.py` (34 tables); `tests/unit/test_p1_schema.py::test_table_set_is_exactly_p1` |
+| First migration up/down clean | P1 | AC-CD3 | `alembic/versions/` | built | `alembic/versions/0002_p1_data_model.py`; `test_p1_schema.py::test_migration_offline_round_trip` (`alembic upgrade base:head --sql` / `downgrade head:base --sql`, exit 0) |
+| pgvector extension + `vector(1536)` | P1 | AC-CD4; AC-D22 | `infra/postgres/init.sql`, `app/models.py` | built | `infra/postgres/init.sql`; `app/models.py` `DriveChunk.embedding Vector(1536)`; `test_p1_schema.py::test_key_columns_present` |
+| `system_settings` v1.3 defaults | P1 | AC-D9,20,27 | `app/models.py` | built | `app/models.py` `SystemSettings`; `test_p1_schema.py::test_system_settings_v13_defaults` (sensitivity 2.0, prior_weight 20) |
+| Table-set + defaults assertion test | P1 | AC-CD4 | `tests/unit/` | built | `tests/unit/test_p1_schema.py` (10 tests pass) |
 
 ## P2 — Auth & user management
 
