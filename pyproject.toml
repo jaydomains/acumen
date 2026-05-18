@@ -9,6 +9,22 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern (CODE_SPEC §5: routers carry an
+# authz dependency) intentionally calls Depends()/Header()/Query() in
+# argument defaults. Exempt them from B008 so the locked pattern lints
+# clean across every router from P2 onward. Tooling-config only; not a
+# new dependency or structural anchor.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Header",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Cookie",
+    "fastapi.Form",
+]
+
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true

@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
+from functools import lru_cache
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -31,6 +33,12 @@ from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.config import get_settings
@@ -1154,3 +1162,34 @@ class PasswordResetToken(Base, TimestampMixin):
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     used_at: Mapped[datetime | None]
+
+
+# --- Async engine + session (P2) --------------------------------------
+# CODE_SPEC §3 names no dedicated db module; the async engine /
+# sessionmaker / FastAPI ``get_db`` dependency are the DB-layer half of
+# the request path, so they live here in the models module (decided with
+# the user for P2 — keeps the locked §3 layout intact, no new module).
+# ``readyz`` deliberately does NOT probe the DB: it is defined in the
+# setup-only ``app/main.py`` which the structure-gate forbids importing
+# SQLAlchemy into (AC-CD2).
+
+# Engine/sessionmaker are built lazily (first get_db call), not at
+# import time, so importing the model layer never constructs a real
+# engine — tests that override get_db never touch a DB, and CLI/static
+# tooling import cleanly.
+
+
+@lru_cache(maxsize=1)
+def _engine() -> AsyncEngine:
+    return create_async_engine(get_settings().database_url)
+
+
+@lru_cache(maxsize=1)
+def _session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(_engine(), class_=AsyncSession, expire_on_commit=False)
+
+
+async def get_db() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency yielding a per-request ``AsyncSession``."""
+    async with _session_factory()() as session:
+        yield session
