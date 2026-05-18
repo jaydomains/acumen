@@ -38,6 +38,15 @@ are *documented, not built* in v1.
   phase. One prompt → one branch → one squash PR → one phase.
 - **No commits to main.** Every change lands via PR.
 - **One PR per phase.** Each ROADMAP phase closes with its own PR.
+- **Per-slice review pauses are binding.** When a plan declares slices
+  with a review pause (commit → push → wait for Gitar / explicit user
+  go-ahead), that pause is non-negotiable: do **not** batch all slices
+  through to the end "because it's faster". The pause exists to catch a
+  wrong foundational decision before later slices build on it.
+  Collapsing slices into one pass is a plan deviation requiring explicit
+  user approval first, not an execution detail. (Reinforced after P3 /
+  PR-008, where all three slices ran in one pass — clean by luck, not
+  process.)
 - **Handover at PR close.** Authored *before* merge, copied from
   `HANDOVER_TEMPLATE.md` into `handovers/PR-<id>-<slug>.md`. Handovers are
   immutable once written (except where confidentiality/privacy/legal

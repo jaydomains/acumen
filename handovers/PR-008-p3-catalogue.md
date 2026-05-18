@@ -200,8 +200,50 @@
   `mypy app` — no issues (41 files); `pytest -q` — 67 passed.
 - CI result at merge: `.github/workflows/ci.yml` runs the full chain
   on push; confirm green on GitHub before merge.
-- Gitar: to be reviewed on this branch's head; address findings
-  before merge.
+- Gitar: PR #8 reviewed — 2 findings, both addressed. (1) Edge case:
+  `approve_pill_proposal` direct `dict` access could 500 on a
+  malformed payload (a real risk once P5 wires real AI) — fixed in
+  `cd7e6c1`, now a clean `APIError(422, "malformed_proposal")` with a
+  regression test (`test_p3_proposal_queue.py::
+  test_malformed_proposal_payload_is_422_not_500`). (2) Pagination
+  `IndexError` — assessed as a false positive (the `len(ordered) >
+  limit` check short-circuits before `page[-1]`, and clamped `limit
+  >= 1` guarantees a non-empty page when reached); replied with the
+  reasoning, Gitar concurred, no code change. Final Gitar: **✅
+  Approved — 2 resolved / 2 findings**; GitHub Actions `checks`
+  green on `cd7e6c1`.
+
+## Discipline note (process — read before the next multi-slice phase)
+
+**What happened:** the plan defined P3 as three slices with a
+"commit, push, **wait for Gitar**, then proceed" pause between each
+(mirroring the P2 PR-007 incremental-review cadence). In execution
+**all three slices were implemented, tested, and committed in a
+single uninterrupted pass**; Gitar review happened only once, at the
+end, against the whole phase rather than per slice. The outcome was
+clean here (2 minor findings, both resolved, CI green), but that is
+luck, not process: a slice-1 architectural finding would have
+silently propagated through slices 2–3 before any review eye landed
+on it, turning a one-slice fix into a three-slice rework.
+
+**Why it matters:** the per-slice Gitar pause exists specifically to
+catch a wrong foundational decision *before* later slices build on
+it. Collapsing the slices removes the only checkpoint that makes
+incremental review cheaper than end-of-phase review.
+
+**Mandate for future multi-slice phases:** when a plan declares
+slices with review pauses, those pauses are **binding**. Each slice:
+commit → push → **stop and wait for Gitar (or explicit user
+go-ahead)** → only then start the next slice. Do not batch slices
+through to the end "because it's faster". If a fresh session believes
+collapsing slices is justified, it must surface that and get explicit
+user approval first — it is a plan deviation, not an execution
+detail.
+
+**Recommended canonical reinforcement:** add this as an explicit
+Working-agreement bullet in `SESSION_START.md` (done in this PR — see
+the "Per-slice review pauses are binding" bullet) so it is read at
+the start of *every* session, not just discoverable in this handover.
 
 ## Anything a fresh Claude Code session needs to pick up cleanly
 
