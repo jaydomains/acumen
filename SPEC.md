@@ -3,9 +3,11 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.1. Paired with `DECISIONS.md` v1.1 (26 decisions, 6 amendments).
+> **Status:** v1.2. Paired with `DECISIONS.md` v1.2 (27 decisions; 6 v1.1 + 3 v1.2 amendments plus new AC-D27).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
+>
+> **Changes in v1.2:** Adds AC-D27 (anchor calibration mathematics — Bayesian effective-difficulty estimator, fresh-question delta scoring, cold-start gate). Amends three decisions: AC-D9 (full IRT-style competence formula with recency-weighted decay and adaptive-loop target), AC-D22 / §7.3 (embedding model fixed to OpenAI `text-embedding-3-small`; Anthropic exposes no embeddings API), AC-D25 (benchmark mode carved out of JIT parallel streaming — sequential adaptive generation only).
 
 ---
 
@@ -50,7 +52,7 @@ Roles are stored as a single field on the user record. User creation is admin-dr
 
 **Test generation (per AC-D5, AC-D9, AC-D13, AC-D25)**
 - AI generates question sets on demand per Testee per pill per difficulty
-- **Just-in-time generation with parallel streaming** per AC-D25 — question 1 generates in foreground, 2-N stream in parallel
+- **Just-in-time generation with parallel streaming** per AC-D25 (per-Testee mode) — question 1 generates in foreground, 2-N stream in parallel; benchmark mode generates sequentially per amended AC-D25
 - Question types: multiple choice, true/false, matching, short answer, scenario
 - Frozen test mode — admin generates once and publishes for reuse, with optional **campaign lock** per AC-D24
 - Hand-authored test mode — admin writes questions manually (exception path)
@@ -170,7 +172,7 @@ Four creation paths, all stored in the same data model:
 1. **Per-Testee spec** (the dynamic default per AC-D5). Admin defines a generation spec: subject, pills, difficulty integer, question count, question-type mix, timed/untimed, duration if timed, pause allowance, timeout behaviour, pass threshold. When a Testee starts the test, AI generates fresh content from the spec via just-in-time streaming per AC-D25 — no two Testees see the same questions.
 2. **Frozen test**. Admin invokes AI to generate a question set against a spec, reviews and edits if needed, publishes. The frozen question set is reused across Testees. Admin can set `lock_mode` to **campaign-locked** per AC-D24 for hiring screens and formal benchmarks where edit-during-campaign would compromise comparability. Per AC-D24, per-attempt question and option order shuffle is enabled by default.
 3. **Hand-authored**. Admin writes questions, rubrics, and model answers manually. Same data shape as frozen, same shuffle and lock options per AC-D24.
-4. **Benchmark** (per AC-D13). Diagnostic mode that ranges across difficulty levels to establish a Testee's baseline competency. Adaptive generation — start at midpoint, step up on pass and down on fail until convergence. Scope can be subject, pill, or learning path. Just-in-time generation per AC-D25 applies.
+4. **Benchmark** (per AC-D13). Diagnostic mode that ranges across difficulty levels to establish a Testee's baseline competency. Adaptive generation — start at midpoint, step up on pass and down on fail until convergence. Scope can be subject, pill, or learning path. Generation is sequential, not JIT-streamed: each question is generated only after the previous one is graded, since the next difficulty depends on the prior outcome. Benchmark is explicitly carved out of AC-D25 parallel streaming per the amended decision; the brief per-question wait is acceptable because benchmark is untimed.
 
 All four modes share the same execution and grading machinery downstream.
 
@@ -199,7 +201,7 @@ Each recommended pill displays a one-line "why this" tag for transparency.
 
 ### 4.7 Attempt lifecycle
 
-Testee starts an attempt (assigned or self-initiated). **For per-Testee mode and benchmark mode, AI generates content via just-in-time streaming per AC-D25** — question 1 in foreground (~3 seconds), questions 2-N parallel in background; Testee sees Q1 fast and never waits more than briefly thereafter. For frozen and hand-authored modes, the question set is loaded and snapshotted to the attempt per AC-D17. **For shared-test modes (frozen and hand-authored), question and option order shuffle per AC-D24 based on the attempt_id seed.** Testee answers questions in order or jumps freely. Every input autosaves. Integrity measures per AC-D4 active throughout (watermark, focus tracking, copy/paste blocked, time-per-question logged, n-gram overlap check at submit per amended AC-D4 #5). For timed tests, clock visible; pause available within allowance per AC-D11 — **pause blanks question content per amended AC-D11**, restoring on resume. Testee submits when complete; timed tests auto-submit on timeout per AC-D11 default.
+Testee starts an attempt (assigned or self-initiated). **For per-Testee mode, AI generates content via just-in-time streaming per AC-D25** — question 1 in foreground (~3 seconds), questions 2-N parallel in background; Testee sees Q1 fast and never waits more than briefly thereafter. **For benchmark mode, generation is sequential per amended AC-D25** — each question is generated only after the previous one is graded, since the next difficulty is adaptive on the prior outcome; benchmark is untimed so the brief per-question wait is acceptable. For frozen and hand-authored modes, the question set is loaded and snapshotted to the attempt per AC-D17. **For shared-test modes (frozen and hand-authored), question and option order shuffle per AC-D24 based on the attempt_id seed.** Testee answers questions in order or jumps freely. Every input autosaves. Integrity measures per AC-D4 active throughout (watermark, focus tracking, copy/paste blocked, time-per-question logged, n-gram overlap check at submit per amended AC-D4 #5). For timed tests, clock visible; pause available within allowance per AC-D11 — **pause blanks question content per amended AC-D11**, restoring on resume. Testee submits when complete; timed tests auto-submit on timeout per AC-D11 default.
 
 ### 4.8 Grading pipeline
 
@@ -223,7 +225,7 @@ Admin can review any AI-graded response and override the grade (per AC-D2). Over
 
 ### 4.12 Benchmark assessment
 
-Triggered by admin assignment, Testee self-selection, or system suggestion when a competency profile gap is detected. AI generates questions adaptively via just-in-time streaming per AC-D25 — start at midpoint difficulty, step up on pass and down on fail until convergence per pill. Result is a stamped difficulty level per in-scope pill on the Testee's competency profile, which then serves as the starting point for the adaptive learning loop. Untimed by default; same integrity measures as regular attempts.
+Triggered by admin assignment, Testee self-selection, or system suggestion when a competency profile gap is detected. AI generates questions adaptively and sequentially per amended AC-D25 — start at midpoint difficulty, step up on pass and down on fail until convergence per pill; each question is generated only after the previous one is graded, since the next difficulty depends on the prior outcome (benchmark is carved out of AC-D25 parallel streaming). Result is a stamped difficulty level per in-scope pill on the Testee's competency profile, which then serves as the starting point for the adaptive learning loop. Untimed by default; same integrity measures as regular attempts.
 
 ### 4.13 Assignment engagement tracking
 
@@ -253,7 +255,7 @@ The application's domain consists of the entities below. Each is described conce
 
 **Assignment** — An admin's instruction for a specific Testee, Group, or set of Testees per AC-D15 to engage a pill or learning path at a specific difficulty. Carries assigner, assignee(s), pill or path reference, difficulty integer, optional deadline, mandatory flag, loop mode (autonomous or admin-reviewed) per AC-D6, **reminder send history per AC-D26**, and a derived `engagement_status` computed from attempt history (pending / in_progress / complete / overdue per AC-D26).
 
-**Test** — A generation spec, frozen question set, hand-authored question set, or benchmark spec. Carries mode (per-Testee spec / frozen / hand-authored / benchmark), timed flag, duration if timed, pause allowance, timeout behaviour, **`max_pause_duration_minutes` per amended AC-D11**, pass threshold, pills covered, and target difficulty per AC-D5, AC-D11, AC-D13. For frozen and hand-authored modes per AC-D24: `lock_mode` (open / campaign-locked), optional `campaign_id`, `randomise_question_order` (default true), `randomise_option_order` (default true). Per-Testee tests have no questions stored against them — questions are generated against each attempt via just-in-time streaming per AC-D25. Frozen and hand-authored tests have their question set stored directly. Benchmark tests carry scope (subject / pill / path) and target Testee for adaptive generation.
+**Test** — A generation spec, frozen question set, hand-authored question set, or benchmark spec. Carries mode (per-Testee spec / frozen / hand-authored / benchmark), timed flag, duration if timed, pause allowance, timeout behaviour, **`max_pause_duration_minutes` per amended AC-D11**, pass threshold, pills covered, and target difficulty per AC-D5, AC-D11, AC-D13. For frozen and hand-authored modes per AC-D24: `lock_mode` (open / campaign-locked), optional `campaign_id`, `randomise_question_order` (default true), `randomise_option_order` (default true). Per-Testee tests have no questions stored against them — questions are generated against each attempt via just-in-time streaming per AC-D25. Frozen and hand-authored tests have their question set stored directly. Benchmark tests carry scope (subject / pill / path) and target Testee for sequential adaptive generation per amended AC-D25 (not JIT-streamed).
 
 **Question** — A single test item. Carries type (multiple choice, true/false, matching, short answer, scenario), type-specific config (options and correct answer for deterministic types; model answer and rubric for AI-graded types), pill tag(s), difficulty integer, **optional `question_group_id` per AC-D24** for case-study clustering, **`realism_flag_count` and `realism_flags` collection per AC-D22** for Testee feedback aggregation, and **(for anchor questions per AC-D20) running statistics: total attempts, pass rate, partial-credit distribution, effective_difficulty estimate**. For per-Testee mode the question lives against the attempt; for frozen and hand-authored modes it lives against the test; anchor questions live against the pill.
 
@@ -271,7 +273,7 @@ The application's domain consists of the entities below. Each is described conce
 
 **Drive Index** — Per AC-D22, a vector index of documents present in the designated Drive folder. Each indexed chunk carries source document reference, chunk text, embedding vector, and last-indexed timestamp. Postgres pgvector at v1 scale; no external vector database needed.
 
-**System Settings** — Per-tenant configuration. Carries monthly AI budget (nullable), alert thresholds, per-Testee rate limits (self-initiated only per amended AC-D18), model selection per operation per AC-D12, **`review_provider` (default OpenAI) per amended AC-D19**, **`pending_assignment_age_threshold_days` (default 7), reminder schedules, and `escalation_enabled` flag per AC-D26**, **`competence_decay_halflife_days` (default 90) per amended AC-D9**, **`max_pause_duration_minutes` (default 30) per amended AC-D11**, **safety keyword list per AC-D21**, **anchor pool size per band (default 20) and calibration confidence threshold (default n=20) per AC-D20**, **Drive folder identifier and embedding model per AC-D22**.
+**System Settings** — Per-tenant configuration. Carries monthly AI budget (nullable), alert thresholds, per-Testee rate limits (self-initiated only per amended AC-D18), model selection per operation per AC-D12, **`review_provider` (default OpenAI) per amended AC-D19**, **`pending_assignment_age_threshold_days` (default 7), reminder schedules, and `escalation_enabled` flag per AC-D26**, **`competence_decay_halflife_days` (default 90) and `competence_sensitivity` (default 2.0) per amended AC-D9**, **`max_pause_duration_minutes` (default 30) per amended AC-D11**, **safety keyword list per AC-D21**, **anchor pool size per band (default 20), calibration confidence threshold (default n=20), and `anchor_calibration_prior_weight` (default 20) per AC-D20/AC-D27**, **Drive folder identifier and embedding model (default OpenAI `text-embedding-3-small`) per amended AC-D22**.
 
 **Audit Log** — Cross-cutting record of significant state transitions: grade overrides, autonomous loop decisions reversed, pill proposals approved or rejected, pill retirements, user role changes, deactivations, manual deletions, campaign lock/unlock events per AC-D24, escalation notifications per AC-D26, bootstrap runs per AC-D23, safety-pill link drift detections per AC-D21. Lightweight in v1 — captures actor, action, target entity, and timestamp. Important for the SiteMesh port where audit becomes a platform concern.
 
@@ -283,7 +285,7 @@ Acumen runs **seven distinct AI operations** across two providers. Anthropic han
 
 ### 6.1 Test generation
 
-Generates a question set against a Test spec. **Streaming generation per AC-D25** for per-Testee and benchmark modes — question 1 synchronously at attempt start, 2-N in parallel as background streams.
+Generates a question set against a Test spec. **Streaming generation per AC-D25** for per-Testee mode — question 1 synchronously at attempt start, 2-N in parallel as background streams. **Benchmark mode generates sequentially per amended AC-D25** — one question at a time, each generated only after the previous is graded, because benchmark difficulty is adaptive on the prior outcome and cannot be pre-generated in parallel.
 
 **Inputs:** subject, target pills, difficulty integer (1–10) with band name, question count, question-type mix, optionally the Testee's prior weakness profile for adaptive targeting, **anchor questions from the pool as in-context calibration exemplars per AC-D20**, **retrieved Drive RAG chunks per AC-D22**, **negative examples from low-realism question pool per AC-D22**, optionally seed admin-uploaded reference material.
 
@@ -367,7 +369,7 @@ AI calls have retry-with-backoff for transient failures (rate limits, network er
 
 - For grading: response remains ungraded with an "AI grading failed" status; admin sees the queue and can either retry or grade manually.
 - For grade review per amended AC-D19: if review provider is unreachable at submit, grade displays as preliminary with "review pending" label; system retries on next cron pass.
-- For generation per AC-D25: if first-question generation fails, attempt cannot start; Testee sees "test temporarily unavailable, please try again shortly." If buffer empties during streaming, attempt is paused with retry/abandon options.
+- For generation per AC-D25: if first-question generation fails, attempt cannot start; Testee sees "test temporarily unavailable, please try again shortly." If the per-Testee streaming buffer empties, the attempt is paused with retry/abandon options. For benchmark mode (sequential per amended AC-D25), a mid-test generation failure pauses the attempt at the current question with retry/abandon; already-graded questions are retained.
 - For weakness, learning material, pill proposal, anchor self-review: silently retried; no Testee-facing impact.
 - For Drive RAG fetch failures per AC-D22: generation continues without RAG context; logged for review.
 - For safety link verification per AC-D21: broken links surface in admin attention queue; the loop continues to serve any working links and falls back to "ask your administrator" if all links are dead.
@@ -388,7 +390,7 @@ Per amended AC-D19, the secondary AI provider for the two cross-family operation
 
 ### 7.3 Google Drive API
 
-Per AC-D22, read-only access to a designated Drive folder for passive RAG ingestion. Service account credentials and folder identifier held in environment configuration. Daily ingest cron computes file diffs against the existing index and re-embeds changed or new documents. Deleted Drive files drop from the index. Embedding model is a configuration value (default a standard embedding model from the primary provider). Chunking strategy is configuration (default ~500-token chunks). Index lives in Postgres pgvector — no external vector database in v1.
+Per AC-D22, read-only access to a designated Drive folder for passive RAG ingestion. Service account credentials and folder identifier held in environment configuration. Daily ingest cron computes file diffs against the existing index and re-embeds changed or new documents. Deleted Drive files drop from the index. Embedding model is a configuration value (default OpenAI `text-embedding-3-small`, 1536 dimensions, per amended AC-D22; Anthropic exposes no embeddings API, and OpenAI is already in the stack for AC-D19 cross-family review so no new provider integration is added). Embedding cost is tracked against the OpenAI provider in the cost dashboard per amended AC-D18. Chunking strategy is configuration (default ~500-token chunks). Index lives in Postgres pgvector — no external vector database in v1.
 
 ### 7.4 Web search
 
@@ -571,4 +573,4 @@ Items deferred to v1.x are tracked separately. None block v1 build.
 
 ---
 
-*End of Acumen specification. Status: v1.1. Paired with `DECISIONS.md` v1.1 (26 decisions, 6 amendments).*
+*End of Acumen specification. Status: v1.2. Paired with `DECISIONS.md` v1.2 (27 decisions; 6 v1.1 + 3 v1.2 amendments plus new AC-D27).*
