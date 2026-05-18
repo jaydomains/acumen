@@ -1,0 +1,49 @@
+"""Acumen HTTP application — setup only (CODE_SPEC §1, AC-CD2).
+
+App factory plus liveness/readiness endpoints. Routers are included here
+from P2 onward (auth/users/... per CODE_SPEC §3). The structure-gate
+(scripts/structure_gate.py) keeps this file setup-only: no domain/model/
+AI imports, no DB access, no business logic. Router includes ARE
+permitted — they are wired starting P2.
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
+
+from app.config import get_settings
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="Acumen",
+        version="0.1.0",
+        default_response_class=ORJSONResponse,
+        docs_url="/docs",
+        openapi_url="/openapi.json",
+    )
+
+    @app.get("/healthz", tags=["meta"])
+    async def healthz() -> dict[str, str]:
+        """Liveness — static, no dependencies."""
+        return {"status": "ok", "env": settings.app_env}
+
+    @app.get("/readyz", tags=["meta"])
+    async def readyz() -> dict[str, str]:
+        """Readiness.
+
+        P0 returns ready unconditionally. (pending P1) add a Postgres
+        readiness probe once the async engine + data model land.
+        (pending P5/P6) add a Celery/Redis worker-connectivity probe
+        when the AI/worker path is wired.
+        """
+        return {"status": "ready"}
+
+    # Routers are included from P2 onward (CODE_SPEC §3); none in P0.
+
+    return app
+
+
+app = create_app()

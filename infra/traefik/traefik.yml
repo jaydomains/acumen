@@ -1,0 +1,12 @@
+# Traefik static config placeholder (CODE_SPEC §16, AC-CD16).
+# v1 standalone serves the public `/v1` surface. Port seam (SPEC §9):
+# at SiteMesh port time the internal/MeshCore surface mounts behind
+# `!PathPrefix(/v1/internal)` at this edge. Kept minimal in P0; the
+# `proxy` compose profile drives Traefik via CLI args today.
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    exposedByDefault: false

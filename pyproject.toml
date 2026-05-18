@@ -1,0 +1,22 @@
+# Tooling config for ruff / mypy / pytest (CI per .github/workflows/ci.yml).
+# Not a packaging manifest — Acumen ships as a container, deps live in
+# requirements*.txt per CODE_SPEC §2 / AC-CD1.
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+explicit_package_bases = true
+files = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"

@@ -16,13 +16,13 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Repo layout matches CODE_SPEC §3 | P0 | AC-CD2,17 | repo root, `app/` | missing | |
-| Pinned deps (HTTP + worker) | P0 | AC-CD1 | `requirements*.txt` | missing | |
-| Multi-stage Dockerfile + compose skeleton | P0 | AC-CD16 | `Dockerfile`, `docker-compose.yml` | missing | |
-| Alembic + schema-create `env.py` | P0 | AC-CD3 | `alembic/env.py`, `alembic.ini` | missing | |
-| `/healthz` `/readyz` setup-only app | P0 | AC-CD2 | `app/main.py` | missing | |
-| Config + `.env.example` | P0 | AC-CD16,18 | `app/config.py`, `.env.example` | missing | |
-| Structure-verify gate | P0 | AC-CD17 | `scripts/` | missing | |
+| Repo layout matches CODE_SPEC §3 | P0 | AC-CD2,17 | repo root, `app/` | built | `python scripts/structure_gate.py` exits 0; `tests/unit/test_structure_gate.py` 2 passed |
+| Pinned deps (HTTP + worker) | P0 | AC-CD1 | `requirements*.txt` | built | `requirements.txt`/`requirements-worker.txt` (+`requirements-dev.txt`, see PR-002 handover deviation note); `python scripts/check_unpinned_deps.py` exits 0 |
+| Multi-stage Dockerfile + compose skeleton | P0 | AC-CD16 | `Dockerfile`, `docker-compose.yml` | built | `Dockerfile` base→http/worker/migrate; `docker compose config -q` valid (live `compose up` not run — no Docker daemon in build sandbox) |
+| Alembic + schema-create `env.py` | P0 | AC-CD3 | `alembic/env.py`, `alembic.ini` | built | `alembic upgrade head --sql` + `alembic downgrade head:base --sql` clean; version table scoped to `acumen` schema |
+| `/healthz` `/readyz` setup-only app | P0 | AC-CD2 | `app/main.py` | built | `tests/unit/test_health.py` 2 passed; structure-gate enforces `main.py` setup-only (no domain/model/AI/DB imports) |
+| Config + `.env.example` | P0 | AC-CD16,18 | `app/config.py`, `.env.example` | built | `app/config.py` pydantic-settings (env-overridable model IDs, AC-CD18); `.env.example` all groups |
+| Structure-verify gate | P0 | AC-CD17 | `scripts/` | built | `scripts/structure_gate.py`; wired in `.github/workflows/ci.yml` + `tests/unit/test_structure_gate.py` |
 
 ## P1 — Data model & migrations
 

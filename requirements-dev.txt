@@ -1,0 +1,14 @@
+# Dev / CI tooling only — deliberately NOT in the runtime or worker
+# images so lint/type/test tooling never ships in a deployed container.
+#
+# DEVIATION NOTE (AC-CD1): CODE_SPEC §2 names only two requirements
+# files (requirements.txt, requirements-worker.txt). This third file is
+# an Acumen CI-tooling addition, accepted by the user as a documented
+# deviation and recorded prominently in handovers/PR-002. If a fourth
+# requirements file is ever needed (e.g. requirements-test.txt), raise a
+# CODE_SPEC AC-CD1 amendment rather than stacking silent precedents.
+-r requirements.txt
+pytest>=8.0,<9.0
+pytest-asyncio>=0.23,<0.24
+ruff==0.6.9
+mypy==1.11.2
