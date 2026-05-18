@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 
 from app.config import get_settings
+from app.permissions import register_exception_handlers
+from app.routers import auth, users
 
 
 def create_app() -> FastAPI:
@@ -41,7 +43,12 @@ def create_app() -> FastAPI:
         """
         return {"status": "ready"}
 
-    # Routers are included from P2 onward (CODE_SPEC §3); none in P0.
+    # P2 — auth & user management (CODE_SPEC §3). The error-envelope
+    # handler and these two routers are the standalone-auth surface;
+    # ``register_exception_handlers`` lives in the AC-CD5 port seam.
+    register_exception_handlers(app)
+    app.include_router(auth.router)
+    app.include_router(users.router)
 
     return app
 

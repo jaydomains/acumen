@@ -49,7 +49,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import SEED_TENANT_ID, AppUser, UserStatus, get_db
+from app.models import (
+    SEED_TENANT_ID,
+    AccountSetupToken,
+    AppUser,
+    PasswordResetToken,
+    UserStatus,
+    get_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -321,3 +328,131 @@ def require_role(
         return user
 
     return _dependency
+
+
+# --- Email normalisation (AC-CD1: no email-validator dependency) ------
+
+
+def normalise_email(value: str) -> str:
+    """Trim + lowercase; require a single non-edge ``@``. Light by
+    design — full RFC validation would need the unpinned
+    ``email-validator`` package (AC-CD1)."""
+    email = value.strip().lower()
+    at = email.count("@")
+    if at != 1 or email.startswith("@") or email.endswith("@") or " " in email:
+        raise ValueError("invalid email address")
+    return email
+
+
+# --- Data-access helpers (auth seam) ----------------------------------
+# All auth persistence/query lives here in the seam (AC-CD5), not in
+# the routers. Routers orchestrate + own HTTP status; these own the
+# rows. Tests substitute these to stay zero-DB / zero-network.
+
+
+async def create_user(db: AsyncSession, *, email: str, name: str, role: str) -> AppUser:
+    """Admin-driven creation (AC-D2). No usable password until the
+    setup-link flow completes; status starts active."""
+    user = AppUser(
+        tenant_id=SEED_TENANT_ID,
+        email=email,
+        name=name,
+        role=role,
+        password_hash=UNUSABLE_PASSWORD_HASH,
+        status=UserStatus.active,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+async def issue_setup_token(db: AsyncSession, user: AppUser) -> str:
+    raw, token_hash = mint_token()
+    db.add(
+        AccountSetupToken(
+            tenant_id=SEED_TENANT_ID,
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=token_expiry(SETUP_TOKEN_TTL),
+        )
+    )
+    return raw
+
+
+async def issue_password_reset_token(db: AsyncSession, user: AppUser) -> str:
+    raw, token_hash = mint_token()
+    db.add(
+        PasswordResetToken(
+            tenant_id=SEED_TENANT_ID,
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=token_expiry(RESET_TOKEN_TTL),
+        )
+    )
+    return raw
+
+
+async def _setup_token_row(db: AsyncSession, token_hash: str) -> AccountSetupToken | None:
+    result = await db.execute(
+        select(AccountSetupToken).where(
+            AccountSetupToken.token_hash == token_hash,
+            AccountSetupToken.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _reset_token_row(
+    db: AsyncSession, token_hash: str
+) -> PasswordResetToken | None:
+    result = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def _token_is_usable(used_at: datetime | None, expires_at: datetime) -> bool:
+    return used_at is None and expires_at > now_utc()
+
+
+async def consume_setup_token(
+    db: AsyncSession, raw_token: str, new_password: str
+) -> AppUser | None:
+    """One-time, expiring (AC-D10). Sets the password and marks the
+    token used in the same transaction. Returns None if invalid."""
+    row = await _setup_token_row(db, hash_token(raw_token))
+    if row is None or not _token_is_usable(row.used_at, row.expires_at):
+        return None
+    user = await load_user_by_id(db, row.user_id)
+    if user is None:
+        return None
+    user.password_hash = hash_password(new_password)
+    row.used_at = now_utc()
+    return user
+
+
+async def consume_password_reset_token(
+    db: AsyncSession, raw_token: str, new_password: str
+) -> AppUser | None:
+    row = await _reset_token_row(db, hash_token(raw_token))
+    if row is None or not _token_is_usable(row.used_at, row.expires_at):
+        return None
+    user = await load_user_by_id(db, row.user_id)
+    if user is None:
+        return None
+    user.password_hash = hash_password(new_password)
+    row.used_at = now_utc()
+    return user
+
+
+async def acknowledge_privacy(db: AsyncSession, user: AppUser) -> datetime:
+    """Idempotent: record the §8.7 acknowledgement once (AC-D16)."""
+    acked = user.privacy_ack_at
+    if acked is None:
+        acked = now_utc()
+        user.privacy_ack_at = acked
+    return acked
