@@ -1,0 +1,64 @@
+# Broad multi-stack ignore. This will be tightened once CODE_SPEC.md locks
+# the actual stack — keep it conservative until then.
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs
+*.log
+logs/
+
+# Node / JS / TS
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.cache/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Java / JVM
+target/
+*.class
+
+# Go
+bin/
+
+# Rust
+/target/
+
+# Misc build / temp
+tmp/
+.tmp/
