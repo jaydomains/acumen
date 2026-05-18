@@ -81,3 +81,23 @@ def test_proposal_queue_requires_admin(
     testee = cat_make_user(cat_session, email="t@kbc.com", role=p.ROLE_TESTEE)
     r = cat_client.get("/v1/pill-proposals", headers=bearer(testee))
     assert r.status_code == 403
+
+
+def test_malformed_proposal_payload_is_422_not_500(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    from app.models import ProcessingTask
+
+    seed_system_settings(cat_session)
+    h = _admin(cat_session)
+    sid = cat_client.post("/v1/subjects", headers=h, json={"name": "S"}).json()["id"]
+    pid = _propose(cat_client, h, sid)
+
+    # Corrupt the persisted payload (simulates a P5 real-provider
+    # response missing required keys).
+    task = next(t for t in cat_session.store[ProcessingTask] if str(t.id) == pid)
+    task.payload = {"proposal": {"description": "no subject_id or name"}}
+
+    r = cat_client.post(f"/v1/pill-proposals/{pid}/approve", headers=h)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "malformed_proposal"

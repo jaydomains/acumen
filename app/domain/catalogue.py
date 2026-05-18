@@ -37,7 +37,7 @@ from app.models import (
     ProcessingTaskStatus,
     Subject,
 )
-from app.permissions import now_utc
+from app.permissions import APIError, now_utc
 
 DEFAULT_PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 200
@@ -530,10 +530,22 @@ async def approve_pill_proposal(
     honouring the proposing AI's self-classification per AC-D21), then
     mark the task done with the decision recorded."""
     proposal = (task.payload or {}).get("proposal", {})
+    # The payload is persisted JSON; once P5 wires real AI providers a
+    # malformed proposal could reach here. Fail with a clean 422 to the
+    # admin instead of an unhandled 500.
+    try:
+        subject_id = uuid.UUID(str(proposal["subject_id"]))
+        name = proposal["name"]
+    except (KeyError, ValueError, TypeError) as exc:
+        raise APIError(
+            422,
+            "malformed_proposal",
+            "This proposal's payload is malformed and cannot be approved.",
+        ) from exc
     pill = await create_pill(
         db,
-        subject_id=uuid.UUID(str(proposal["subject_id"])),
-        name=proposal["name"],
+        subject_id=subject_id,
+        name=name,
         description=proposal.get("description"),
         available_difficulty_min=proposal.get("available_difficulty_min", 1),
         available_difficulty_max=proposal.get("available_difficulty_max", 10),
