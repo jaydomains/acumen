@@ -123,3 +123,136 @@ def make_user(
 def bearer(user: AppUser) -> dict[str, str]:
     token = p.issue_access_token(str(user.id), user.role)
     return {"Authorization": f"Bearer {token}"}
+
+
+# --- P3 catalogue harness ---------------------------------------------
+# The P2 ``FakeSession`` only does ``scalar_one_or_none`` over a single
+# equality ``where``. The catalogue domain layer also needs
+# ``scalars().all()`` and ``delete()``. ``CatalogueFakeSession`` adds
+# exactly that — still equality-only AND ``where`` (the domain layer
+# does ordering / filtering / pagination in Python by design), so it
+# stays zero-DB / zero-network (AC-CD15). The P2 fake is untouched.
+
+
+class _CatResult:
+    def __init__(self, rows: list[Any]) -> None:
+        self._rows = rows
+
+    def scalar_one_or_none(self) -> Any | None:
+        return self._rows[0] if self._rows else None
+
+    def scalars(self) -> _CatResult:
+        return self
+
+    def all(self) -> list[Any]:
+        return list(self._rows)
+
+
+class CatalogueFakeSession:
+    def __init__(self) -> None:
+        self.store: dict[type, list[Any]] = {}
+
+    def add(self, obj: Any) -> None:
+        if getattr(obj, "id", None) is None:
+            obj.id = uuid.uuid4()
+        now = p.now_utc()
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = now
+        if getattr(obj, "updated_at", None) is None:
+            obj.updated_at = now
+        self.store.setdefault(type(obj), []).append(obj)
+
+    async def flush(self) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+    async def refresh(self, obj: Any) -> None:
+        return None
+
+    async def delete(self, obj: Any) -> None:
+        bucket = self.store.get(type(obj), [])
+        if obj in bucket:
+            bucket.remove(obj)
+
+    async def execute(self, stmt: Any) -> _CatResult:
+        model = stmt.column_descriptions[0]["entity"]
+        clause = stmt.whereclause
+        parts = getattr(clause, "clauses", [clause]) if clause is not None else []
+        conds = {c.left.key: c.right.value for c in parts}
+        rows = [
+            r
+            for r in self.store.get(model, [])
+            if all(getattr(r, k) == v for k, v in conds.items())
+        ]
+        return _CatResult(rows)
+
+
+# v1.3 default safety keyword list (mirrors the ``system_settings``
+# server_default seeded by migration 0002).
+DEFAULT_SAFETY_KEYWORDS = [
+    "lift",
+    "scaffold",
+    "asbestos",
+    "isocyanate",
+    "cathodic",
+    "confined space",
+    "fall",
+    "PPE",
+    "high voltage",
+    "hot work",
+    "fire",
+    "electrical",
+    "hazardous",
+    "toxic",
+]
+
+
+def seed_system_settings(
+    session: CatalogueFakeSession,
+    *,
+    safety_keywords: list[str] | None = None,
+) -> None:
+    from app.models import SystemSettings
+
+    session.add(
+        SystemSettings(
+            tenant_id=p.SEED_TENANT_ID,
+            safety_keyword_list=(
+                DEFAULT_SAFETY_KEYWORDS if safety_keywords is None else safety_keywords
+            ),
+        )
+    )
+
+
+def cat_make_user(session: CatalogueFakeSession, *, email: str, role: str) -> AppUser:
+    from app.models import UserStatus
+
+    user = AppUser(
+        tenant_id=p.SEED_TENANT_ID,
+        email=email,
+        name=email.split("@")[0],
+        role=role,
+        password_hash=p.UNUSABLE_PASSWORD_HASH,
+        status=UserStatus.active,
+    )
+    user.privacy_ack_at = p.now_utc()
+    session.add(user)
+    return user
+
+
+@pytest.fixture
+def cat_session() -> CatalogueFakeSession:
+    return CatalogueFakeSession()
+
+
+@pytest.fixture
+def cat_client(cat_session: CatalogueFakeSession) -> Iterator[TestClient]:
+    async def _override() -> AsyncIterator[CatalogueFakeSession]:
+        yield cat_session
+
+    app.dependency_overrides[get_db] = _override
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()

@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Generic, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.models import UserStatus
 from app.permissions import VALID_ROLES, normalise_email
@@ -107,4 +107,158 @@ class UserResponse(_Base):
     role: str
     status: UserStatus
     privacy_ack_at: datetime | None
+    created_at: datetime
+
+
+# --- Catalogue (P3): Subjects / Pills / Paths / Groups ----------------
+# CODE_SPEC §5: collections return {"data": [...], "meta": {...}} with
+# cursor pagination; the error envelope is the APIError handler.
+
+MIN_DIFFICULTY = 1
+MAX_DIFFICULTY = 10
+
+Name = Annotated[str, Field(min_length=1, max_length=255)]
+ItemT = TypeVar("ItemT")
+
+
+class PageMeta(_Base):
+    next_cursor: str | None = None
+
+
+class Page(_Base, Generic[ItemT]):
+    data: list[ItemT]
+    meta: PageMeta
+
+
+class SubjectCreate(_Base):
+    name: Name
+    description: Annotated[str, Field(max_length=2048)] | None = None
+
+
+class SubjectUpdate(_Base):
+    name: Name | None = None
+    description: Annotated[str, Field(max_length=2048)] | None = None
+
+
+class SubjectResponse(_Base):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class _DifficultyRange(_Base):
+    @model_validator(mode="after")
+    def _check_range(self) -> _DifficultyRange:
+        lo = getattr(self, "available_difficulty_min", None)
+        hi = getattr(self, "available_difficulty_max", None)
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError(
+                "available_difficulty_min must be <= available_difficulty_max"
+            )
+        return self
+
+
+Difficulty = Annotated[int, Field(ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)]
+
+
+class PillCreate(_DifficultyRange):
+    subject_id: uuid.UUID
+    name: Name
+    description: Annotated[str, Field(max_length=4096)] | None = None
+    available_difficulty_min: Difficulty
+    available_difficulty_max: Difficulty
+    discoverable: bool = True
+    estimated_minutes: Annotated[int, Field(ge=1, le=100000)] | None = None
+
+
+class PillUpdate(_DifficultyRange):
+    name: Name | None = None
+    description: Annotated[str, Field(max_length=4096)] | None = None
+    available_difficulty_min: Difficulty | None = None
+    available_difficulty_max: Difficulty | None = None
+    discoverable: bool | None = None
+    estimated_minutes: Annotated[int, Field(ge=1, le=100000)] | None = None
+
+
+class PillSafetyOverride(_Base):
+    safety_relevant: bool
+
+
+class PillResponse(_Base):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    subject_id: uuid.UUID
+    name: str
+    description: str | None
+    available_difficulty_min: int
+    available_difficulty_max: int
+    discoverable: bool
+    safety_relevant: bool
+    safety_relevant_overridden_at: datetime | None
+    estimated_minutes: int | None
+    retired_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LearningPathCreate(_Base):
+    name: Name
+    description: Annotated[str, Field(max_length=2048)] | None = None
+    pill_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class LearningPathUpdate(_Base):
+    name: Name | None = None
+    description: Annotated[str, Field(max_length=2048)] | None = None
+    pill_ids: list[uuid.UUID] | None = None
+
+
+class LearningPathResponse(_Base):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    is_private: bool
+    owner_user_id: uuid.UUID | None
+    pill_ids: list[uuid.UUID]
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupCreate(_Base):
+    name: Name
+    description: Annotated[str, Field(max_length=1024)] | None = None
+
+
+class GroupUpdate(_Base):
+    name: Name | None = None
+    description: Annotated[str, Field(max_length=1024)] | None = None
+
+
+class GroupMemberRequest(_Base):
+    user_id: uuid.UUID
+
+
+class GroupResponse(_Base):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    is_system: bool
+    member_ids: list[uuid.UUID]
+    created_at: datetime
+    updated_at: datetime
+
+
+class PillProposalResponse(_Base):
+    id: uuid.UUID
+    status: str
+    payload: dict | None
     created_at: datetime

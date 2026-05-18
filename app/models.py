@@ -311,6 +311,9 @@ class Pill(Base, TimestampMixin):
     safety_relevant: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("false")
     )
+    # Set when an admin explicitly overrides the auto-tag (AC-D21). Once
+    # stamped, edit-time re-evaluation must not clobber the admin value.
+    safety_relevant_overridden_at: Mapped[datetime | None]
     estimated_minutes: Mapped[int | None]
     retired_at: Mapped[datetime | None]
 
