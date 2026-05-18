@@ -1,9 +1,9 @@
 """SQLAlchemy 2.0 models — single ``acumen`` schema (AC-CD3 / AC-CD4).
 
-Slice 1 of P1: the core SPEC §5 entity tables + their PG enums. Join and
-supporting tables (group_member, pill_safety_link, attempt_anchor,
-processing_tasks, auth tokens, …) land in Slice 2; the Alembic migration
-in Slice 3. Conventions: UUID PKs ``gen_random_uuid()``;
+P1: every SPEC §5 entity (Slice 1) + the supporting/join tables
+(Slice 2) — 34 tables in the single ``acumen`` schema. The Alembic
+migration with enums/indexes/IVFFlat/seeds lands in Slice 3.
+Conventions: UUID PKs ``gen_random_uuid()``;
 ``created_at``/``updated_at`` timestamptz ``now()`` (``updated_at`` via
 ``onupdate``); ``tenant_id`` on every tenant-scoped table (v1
 single-tenant — RLS is a documented SiteMesh port seam, not built);
@@ -133,6 +133,23 @@ class LearningMaterialSource(str, enum.Enum):
     ai_generated = "ai_generated"
     admin_reference = "admin_reference"
     curated_safety_links = "curated_safety_links"
+
+
+class ProcessingTaskStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    done = "done"
+    failed = "failed"
+
+
+class AssignmentReminderKind(str, enum.Enum):
+    reminder = "reminder"
+    escalation = "escalation"
+
+
+class FocusEventKind(str, enum.Enum):
+    blur = "blur"
+    focus = "focus"
 
 
 def _enum(py_enum: type[enum.Enum], name: str) -> SAEnum:
@@ -831,3 +848,304 @@ class AuditLog(Base, TimestampMixin):
     target_entity: Mapped[str | None] = mapped_column(String(64))
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     detail: Mapped[dict | None] = mapped_column(JSONB)
+
+
+# --- Slice 2: supporting & join tables --------------------------------
+
+
+class GroupMember(Base, TimestampMixin):
+    """User⇄Group membership (AC-D15, M:N)."""
+
+    __tablename__ = "group_member"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_member"),)
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.group.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.app_user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+
+class PillSafetyLink(Base, TimestampMixin):
+    """Cached external safety link for a safety-tagged pill (AC-D21)."""
+
+    __tablename__ = "pill_safety_link"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(512))
+    source: Mapped[str | None] = mapped_column(String(255))
+    last_verified_at: Mapped[datetime | None]
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class PillRelated(Base, TimestampMixin):
+    """Related-pill reference (AC-D7, self-M:N)."""
+
+    __tablename__ = "pill_related"
+    __table_args__ = (
+        UniqueConstraint("pill_id", "related_pill_id", name="uq_pill_related"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    related_pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+
+class LearningPathPill(Base, TimestampMixin):
+    """Ordered pill within a learning path (AC-D7)."""
+
+    __tablename__ = "learning_path_pill"
+    __table_args__ = (
+        UniqueConstraint("learning_path_id", "pill_id", name="uq_learning_path_pill"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    learning_path_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.learning_path.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    position: Mapped[int] = mapped_column(nullable=False)
+
+
+class AssignmentAssignee(Base, TimestampMixin):
+    """Snapshot of the Testees targeted by an assignment at creation
+    (AC-D15) — group membership is resolved and frozen here so later
+    membership changes do not rewrite assignment history."""
+
+    __tablename__ = "assignment_assignee"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "user_id", name="uq_assignment_assignee"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.assignment.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.app_user.id"),
+        nullable=False,
+        index=True,
+    )
+    via_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.group.id")
+    )
+
+
+class AssignmentReminder(Base, TimestampMixin):
+    """Reminder / escalation send history for an assignment (AC-D26)."""
+
+    __tablename__ = "assignment_reminder"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.assignment.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[AssignmentReminderKind] = mapped_column(
+        _enum(AssignmentReminderKind, "assignment_reminder_kind"),
+        nullable=False,
+    )
+    sent_at: Mapped[datetime] = mapped_column(
+        server_default=text("now()"), nullable=False
+    )
+
+
+class AttemptPauseEvent(Base, TimestampMixin):
+    """A pause window within an attempt (AC-D11). ``auto_resumed`` marks
+    expiry of ``max_pause_duration_minutes``."""
+
+    __tablename__ = "attempt_pause_event"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.attempt.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(nullable=False)
+    ended_at: Mapped[datetime | None]
+    duration_seconds: Mapped[int | None]
+    auto_resumed: Mapped[bool] = mapped_column(
+        nullable=False, server_default=text("false")
+    )
+
+
+class AttemptFocusEvent(Base, TimestampMixin):
+    """Tab-switch / focus event during an attempt (AC-D4 #3)."""
+
+    __tablename__ = "attempt_focus_event"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.attempt.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[FocusEventKind] = mapped_column(
+        _enum(FocusEventKind, "focus_event_kind"), nullable=False
+    )
+    occurred_at: Mapped[datetime] = mapped_column(nullable=False)
+    duration_seconds: Mapped[int | None]
+
+
+class AttemptAnchor(Base, TimestampMixin):
+    """Anchor questions drawn into an attempt + the Testee's score on
+    each (AC-D20).
+
+    ``score`` is a denormalised query-efficiency surface sourced from
+    ``response.response_score`` for the Testee's answer to this anchor
+    in this attempt — it is not an independent value and must always
+    equal that response score (refinement #3; prevents drift).
+    """
+
+    __tablename__ = "attempt_anchor"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "anchor_question_id", name="uq_attempt_anchor"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.attempt.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    anchor_question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.anchor_question.id"),
+        nullable=False,
+        index=True,
+    )
+    score: Mapped[float | None]
+
+
+class WeaknessReportPill(Base, TimestampMixin):
+    """A weak pill + severity within a weakness report (AC-D6)."""
+
+    __tablename__ = "weakness_report_pill"
+    __table_args__ = (
+        UniqueConstraint("weakness_report_id", "pill_id", name="uq_weakness_report_pill"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    weakness_report_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.weakness_report.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id"),
+        nullable=False,
+        index=True,
+    )
+    severity: Mapped[float] = mapped_column(nullable=False)
+
+
+class ProcessingTask(Base, TimestampMixin):
+    """Async work status (AC-CD7, the authority over the SiteMesh
+    contract on any conflict): status + payload + error."""
+
+    __tablename__ = "processing_tasks"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    task_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    status: Mapped[ProcessingTaskStatus] = mapped_column(
+        _enum(ProcessingTaskStatus, "processing_task_status"),
+        nullable=False,
+        server_default=ProcessingTaskStatus.pending.value,
+        index=True,
+    )
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None]
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+
+
+class AccountSetupToken(Base, TimestampMixin):
+    """Single-use, expiring account-activation token (AC-D10/AC-CD5)."""
+
+    __tablename__ = "account_setup_token"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.app_user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None]
+
+
+class PasswordResetToken(Base, TimestampMixin):
+    """Single-use, expiring password-reset token (AC-D10/AC-CD5)."""
+
+    __tablename__ = "password_reset_token"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.app_user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None]
