@@ -234,10 +234,9 @@ class SMTPClient:
         message.set_content(body)
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
             smtp.starttls()
-            if settings.smtp_username:
+            if settings.smtp_username and settings.smtp_password:
                 smtp.login(settings.smtp_username, settings.smtp_password)
             smtp.send_message(message)
-        _CAPTURED.append(SentEmail(to=to, subject=subject, body=body))
 
 
 # --- Identity loading + the single dependency chain (AC-CD5) ----------

@@ -16,6 +16,7 @@ import enum
 import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
+from functools import lru_cache
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -33,6 +34,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -1171,11 +1173,23 @@ class PasswordResetToken(Base, TimestampMixin):
 # setup-only ``app/main.py`` which the structure-gate forbids importing
 # SQLAlchemy into (AC-CD2).
 
-engine = create_async_engine(get_settings().database_url)
-SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# Engine/sessionmaker are built lazily (first get_db call), not at
+# import time, so importing the model layer never constructs a real
+# engine — tests that override get_db never touch a DB, and CLI/static
+# tooling import cleanly.
+
+
+@lru_cache(maxsize=1)
+def _engine() -> AsyncEngine:
+    return create_async_engine(get_settings().database_url)
+
+
+@lru_cache(maxsize=1)
+def _session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(_engine(), class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency yielding a per-request ``AsyncSession``."""
-    async with SessionLocal() as session:
+    async with _session_factory()() as session:
         yield session
