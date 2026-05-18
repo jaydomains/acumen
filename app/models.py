@@ -18,6 +18,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -904,6 +905,7 @@ class PillRelated(Base, TimestampMixin):
     __tablename__ = "pill_related"
     __table_args__ = (
         UniqueConstraint("pill_id", "related_pill_id", name="uq_pill_related"),
+        CheckConstraint("pill_id != related_pill_id", name="ck_pill_related_no_self"),
     )
 
     id: Mapped[uuid.UUID] = _pk()

@@ -74,6 +74,13 @@ ENUMS: dict[str, tuple[str, ...]] = {
 }
 
 _DIALECT = postgresql.dialect()
+_PREP = _DIALECT.identifier_preparer
+
+
+def _qname(table_name: str) -> str:
+    # Schema-qualified, identifier-quoted only when required — matches
+    # SQLAlchemy's compiled DDL (e.g. the reserved word ``group``).
+    return f"{SCHEMA}.{_PREP.quote(table_name)}"
 
 
 def upgrade() -> None:
@@ -110,7 +117,7 @@ def upgrade() -> None:
     for table in tables:
         op.execute(
             f"CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON "
-            f"{SCHEMA}.{table.name} FOR EACH ROW "
+            f"{_qname(table.name)} FOR EACH ROW "
             f"EXECUTE FUNCTION {SCHEMA}.set_updated_at()"
         )
 
@@ -138,12 +145,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     tables = list(reversed(Base.metadata.sorted_tables))  # child -> parent
     for table in tables:
-        op.execute(
-            f"DROP TRIGGER IF EXISTS trg_set_updated_at ON " f"{SCHEMA}.{table.name}"
-        )
+        op.execute(f"DROP TRIGGER IF EXISTS trg_set_updated_at ON {_qname(table.name)}")
     op.execute(f"DROP FUNCTION IF EXISTS {SCHEMA}.set_updated_at()")
     for table in tables:
-        op.execute(f"DROP TABLE IF EXISTS {SCHEMA}.{table.name} CASCADE")
+        op.execute(f"DROP TABLE IF EXISTS {_qname(table.name)} CASCADE")
     for name in ENUMS:
         op.execute(f"DROP TYPE IF EXISTS {SCHEMA}.{name}")
     # The `vector` extension is owned by infra/postgres/init.sql; this
