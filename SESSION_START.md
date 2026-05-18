@@ -47,6 +47,11 @@ are *documented, not built* in v1.
   user approval first, not an execution detail. (Reinforced after P3 /
   PR-008, where all three slices ran in one pass — clean by luck, not
   process.)
+- **Multi-slice phases pause for Gitar review at each slice boundary.**
+  After each slice commits and pushes, the session waits for explicit
+  user confirmation that Gitar is clean before starting the next slice.
+  No exceptions. The pause-for-Gitar pattern preserves slice-level
+  review quality that the consolidated PR diff loses.
 - **Handover at PR close.** Authored *before* merge, copied from
   `HANDOVER_TEMPLATE.md` into `handovers/PR-<id>-<slug>.md`. Handovers are
   immutable once written (except where confidentiality/privacy/legal
@@ -62,6 +67,17 @@ are *documented, not built* in v1.
   (SPEC / DECISIONS / CODE_SPEC / ROADMAP). A *fresh* session then
   implements against the corrected spec. The implementing session does not
   also author the clarification.
+- **AC-CD-level structural additions may fold into the phase handover.**
+  New files, new modules, or dependency additions outside the
+  `CODE_SPEC.md` §3 locked layout may be folded into the phase handover
+  when (a) the existing structure-gate continues to pass without
+  modification, and (b) the addition is well-rationalised against
+  existing AC-CDs. Document prominently in the handover under "What was
+  decided". Larger structural changes — adding multiple modules,
+  modifying the structure-gate script, changing the auth seam shape,
+  altering the stack — still require a separate spec-clarification PR.
+  (Codifies the `requirements-dev.txt` / PR-004 and `catalogue.py` /
+  PR-008 pattern.)
 - **Anchor discipline.** Product/functional decisions are `AC-D{n}` in
   `SPEC.md`/`DECISIONS.md`; code-shape/technical decisions are `AC-CD{n}`
   in `CODE_SPEC.md`. Anchor *identifiers are immutable*; an anchor body
@@ -252,7 +268,9 @@ Specs are at **v1.2** — the v1.2 clarification resolved the previously
 under-specified statistical anchors: AC-D9 (competence formula),
 AC-D20/AC-D27 (calibration math), AC-D22 (embedding model), AC-D25
 (benchmark carve-out). `CODE_SPEC.md` / `ROADMAP.md` / `CHECKLIST.md` are
-written. **No application code exists yet.** The next session starts at
-ROADMAP **P0 — Scaffold & stack lock**.
+written. **P0, P1, P2, P3 are landed** — Scaffold & stack lock, Data
+model & migrations, Auth & user management, Catalogue. **9 phases
+remain.** The next session starts at ROADMAP **P4 — Tests, assignments,
+attempts (deterministic)**.
 
 *End of SESSION_START. Paired with the v1.2 document set.*
