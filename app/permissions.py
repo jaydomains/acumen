@@ -91,6 +91,12 @@ def token_expiry(ttl: timedelta) -> datetime:
 
 _ph = PasswordHasher()  # argon2-cffi defaults to the argon2id variant
 
+# Real argon2id hash used to spend equivalent verify time on the
+# non-argon2 path (unknown email, or an admin-created user still on
+# UNUSABLE_PASSWORD_HASH). Without this, the fast string-prefix
+# rejection is a timing oracle for account enumeration at /login.
+_DUMMY_HASH = _ph.hash("acumen-constant-time-equaliser")
+
 
 def hash_password(password: str) -> str:
     return _ph.hash(password)
@@ -98,6 +104,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(stored_hash: str, password: str) -> bool:
     if not stored_hash.startswith("$argon2"):
+        try:
+            _ph.verify(_DUMMY_HASH, password)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            pass
         return False
     try:
         return _ph.verify(stored_hash, password)
@@ -244,6 +254,31 @@ class SMTPClient:
             if settings.smtp_username and settings.smtp_password:
                 smtp.login(settings.smtp_username, settings.smtp_password)
             smtp.send_message(message)
+
+
+# Email templates live at the seam (not in a router) so both the auth
+# and users routers consume a public contract — no router↔router
+# coupling, and the Auth Hub replaces these at port time with the
+# rest of the seam.
+
+
+def setup_email_content(raw_token: str) -> tuple[str, str]:
+    link = f"{get_settings().app_public_url}/setup?token={raw_token}"
+    return (
+        "Set up your Acumen account",
+        f"Welcome to Acumen. Set your password to activate your "
+        f"account:\n\n{link}\n\nThis link expires in 72 hours.",
+    )
+
+
+def reset_email_content(raw_token: str) -> tuple[str, str]:
+    link = f"{get_settings().app_public_url}/reset?token={raw_token}"
+    return (
+        "Reset your Acumen password",
+        f"A password reset was requested for your Acumen account:\n\n"
+        f"{link}\n\nThis link expires in 1 hour. If you did not request "
+        f"this, you can ignore this email.",
+    )
 
 
 # --- Identity loading + the single dependency chain (AC-CD5) ----------

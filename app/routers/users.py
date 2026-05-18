@@ -19,8 +19,8 @@ from app.permissions import (
     issue_setup_token,
     load_user_by_email,
     require_role,
+    setup_email_content,
 )
-from app.routers.auth import _setup_email
 from app.schemas import AdminCreateUserRequest, UserResponse
 
 router = APIRouter(prefix="/v1/users", tags=["users"])
@@ -40,6 +40,6 @@ async def admin_create_user(
     user = await create_user(db, email=body.email, name=body.name, role=body.role)
     raw = await issue_setup_token(db, user)
     await db.commit()
-    subject, text = _setup_email(raw)
+    subject, text = setup_email_content(raw)
     _smtp.send(user.email, subject, text)
     return UserResponse.model_validate(user)

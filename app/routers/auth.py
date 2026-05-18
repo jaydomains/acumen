@@ -13,7 +13,6 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.models import AppUser, UserStatus, get_db
 from app.permissions import (
     DEACTIVATED_MESSAGE,
@@ -30,6 +29,7 @@ from app.permissions import (
     issue_refresh_token,
     load_user_by_email,
     load_user_by_id,
+    reset_email_content,
     verify_password,
 )
 from app.schemas import (
@@ -57,29 +57,15 @@ def _claim_uuid(value: object) -> uuid.UUID:
         raise APIError(401, "invalid_token", "Bad subject claim.") from exc
 
 
-def _setup_email(raw_token: str) -> tuple[str, str]:
-    link = f"{get_settings().app_public_url}/setup?token={raw_token}"
-    return (
-        "Set up your Acumen account",
-        f"Welcome to Acumen. Set your password to activate your "
-        f"account:\n\n{link}\n\nThis link expires in 72 hours.",
-    )
-
-
-def _reset_email(raw_token: str) -> tuple[str, str]:
-    link = f"{get_settings().app_public_url}/reset?token={raw_token}"
-    return (
-        "Reset your Acumen password",
-        f"A password reset was requested for your Acumen account:\n\n"
-        f"{link}\n\nThis link expires in 1 hour. If you did not request "
-        f"this, you can ignore this email.",
-    )
-
-
 @router.post("/login")
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenPair:
     user = await load_user_by_email(db, body.email)
-    if user is None or not verify_password(user.password_hash, body.password):
+    if user is None:
+        # verify_password is constant-time on the non-argon2 path, so
+        # an unknown email is not distinguishable by response timing.
+        verify_password("", body.password)
+        raise APIError(401, "invalid_credentials", "Invalid email or password.")
+    if not verify_password(user.password_hash, body.password):
         raise APIError(401, "invalid_credentials", "Invalid email or password.")
     if user.status == UserStatus.deactivated:
         raise APIError(403, "account_deactivated", DEACTIVATED_MESSAGE)
@@ -133,7 +119,7 @@ async def password_reset_request(
     if user is not None and user.status == UserStatus.active:
         raw = await issue_password_reset_token(db, user)
         await db.commit()
-        subject, text = _reset_email(raw)
+        subject, text = reset_email_content(raw)
         _smtp.send(user.email, subject, text)
     return MessageResponse()
 
