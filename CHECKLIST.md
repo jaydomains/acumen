@@ -49,11 +49,11 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Subjects/Pills/Paths/Groups CRUD | P3 | AC-D7,8,15 | `app/routers/catalogue.py`,`paths.py`,`groups.py` | missing | |
-| Pill difficulty range | P3 | AC-D9 | `app/models.py` | missing | |
-| Discovery / filter | P3 | AC-D15 | `app/routers/catalogue.py` | missing | |
-| Safety-keyword auto-tag | P3 | AC-D21 | `app/routers/catalogue.py` | missing | |
-| AI-pill-proposal queue (AI stubbed) | P3 | AC-D8 | `app/routers/catalogue.py` | missing | |
+| Subjects/Pills/Paths/Groups CRUD | P3 | AC-D7,8,15 | `app/routers/catalogue.py`,`paths.py`,`groups.py`,`app/domain/catalogue.py` | built | `tests/integration/test_p3_done_when.py::test_done_when_crud_subjects_pills_paths_groups`,`tests/integration/test_p3_paths_groups.py` |
+| Pill difficulty range | P3 | AC-D9 | `app/models.py`,`app/schemas.py` | built | `tests/integration/test_p3_catalogue.py::test_difficulty_range_rejected_on_create_and_update` |
+| Discovery / filter | P3 | AC-D15 | `app/routers/catalogue.py`,`app/domain/catalogue.py` | built | `tests/integration/test_p3_done_when.py::test_done_when_discovery_filter_discoverable_non_retired`,`tests/integration/test_p3_catalogue.py::test_discovery_subject_and_difficulty_and_search_filters` |
+| Safety-keyword auto-tag | P3 | AC-D21 | `app/domain/safety_links.py`,`app/domain/catalogue.py`,`alembic/versions/0003_p3_pill_safety_override.py` | built | `tests/integration/test_p3_done_when.py::test_done_when_safety_auto_tag_at_pill_creation`,`tests/integration/test_p3_catalogue.py::test_safety_reeval_on_edit_unless_overridden`,`tests/unit/test_p3_safety_links.py` |
+| AI-pill-proposal queue (AI stubbed) | P3 | AC-D8 | `app/routers/catalogue.py`,`app/domain/catalogue.py`,`app/ai/provider.py` | built | `tests/integration/test_p3_done_when.py::test_done_when_pill_proposal_queue_persists_ai_stubbed`,`tests/integration/test_p3_proposal_queue.py` |
 
 ## P4 — Tests, assignments, attempts (deterministic)
 

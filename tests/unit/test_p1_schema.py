@@ -149,6 +149,14 @@ def test_engagement_status_is_derived_only() -> None:
     assert "engagement_status" not in _table("assignment").c
 
 
+def test_pill_safety_override_marker_present() -> None:
+    # AC-D21 (P3): nullable marker so edit-time re-evaluation never
+    # clobbers a deliberate admin override (migration 0003).
+    col = _table("pill").c["safety_relevant_overridden_at"]
+    assert col.nullable is True
+    assert col.server_default is None
+
+
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "alembic", *args],
@@ -171,3 +179,16 @@ def test_migration_offline_round_trip() -> None:
     assert down.returncode == 0, down.stderr
     assert down.stdout.count("DROP TABLE") >= 34
     assert down.stdout.count("DROP TYPE") == 17
+
+
+def test_migration_0003_safety_override_round_trip() -> None:
+    # P3 additive column migration is reversible (AC-CD3).
+    up = _alembic("upgrade", "0002_p1_data_model:0003_p3_pill_safety_override", "--sql")
+    assert up.returncode == 0, up.stderr
+    assert "ADD COLUMN safety_relevant_overridden_at" in up.stdout
+
+    down = _alembic(
+        "downgrade", "0003_p3_pill_safety_override:0002_p1_data_model", "--sql"
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP COLUMN safety_relevant_overridden_at" in down.stdout

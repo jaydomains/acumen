@@ -14,7 +14,7 @@ from fastapi.responses import ORJSONResponse
 
 from app.config import get_settings
 from app.permissions import register_exception_handlers
-from app.routers import auth, users
+from app.routers import auth, catalogue, groups, paths, users
 
 
 def create_app() -> FastAPI:
@@ -49,6 +49,12 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(auth.router)
     app.include_router(users.router)
+
+    # P3 — catalogue: Subjects/Pills/discovery/safety/proposals,
+    # Learning Paths, Groups (CODE_SPEC §3).
+    app.include_router(catalogue.router)
+    app.include_router(paths.router)
+    app.include_router(groups.router)
 
     return app
 
