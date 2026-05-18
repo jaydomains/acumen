@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps (runtime + dev/CI tooling)
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Unpinned-deps check (AC-CD1)
+        run: python scripts/check_unpinned_deps.py
+      - name: Structure gate (AC-CD2/AC-CD17)
+        run: python scripts/structure_gate.py
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: Mypy
+        run: mypy app
+      - name: Pytest
+        run: pytest -q

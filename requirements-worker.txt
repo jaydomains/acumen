@@ -1,0 +1,6 @@
+# Acumen worker image dependencies (Celery worker + Celery beat).
+# Superset of the HTTP runtime per CODE_SPEC §2 / AC-CD1. Celery beat
+# ships within celery==5.4.0, so no additional dependency is required
+# today and this file is the HTTP set plus this note. Any future
+# worker-only pin (e.g. flower) is added here, pinned.
+-r requirements.txt

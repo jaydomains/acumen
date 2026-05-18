@@ -1,0 +1,110 @@
+# Acumen standalone stack (CODE_SPEC §16, AC-CD16).
+# Core "compose up" = postgres + redis + acumen + worker + beat, all
+# health-gated. `migrate` (Alembic) and `traefik` (TLS edge) are opt-in
+# profiles so the core stack comes up healthy without certs.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: acumen
+      POSTGRES_PASSWORD: acumen
+      POSTGRES_DB: acumen
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acumen -d acumen"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  acumen:
+    build:
+      context: .
+      target: http
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import sys,urllib.request;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  acumen-worker:
+    build:
+      context: .
+      target: worker
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.worker:celery_app", "inspect", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  acumen-beat:
+    build:
+      context: .
+      target: worker
+    command: ["celery", "-A", "app.worker:celery_app", "beat", "--loglevel=INFO"]
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    profiles: ["migrate"]
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Port seam (SPEC §9): the SiteMesh internal/MeshCore surface mounts
+  # behind `!PathPrefix(/v1/internal)` here at port time.
+  traefik:
+    image: traefik:v3.1
+    profiles: ["proxy"]
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  pgdata:

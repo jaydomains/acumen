@@ -1,0 +1,29 @@
+# Acumen HTTP runtime dependencies — exact pins per CODE_SPEC §2 / AC-CD1.
+# SiteMesh shared pins are exact (==); Acumen-only additions are bounded
+# ranges with a rationale in CODE_SPEC §2. CI fails on an unpinned add
+# (scripts/check_unpinned_deps.py).
+
+# --- SiteMesh shared (exact) ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+pydantic-settings==2.4.0
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+psycopg[binary]==3.2.1
+alembic==1.13.3
+celery==5.4.0
+redis[hiredis]==5.0.8
+httpx==0.27.2
+PyJWT[crypto]==2.10.1
+python-multipart==0.0.9
+orjson==3.10.7
+
+# --- Acumen-only (bounded; rationale in CODE_SPEC §2) ---
+anthropic>=0.39,<1.0
+openai>=1.30,<2.0
+pgvector>=0.3,<0.4
+google-api-python-client>=2.140
+google-auth>=2.33
+argon2-cffi>=23.1
+tenacity>=8.5,<9.0
