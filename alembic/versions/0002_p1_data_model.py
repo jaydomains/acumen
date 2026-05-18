@@ -77,13 +77,13 @@ _DIALECT = postgresql.dialect()
 
 
 def upgrade() -> None:
-    op.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"')
+    op.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
     # AC-D22: assert pgvector (init.sql owns creation; assert here too).
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     for name, values in ENUMS.items():
         labels = ", ".join(f"'{v}'" for v in values)
-        op.execute(f'CREATE TYPE "{SCHEMA}".{name} AS ENUM ({labels})')
+        op.execute(f"CREATE TYPE {SCHEMA}.{name} AS ENUM ({labels})")
 
     tables = Base.metadata.sorted_tables  # parent -> child (FK order)
     for table in tables:
@@ -96,32 +96,31 @@ def upgrade() -> None:
     # rows/1000) and is a tuneable to revisit past ~50k chunks; cosine
     # ops because text-embedding-3-small vectors are normalised.
     op.execute(
-        f'CREATE INDEX ix_drive_chunk_embedding ON "{SCHEMA}".drive_chunk '
+        f"CREATE INDEX ix_drive_chunk_embedding ON {SCHEMA}.drive_chunk "
         "USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
     )
 
     # Backstop updated_at regardless of how the UPDATE is issued
     # (Gitar PR-#6 finding). Every table uses TimestampMixin.
     op.execute(
-        f'CREATE OR REPLACE FUNCTION "{SCHEMA}".set_updated_at() '
+        f"CREATE OR REPLACE FUNCTION {SCHEMA}.set_updated_at() "
         "RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = now(); "
         "RETURN NEW; END; $$ LANGUAGE plpgsql"
     )
     for table in tables:
         op.execute(
             f"CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON "
-            f'"{SCHEMA}".{table.name} FOR EACH ROW '
-            f'EXECUTE FUNCTION "{SCHEMA}".set_updated_at()'
+            f"{SCHEMA}.{table.name} FOR EACH ROW "
+            f"EXECUTE FUNCTION {SCHEMA}.set_updated_at()"
         )
 
     # --- Single-tenant seed rows (stable UUIDs, AC-CD3) ---------------
     op.execute(
-        f"INSERT INTO \"{SCHEMA}\".tenant (id, name) "
-        f"VALUES ('{SEED_TENANT_ID}', 'KBC')"
+        f"INSERT INTO {SCHEMA}.tenant (id, name) " f"VALUES ('{SEED_TENANT_ID}', 'KBC')"
     )
     # All knob columns fall back to their v1.3 server_defaults.
     op.execute(
-        f'INSERT INTO "{SCHEMA}".system_settings (tenant_id) '
+        f"INSERT INTO {SCHEMA}.system_settings (tenant_id) "
         f"VALUES ('{SEED_TENANT_ID}')"
     )
     for gid, gname in (
@@ -130,7 +129,7 @@ def upgrade() -> None:
         (SEED_GROUP_ALL_ADMINS_ID, "All Administrators"),
     ):
         op.execute(
-            f'INSERT INTO "{SCHEMA}".'
+            f"INSERT INTO {SCHEMA}."
             f'"group" (id, tenant_id, name, is_system) '
             f"VALUES ('{gid}', '{SEED_TENANT_ID}', '{gname}', true)"
         )
@@ -140,13 +139,12 @@ def downgrade() -> None:
     tables = list(reversed(Base.metadata.sorted_tables))  # child -> parent
     for table in tables:
         op.execute(
-            f'DROP TRIGGER IF EXISTS trg_set_updated_at ON '
-            f'"{SCHEMA}".{table.name}'
+            f"DROP TRIGGER IF EXISTS trg_set_updated_at ON " f"{SCHEMA}.{table.name}"
         )
-    op.execute(f'DROP FUNCTION IF EXISTS "{SCHEMA}".set_updated_at()')
+    op.execute(f"DROP FUNCTION IF EXISTS {SCHEMA}.set_updated_at()")
     for table in tables:
-        op.execute(f'DROP TABLE IF EXISTS "{SCHEMA}".{table.name} CASCADE')
+        op.execute(f"DROP TABLE IF EXISTS {SCHEMA}.{table.name} CASCADE")
     for name in ENUMS:
-        op.execute(f'DROP TYPE IF EXISTS "{SCHEMA}".{name}')
+        op.execute(f"DROP TYPE IF EXISTS {SCHEMA}.{name}")
     # The `vector` extension is owned by infra/postgres/init.sql; this
     # migration only asserts it, so it is not dropped here.
