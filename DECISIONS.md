@@ -2,9 +2,9 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.1. Paired with `SPEC.md` v1.1.
+> **Status:** v1.2. Paired with `SPEC.md` v1.2.
 >
-> **Decision count:** 26 decisions (AC-D1 through AC-D26). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7. Original v1.0 wording preserved in git history; current document reflects amended decisions as the authoritative text.
+> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25. Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
 ---
 
@@ -20,6 +20,17 @@ The following v1.0 decisions were amended during the v1.1 review pass. Their cur
 | AC-D18 | Worked cost example added; loop-driven and assignment-driven test generations exempted from per-Testee rate limit |
 | AC-D19 | Review pass changed to cross-family (OpenAI on Anthropic by default) and made synchronous before band stamp displays |
 | §8.7 | Privacy notice simplified for internal-staff context (full multi-tenant notice deferred to SiteMesh port) |
+
+## Amendments applied in v1.2
+
+The v1.2 review pass added one new decision and amended three existing ones to make under-specified mechanisms implementable. Current text below reflects the amended version; the change rationale is preserved inline within each decision.
+
+| Decision | Change summary |
+|---|---|
+| AC-D27 | New decision — full anchor calibration mathematics (Bayesian effective-difficulty estimator, fresh-question delta scoring, cold-start confidence) that AC-D20 deferred |
+| AC-D9 | Replaced the under-specified competence formula with an IRT-style per-attempt value plus recency-weighted decay and an explicit adaptive-loop target |
+| AC-D22 / §7.3 | Embedding model default fixed to OpenAI `text-embedding-3-small`; Anthropic offers no embeddings API |
+| AC-D25 | Benchmark mode opts out of JIT streaming; sequential adaptive generation only |
 
 ---
 
@@ -160,7 +171,7 @@ The loop operates in two modes, configurable per test: **autonomous** (no admin 
 
 ## AC-D9 — Difficulty: 10-point slider with five anchored bands
 
-> **Amended in v1.1** — Added derived `competence_estimate` float per Testee per pill. The integer axis remains as question-side difficulty and human-facing label; competence is now estimated as a continuous float separately. See change rationale below.
+> **Amended in v1.1** — Added derived `competence_estimate` float per Testee per pill. The integer axis remains as question-side difficulty and human-facing label; competence is now estimated as a continuous float separately. **Amended again in v1.2** — the full competence formula (IRT-style per-attempt value, recency-weighted decay, explicit adaptive-loop target) is now specified. See change rationale below.
 
 **Decision:** Acumen represents question-side difficulty as an integer 1–10 with five anchored bands:
 
@@ -176,6 +187,31 @@ The integer (1–10) is the stored question-side source of truth. The band name 
 
 Additionally, a derived **`competence_estimate`** (float, 1.0–10.0) is computed per Testee per pill, representing the empirical estimate of the Testee's current competence on that pill. The estimate is a recency-weighted average of attempt performance against question effective-difficulty (per AC-D20 anchor calibration), with exponential decay so recent attempts count more than historical (default half-life: 90 days, configurable). Band labels for display are derived from this float rather than from the integer of the latest attempt. The adaptive learning loop per AC-D6 uses the float for step-up/step-down decisions — a competence estimate of 6.7 on a pill with current attempts at integer 6 triggers a step-up to integer 7 rather than waiting for a clean pass at exactly 6.
 
+The competence_estimate is computed as follows.
+
+*Per-attempt competence value (IRT-style):*
+
+For each response within an attempt:
+`response_competence = effective_difficulty + (competence_sensitivity × (response_score − 0.5))`
+
+where `effective_difficulty` is per AC-D20/AC-D27, `response_score` is 0.0–1.0, and `competence_sensitivity = 2.0` (configurable in System Settings).
+
+Interpretation: a score of 0.5 means the Testee performed exactly at the question's difficulty level — their competence equals the difficulty. Scoring above 0.5 lifts competence above the difficulty; below 0.5 drops it below. The sensitivity factor sets how much.
+
+`attempt_competence = mean(response_competence) across all responses in the attempt`
+
+*Recency-weighted average across all attempts on this pill:*
+
+`competence_estimate = Σ(attempt_competence × weight) / Σ(weight)`
+
+where `weight = 0.5 ^ (age_in_days / competence_decay_halflife_days)` and `competence_decay_halflife_days = 90` (configurable). An attempt today has weight 1.0; an attempt 90 days ago has weight 0.5; an attempt 180 days ago has weight 0.25.
+
+*Null handling:* For pills with zero attempts by a Testee, `competence_estimate` is null. UI displays "no data yet" rather than a band. Loop logic per AC-D6 treats null as needing benchmark or first attempt, not as a failing score.
+
+*Adaptive loop target:*
+
+Next attempt's target difficulty = `round(competence_estimate + 0.5)` clamped to the pill's `available_difficulty_range`. The +0.5 bias means the next attempt stretches slightly above current competence — testing exactly at competence confirms what's known; testing slightly above is where learning happens. Three consecutive attempts where the Testee's score is well below the difficulty trigger a step-down of one integer regardless of formula, per existing AC-D6 logic.
+
 Difficulty is selectable three ways: admin-assigned, Testee-selected, AI-suggested.
 
 Each pill carries an `available_difficulty_range` (min, max).
@@ -184,7 +220,9 @@ Each pill carries an `available_difficulty_range` (min, max).
 
 **Amendment rationale (v1.1):** The single 1–10 axis conflated two distinct measurements — the intrinsic difficulty of a question and the competence of a Testee — leaving the adaptive loop with only pass/fail integer outcomes as input. AC-D20 added empirical question difficulty calibration; this amendment adds the complementary piece on the Testee side, so question difficulty and Testee competence are both empirically estimated and explicitly separated under the hood. The integer axis remains as the simple human-facing presentation.
 
-**Implications:** Pill metadata carries min/max difficulty range. Test generation prompt receives both signals. Adaptive loop progression uses the competence_estimate float; integer math operates on the rounded float. Competency Profile entity gains `competence_estimate` (float) per pill per Testee. Band labels for display continue to derive from integer bins but operate on the rounded float rather than the latest attempt's stamped integer. Historical attempts retain their stamped integers; the float is computed from attempt history and recomputed after each new attempt. Decay function configuration: `competence_decay_halflife_days` (default 90). Admin views display both the integer band ("Working") and the float estimate ("6.7 / Working").
+**Amendment rationale (v1.2):** The v1.1 amendment specified the recency-weighting concept but left the per-attempt performance value undefined. An initial proposed formula (`response_score × effective_difficulty`) was rejected as backwards — it would have credited 50% on difficulty 8 as competence 4, when in reality scoring 50% on a near-Expert question demonstrates Advanced-level competence. The IRT-style formula above is the standard pattern from real adaptive testing (computer-adaptive GRE, SAT, and others use the same shape): score at the question's level means competence at the question's level, with adjustments above and below. All knobs configurable so behaviour can be tuned from pilot data.
+
+**Implications:** Pill metadata carries min/max difficulty range. Test generation prompt receives both signals. Adaptive loop progression uses the competence_estimate float; integer math operates on the rounded float. Competency Profile entity gains `competence_estimate` (float) per pill per Testee. Band labels for display continue to derive from integer bins but operate on the rounded float rather than the latest attempt's stamped integer. Historical attempts retain their stamped integers; the float is computed from attempt history and recomputed after each new attempt. Decay function configuration: `competence_decay_halflife_days` (default 90). System Settings entity gains `competence_sensitivity` (default 2.0) per the v1.2 formula. For a pill with zero attempts by a Testee, `competence_estimate` is null and the UI shows "no data yet" rather than a band; loop logic per AC-D6 treats null as needing a benchmark or first attempt, not a failing score. Admin views display both the integer band ("Working") and the float estimate ("6.7 / Working").
 
 **Spec reference:** §3, §4, §5, §6.3.
 
@@ -258,7 +296,7 @@ For all attempts, tab-focus events are tracked per AC-D4 outside of explicit pau
 
 **Scope options:** Subject benchmark, Pill benchmark, Learning Path benchmark.
 
-**Generation strategy: adaptive.** Start at midpoint difficulty. If pass → step up by two; if partial → step up by one; if fail → step down by two. Continue until convergence. Just-in-time streaming per AC-D25 applies.
+**Generation strategy: adaptive, sequential.** Start at midpoint difficulty. If pass → step up by two; if partial → step up by one; if fail → step down by two. Continue until convergence. Generation is sequential, not JIT-streamed: each question is generated only after the previous question is answered and graded, because the next difficulty depends on the previous outcome. Benchmark mode is explicitly carved out of AC-D25 JIT parallel streaming per the v1.2 amendment to AC-D25; the ~3-second per-question wait is acceptable because benchmark is untimed.
 
 **Output:** Populated section of the Testee's competency profile — each in-scope pill stamped with an assessed difficulty integer and competence_estimate float per amended AC-D9. This becomes the starting point for the adaptive learning loop.
 
@@ -400,7 +438,7 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 
 **Rationale:** AI-stamped difficulty drifts within a target band. Two Testees with the same band stamp may have faced different actual instruments; longitudinal trends conflate skill change with question-set variance. Manual hand-graded golden sets per pill per band would calibrate this but require admin time at setup. Cross-Testee triangulation against stable anchor questions achieves the same calibration outcome with zero admin time — the calibration emerges as a statistical property of pilot usage. Real human performance on stable items is the only non-circular ground truth in a system that otherwise has AI generating, AI grading, and AI reviewing grades.
 
-**Implications:** Pill entity gains an anchor question collection — for each supported band, a frozen pool generated at pill creation. Anchor questions are stored against the pill, not against attempts; their content is fixed once generated. Attempt entity records which anchor questions were included in that attempt's draw and the Testee's performance on each. Each anchor question carries running statistics: total attempts, pass rate, partial-credit distribution, effective-difficulty estimate. Cross-Testee triangulation logic computes effective difficulty per anchor as attempts accumulate; fresh-generated questions in each attempt are scored relative to the Testee's anchor performance using a simple delta. Admin views display calibration confidence per pill+band alongside the band stamp; until a minimum sample size is reached (default n=20 per pill+band), band stamps display with a "preliminary" qualifier. The generation prompt for fresh questions includes the anchor questions as in-context examples so the AI calibrates against established anchor difficulty rather than drifting independently. The anchor mechanism applies across all test modes per AC-D5 except per-Testee mode's fully unique generation.
+**Implications:** Pill entity gains an anchor question collection — for each supported band, a frozen pool generated at pill creation. Anchor questions are stored against the pill, not against attempts; their content is fixed once generated. Attempt entity records which anchor questions were included in that attempt's draw and the Testee's performance on each. Each anchor question carries running statistics: total attempts, pass rate, partial-credit distribution, effective-difficulty estimate. Cross-Testee triangulation logic computes effective difficulty per anchor as attempts accumulate; fresh-generated questions in each attempt are scored relative to the Testee's anchor performance using a simple delta. Admin views display calibration confidence per pill+band alongside the band stamp; until a minimum sample size is reached (default n=20 per pill+band), band stamps display with a "preliminary" qualifier. The generation prompt for fresh questions includes the anchor questions as in-context examples so the AI calibrates against established anchor difficulty rather than drifting independently. The anchor mechanism applies across all test modes per AC-D5 except per-Testee mode's fully unique generation. The full calibration mathematics are specified in AC-D27.
 
 **Spec reference:** §3, §5, §6.1, §6.3, §4.7.
 
@@ -426,6 +464,8 @@ For safety-relevant pills, Acumen does not generate AI teaching content. The ada
 
 ## AC-D22 — Passive moat: Drive folder ingestion and Testee feedback signal
 
+> **Amended in v1.2** — Embedding model default fixed to OpenAI `text-embedding-3-small`; Anthropic offers no embeddings API. See change rationale below.
+
 **Decision:** Acumen acquires KBC-specific context passively through two mechanisms designed to require no curation effort or admin time:
 
 *Drive folder RAG ingestion.* Acumen has read-only access to a single designated Drive folder (default name "Acumen/Reference", operator-configurable). Any document placed in that folder — PDFs, Google Docs, Word documents, text files — is auto-fetched, chunked, and embedded into a vector index on a daily cron. The index is queried at every generation call (test generation per §6.1, learning material per §6.4) and relevant chunks are injected as RAG context into the prompt. The operator's only action is dropping files into the folder during normal work; no upload UI, no schedule, no metadata tagging, no manual triggering.
@@ -436,7 +476,9 @@ Together these mechanisms allow KBC-specificity to compound as a function of nor
 
 **Rationale:** The differentiation moat for Acumen against generic AI learning tools is KBC-specific situated content — questions referencing real KBC workflows, real defect patterns, real materials and suppliers, real project context. AC-D4 #6 names this as the integrity-through-design layer but does not architect how the specificity gets in. The full moat depends on Knowledge Library integration at SiteMesh-port time, leaving v1 as a generic learning tool. Two passive signals available within standalone v1 begin building the moat immediately without any structured ingest project: the operator's existing document trail, and Testees' implicit judgement of realism.
 
-**Implications:** Drive integration is a new external service. Service account credentials and the folder identifier held in environment configuration. Daily ingest cron computes file diffs and re-embeds changed or new documents; deleted documents drop from the index. Chunking strategy and embedding model are configuration values. Vector index lives in a Postgres pgvector extension at v1 scale. Question entity gains `realism_flag_count` and `realism_flags`. The Testee UI gains an unobtrusive flag button next to each question. Feedback aggregation runs nightly and produces a "low-realism" question pool that feeds into the generation prompt as negative examples. Where a question has a high flag count relative to its attempt count, it is removed from the anchor pool per AC-D20 if it was an anchor. The Drive folder may contain confidential KBC documents; ingest is strictly scoped to the designated folder, and the operator is responsible for what is placed there.
+**Implications:** Drive integration is a new external service. Service account credentials and the folder identifier held in environment configuration. Daily ingest cron computes file diffs and re-embeds changed or new documents; deleted documents drop from the index. Chunking strategy and embedding model are configuration values; default to ~500-token chunks with OpenAI's `text-embedding-3-small` (1536 dimensions). Embedding costs are tracked against the OpenAI provider in the cost dashboard per amended AC-D18. Vector index lives in a Postgres pgvector extension at v1 scale. Question entity gains `realism_flag_count` and `realism_flags`. The Testee UI gains an unobtrusive flag button next to each question. Feedback aggregation runs nightly and produces a "low-realism" question pool that feeds into the generation prompt as negative examples. Where a question has a high flag count relative to its attempt count, it is removed from the anchor pool per AC-D20 if it was an anchor. The Drive folder may contain confidential KBC documents; ingest is strictly scoped to the designated folder, and the operator is responsible for what is placed there.
+
+**Amendment rationale (v1.2):** The v1.1 spec specified "embedding model from the primary provider" but Anthropic doesn't offer an embeddings API, making this not implementable. OpenAI is already in the stack for AC-D19 cross-family review, so using OpenAI for embeddings adds no new provider integration. `text-embedding-3-small` is the standard production choice — 1536 dimensions, cheap (~$0.02 per million tokens), and well-suited to construction-domain RAG at v1 scale.
 
 **Spec reference:** §3, §5, §6.1, §6.4, §7, §8.
 
@@ -487,13 +529,19 @@ Together: shared tests carry identical content (locked when needed), but each Te
 
 ## AC-D25 — Just-in-time generation with parallel streaming
 
-**Decision:** For per-Testee mode and benchmark mode (the two AI-generated test modes per AC-D5 and AC-D13), question generation is just-in-time with parallel background streaming. At attempt start, **question 1 generates in foreground** (~3 seconds typical) and renders immediately to the Testee. **Questions 2 through N stream in parallel in the background** while the Testee answers question 1. The system maintains a configurable buffer of 3–5 questions ahead of the Testee's current position. If a fast Testee outruns the buffer, a brief "preparing next question..." state appears until the next question completes generation.
+> **Amended in v1.2** — Benchmark mode opts out of JIT streaming; sequential adaptive generation only. See change rationale below.
+
+**Decision:** For per-Testee mode (the AI-generated test mode per AC-D5), question generation is just-in-time with parallel background streaming. At attempt start, **question 1 generates in foreground** (~3 seconds typical) and renders immediately to the Testee. **Questions 2 through N stream in parallel in the background** while the Testee answers question 1. The system maintains a configurable buffer of 3–5 questions ahead of the Testee's current position. If a fast Testee outruns the buffer, a brief "preparing next question..." state appears until the next question completes generation.
 
 Frozen and hand-authored modes have no generation latency since content pre-exists; this decision does not apply to them.
+
+**Benchmark mode exception.** AC-D13 benchmark mode does not use JIT streaming. Benchmark generation is sequential: Q1 generates and renders, Testee answers and submits, system grades, then Q2 generates with difficulty determined by Q1's result. The ~3-second wait between questions is acceptable because benchmark is untimed by AC-D13 and adaptive sequencing is the entire point of the mode. Parallel pre-generation cannot work where each question's difficulty depends on the previous question's outcome.
 
 **Rationale:** Sequential generation of all questions at attempt start creates 20–60 second wait times before the Testee sees anything — degrades UX badly and signals "this is an AI-heavy contraption" rather than a fluid assessment. Pre-generating questions at assignment time would eliminate the wait but loses the freshness benefits of generating against current context (latest Drive RAG content per AC-D22, current anchor calibration state per AC-D20, most recent weakness signals on this Testee). JIT with parallel streaming preserves the freshness while compressing the wait to a single first-question delay.
 
 **Implications:** The attempt API exposes generation as a stream rather than a single blocking call. Question 1 generation runs synchronously at attempt start; questions 2-N start in parallel as soon as the question 1 prompt is dispatched. Each question's generation context includes (per AC-D20, AC-D22): anchor exemplars from the pool, retrieved RAG chunks from the Drive index, and prior questions already generated for this attempt. The Testee UI shows "preparing your test..." for the few seconds of question 1 generation, then renders Q1 with a small subtle indicator that subsequent questions are still loading. Generation failures during streaming surface per §6 error handling. Buffer-ahead size is configurable (default 3, max 5). Autosave snapshots both Testee responses and the generated question set; refresh/reload during an attempt preserves all already-generated questions per AC-D17 pattern.
+
+**Amendment rationale (v1.2):** The v1.1 decision stated JIT parallel streaming applied to *both* per-Testee and benchmark modes, but that is mechanically impossible for benchmark: AC-D13 benchmark generation is adaptive — question N+1's difficulty is a function of question N's graded outcome — so questions 2…N cannot be pre-generated in parallel before question 1 is answered. The amendment scopes JIT streaming to per-Testee mode only and makes benchmark explicitly sequential. Within per-Testee mode, AC-D20 anchor questions remain position-streamed inside the JIT set (drawn and generated like any other buffered question, not pinned to fixed positions) — anchors are content-frozen, not position-frozen, so streaming them carries no calibration risk. No new configuration is introduced; the existing buffer knobs are unchanged.
 
 **Spec reference:** §3, §4.7, §6.1, §8.
 
@@ -529,4 +577,34 @@ Soft deadlines per AC-D3 remain soft; these mechanisms surface non-engagement, t
 
 ---
 
-*End of Acumen decisions anchor log. 26 decisions locked, 6 amendments applied in v1.1. Status: v1.1.*
+## AC-D27 — Anchor calibration mathematics
+
+> **Added in v1.2** — Specifies the calibration math AC-D20 deferred ("computes effective difficulty per anchor as attempts accumulate; fresh-generated questions are scored relative to the Testee's anchor performance using a simple delta"). AC-D20 remains the decision of record for *why* anchor calibration exists; AC-D27 is the decision of record for *how* it is computed.
+
+**Decision:** Anchor calibration is computed with three defined mechanisms. All knobs land in System Settings and are tunable from pilot data.
+
+*1. Per-anchor `effective_difficulty` (Bayesian shrinkage).* Each anchor question carries an effective-difficulty estimate that starts at its AI-assigned band and migrates toward observed population performance as attempts accumulate:
+
+`effective_difficulty = (assigned_difficulty × k + Σ(observed_difficulty_i) ) / (k + n)`
+
+where `n` is the number of recorded Testee attempts on that anchor, `observed_difficulty_i` is the difficulty implied by Testee *i*'s score on the anchor (`assigned_difficulty + competence_sensitivity × (0.5 − score_i)` — the AC-D9 relation solved for difficulty given a competence-neutral reading), and `k = anchor_calibration_prior_weight` (default 20). The estimate is clamped to the 1.0–10.0 axis and recomputed on the daily calibration cron.
+
+*2. Fresh-question delta scoring.* A fresh (non-anchor) question in an attempt has no population history, so its effective difficulty is derived from how the Testee performed on the anchors *in the same attempt*:
+
+`fresh_effective_difficulty = assigned_difficulty + testee_anchor_delta`
+
+where `testee_anchor_delta = mean( anchor_effective_difficulty_j − assigned_difficulty_j )` across the anchors *j* drawn into that attempt — the "simple delta" AC-D20 named. If an attempt drew no anchors (per-Testee fully-unique mode per AC-D5), `testee_anchor_delta = 0` and the fresh question's effective difficulty is its assigned difficulty.
+
+*3. Cold-start / confidence gate.* No separate cold-start branch exists: the shrinkage estimate is defined and stable from `n = 0` (it equals `assigned_difficulty`). The existing AC-D20 confidence qualifier is reused unchanged — until `n ≥ anchor_calibration_confidence_threshold` (default 20) for a pill+band, the band stamp displays with the "preliminary" qualifier. Competence (AC-D9) and the adaptive loop (AC-D6) consume the shrinkage estimate at all `n`, so downstream math is never undefined.
+
+**Rationale:** AC-D20 established cross-Testee triangulation as the only non-circular ground truth in an AI-generates / AI-grades / AI-reviews system but deliberately left the math to a follow-up so the decision could lock without blocking on formula bikeshedding. Bayesian shrinkage toward the AI-assigned prior is the standard pattern for exactly this shape of problem (sparse per-item observations, a usable but noisy prior, a need for graceful behaviour at every sample size) and composes cleanly with the AC-D9 IRT-style competence relation, which uses the same `competence_sensitivity` constant. On the prior weight choice: `k = anchor_calibration_prior_weight = 20` is set equal to the AC-D20 confidence threshold so that a pill+band reaching "confident" status is also the point at which population evidence has equal weight with the AI prior. The trade-off is explicit — a higher `k` keeps the AI-stamped difficulty dominant longer before real population evidence overrides it, reducing early-operation flapping at the cost of slower calibration responsiveness through roughly the first four weeks of pilot data; this is the accepted direction because flapping band stamps in front of staff during the pilot is more damaging than slightly delayed calibration convergence.
+
+**Implications:** Anchor question records gain a stored `effective_difficulty` (recomputed by the daily calibration cron, not at read time, to keep attempt-time generation fast). System Settings entity gains `competence_sensitivity` (default 2.0, shared with AC-D9) and `anchor_calibration_prior_weight` (default 20); the existing AC-D20 `calibration confidence threshold` (default n=20) is retained and is the single source of the "preliminary/confident" qualifier. The calibration cron computes per-anchor shrinkage estimates; attempt-time scoring reads the stored anchor estimates and computes the per-attempt `testee_anchor_delta` for fresh questions. No new admin UI beyond the AC-D20 calibration-confidence display. The competence_estimate formula in amended AC-D9 consumes `effective_difficulty` as defined here.
+
+**Spec reference:** §3, §5, §6.1, §6.3, §4.7.
+
+**Related:** AC-D9, AC-D20, AC-D5, AC-D6.
+
+---
+
+*End of Acumen decisions anchor log. 27 decisions locked (AC-D1–AC-D27); 6 amendments applied in v1.1, 3 in v1.2 plus new AC-D27. Status: v1.2. Paired with `SPEC.md` v1.2.*
