@@ -38,12 +38,12 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Admin-creates-user | P2 | AC-D2 | `app/routers/users.py` | missing | |
-| Setup + password-reset token flows | P2 | AC-D10 | `app/routers/auth.py` | missing | |
-| Login (argon2id + JWT) | P2 | AC-D10; AC-CD5 | `app/routers/auth.py` | missing | |
-| Role-check dependency | P2 | AC-CD5 | `app/permissions.py` | missing | |
-| Deactivation gate | P2 | AC-D2; AC-CD5 | `app/permissions.py` | missing | |
-| Privacy-notice ack gate | P2 | AC-D16 | `app/permissions.py` | missing | |
+| Admin-creates-user | P2 | AC-D2 | `app/routers/users.py` | built | `tests/integration/test_p2_auth_flows.py::test_done_when_admin_creates_user_setup_login_role_gate`, `::test_admin_create_duplicate_email_conflicts` |
+| Setup + password-reset token flows | P2 | AC-D10 | `app/routers/auth.py` | built | `tests/integration/test_p2_auth_flows.py::test_setup_token_is_one_time`, `::test_password_reset_round_trip`; `tests/unit/test_p2_auth_primitives.py::test_token_mint_is_unique_and_hash_is_deterministic` |
+| Login (argon2id + JWT) | P2 | AC-D10; AC-CD5 | `app/routers/auth.py` | built | `tests/integration/test_p2_auth_flows.py::test_done_when_admin_creates_user_setup_login_role_gate`, `::test_login_invalid_credentials`, `::test_refresh_round_trip`, `::test_expired_token_rejected`; `tests/unit/test_p2_auth_primitives.py::test_jwt_roundtrip_and_type_separation` |
+| Role-check dependency | P2 | AC-CD5 | `app/permissions.py` | built | `tests/integration/test_p2_auth_flows.py::test_done_when_admin_creates_user_setup_login_role_gate`, `::test_unauthenticated_protected_route` |
+| Deactivation gate | P2 | AC-D2; AC-CD5 | `app/permissions.py` | built | `tests/integration/test_p2_auth_flows.py::test_deactivated_user_login_rejected` |
+| Privacy-notice ack gate | P2 | AC-D16 | `app/permissions.py` | built | `tests/integration/test_p2_auth_flows.py::test_privacy_gate_blocks_then_clears` |
 
 ## P3 — Catalogue
 
