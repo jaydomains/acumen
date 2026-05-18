@@ -9,9 +9,13 @@ the ``system_settings`` table from P1 — they are deliberately NOT here.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class Settings(BaseSettings):
@@ -75,6 +79,16 @@ class Settings(BaseSettings):
     # --- JIT streaming buffer defaults (AC-D25); per-op knobs in DB (P1) ---
     jit_buffer_size: int = 3
     jit_buffer_max: int = 5
+
+    @field_validator("db_schema")
+    @classmethod
+    def _validate_db_schema(cls, v: str) -> str:
+        # db_schema is interpolated into a raw CREATE SCHEMA statement in
+        # alembic/env.py — constrain it to a plain SQL identifier so an
+        # admin-set DB_SCHEMA cannot break out of identifier quoting.
+        if not _SQL_IDENTIFIER.match(v):
+            raise ValueError(f"db_schema must be a valid SQL identifier, got: {v!r}")
+        return v
 
 
 @lru_cache
