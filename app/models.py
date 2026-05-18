@@ -18,15 +18,16 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Enum as SAEnum,
-)
-from sqlalchemy import (
+    DateTime,
     ForeignKey,
     Index,
     MetaData,
     String,
     UniqueConstraint,
     text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -46,6 +47,8 @@ SEED_GROUP_ALL_ADMINS_ID = uuid.UUID("00000000-0000-0000-0000-000000000012")
 
 class Base(DeclarativeBase):
     metadata = MetaData(schema=_SCHEMA)
+    # Every datetime column is timestamptz (CODE_SPEC §4 / AC-CD4).
+    type_annotation_map = {datetime: DateTime(timezone=True)}
 
 
 # --- PG enums (AC-CD4). user.role is a String, not an enum, per AC-D2 --
