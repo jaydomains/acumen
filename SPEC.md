@@ -3,11 +3,13 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.2. Paired with `DECISIONS.md` v1.2 (27 decisions; 6 v1.1 + 3 v1.2 amendments plus new AC-D27).
+> **Status:** v1.3. Paired with `DECISIONS.md` v1.3 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 amendments plus new AC-D27).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
 >
 > **Changes in v1.2:** Adds AC-D27 (anchor calibration mathematics — Bayesian effective-difficulty estimator, fresh-question delta scoring, cold-start gate). Amends three decisions: AC-D9 (full IRT-style competence formula with recency-weighted decay and adaptive-loop target), AC-D22 / §7.3 (embedding model fixed to OpenAI `text-embedding-3-small`; Anthropic exposes no embeddings API), AC-D25 (benchmark mode carved out of JIT parallel streaming — sequential adaptive generation only).
+>
+> **Changes in v1.3:** Clarifying amendment to AC-D19 — `review_status` enumerated as pending / confirmed / flagged; removed the contradictory "no pending state" phrasing (pending is the fail-soft state on review-provider outage). No behavioural change; spec-consistency only.
 
 ---
 
@@ -263,7 +265,7 @@ The application's domain consists of the entities below. Each is described conce
 
 **Response** — A Testee's answer to a specific question within an attempt. Carries answer payload (type-specific), time-on-question, and link to its grade.
 
-**Grade** — The assessment of a response. Carries score, verdict (full / partial / none), source (auto / AI / admin override), AI reasoning for AI grades, **served-material-overlap flag with overlap percentage per amended AC-D4 #5**, review status (confirmed / flagged per amended AC-D19) and reviewer reasoning, override metadata (admin id and timestamp) if overridden, and model-and-tokens-used metadata for cost tracking (including both Anthropic primary and OpenAI review costs per amended AC-D19).
+**Grade** — The assessment of a response. Carries score, verdict (full / partial / none), source (auto / AI / admin override), AI reasoning for AI grades, **served-material-overlap flag with overlap percentage per amended AC-D4 #5**, review status (pending / confirmed / flagged per amended AC-D19; pending is the fail-soft state on review-provider outage) and reviewer reasoning, override metadata (admin id and timestamp) if overridden, and model-and-tokens-used metadata for cost tracking (including both Anthropic primary and OpenAI review costs per amended AC-D19).
 
 **Weakness Report** — Generated after each attempt is fully graded. Lists weak pills with severity scores derived from response grades and their pill tags. Triggers learning material delivery and follow-up generation per AC-D6. May be acted on autonomously or routed to admin. **For safety-tagged pills, routes to external link delivery rather than AI explainer generation per AC-D21.**
 
@@ -573,4 +575,4 @@ Items deferred to v1.x are tracked separately. None block v1 build.
 
 ---
 
-*End of Acumen specification. Status: v1.2. Paired with `DECISIONS.md` v1.2 (27 decisions; 6 v1.1 + 3 v1.2 amendments plus new AC-D27).*
+*End of Acumen specification. Status: v1.3. Paired with `DECISIONS.md` v1.3 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 amendments plus new AC-D27).*

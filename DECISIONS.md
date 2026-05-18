@@ -2,9 +2,9 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.2. Paired with `SPEC.md` v1.2.
+> **Status:** v1.3. Paired with `SPEC.md` v1.3.
 >
-> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25. Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
+> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
 ---
 
@@ -31,6 +31,14 @@ The v1.2 review pass added one new decision and amended three existing ones to m
 | AC-D9 | Replaced the under-specified competence formula with an IRT-style per-attempt value plus recency-weighted decay and an explicit adaptive-loop target |
 | AC-D22 / §7.3 | Embedding model default fixed to OpenAI `text-embedding-3-small`; Anthropic offers no embeddings API |
 | AC-D25 | Benchmark mode opts out of JIT streaming; sequential adaptive generation only |
+
+## Amendments applied in v1.3
+
+The v1.3 review pass applied one clarifying amendment to resolve an internal contradiction in AC-D19's treatment of `review_status`. Current text below reflects the amended version; the change rationale is preserved inline within the decision.
+
+| Decision | Change summary |
+|---|---|
+| AC-D19 | Clarified that `review_status` has three states (pending / confirmed / flagged); removed contradictory "no pending state" phrasing — pending is the fail-soft state on review-provider outage |
 
 ---
 
@@ -411,6 +419,8 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 ## AC-D19 — AI grading calibration via cross-family synchronous review
 
 > **Amended in v1.1** — Review pass changed to cross-family (different provider from grading) and synchronous before band stamp displays. See change rationale below.
+>
+> **Clarified in v1.3** — `review_status` enumerated as pending / confirmed / flagged; removed the contradictory "no pending state" phrasing. See amendment rationale below.
 
 **Decision:** v1 includes a sixth AI operation: **grade review**. After AI grading completes on a response, a separate AI call **on a different provider** reviews that grade by examining the question, the candidate response, the rubric, the AI's assigned grade, and the AI's reasoning. The review either confirms the grade or flags it for admin attention. **Reviews run synchronously before the Testee sees their result** — Testee waits an additional 10–30 seconds at submit; on completion, sees the post-review grade and band stamp.
 
@@ -420,11 +430,13 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 
 **Disagreement handling:** flagged grades surface in the admin review queue. Admin chooses to keep the original grade, accept the reviewer's verdict, or substitute their own — using the override mechanism per AC-D2.
 
-**Rationale:** Manual admin calibration forces admins to do review work the system itself can do. A second AI call examining the grade in light of the rubric is structurally a review — cheaper than admin time at any reasonable scale, surfaces disagreements automatically.
+**Rationale:** Manual admin calibration forces admins to do review work the system itself can do. A second AI call examining the grade in light of the rubric is structurally a review — cheaper than admin time at any reasonable scale, surfaces disagreements automatically. The pending status enables fail-soft behaviour without blocking the submit path indefinitely; in normal operation the synchronous review completes before display and pending is never visible, but provider outages do not stall the Testee experience.
 
 **Amendment rationale (v1.1):** Same-provider review reuses the inductive biases of the original grading model — homophily that defeats the purpose of independent review. Cross-family review (different provider, different training distribution, different inductive task framing) generates the orthogonal signal the review pass exists to provide. Asynchronous post-display review created a worse failure mode than the latency it avoided: a Testee internalises "Working band" then sees it walked back the next day after admin reviews the flagged grade. Synchronous review trades 10–30 seconds of submit-time wait for grade durability.
 
-**Implications:** A sixth AI operation added to §6 (§6.6 — Grade review). Separate review prompt managed in version control. Grade entity gains `review_status` (confirmed / flagged — no pending state because review always completes before display) and `review_reasoning`. System Settings entity gains a `review_provider` field (default OpenAI) alongside the existing model-per-operation map per AC-D12. Two API keys are now required in environment configuration: Anthropic (primary operations) and OpenAI (review pass and anchor self-review per AC-D23). Cost dashboard tracks review-pass cost against the OpenAI provider separately. If the review provider is unreachable at submit time, the grade displays as preliminary with an explicit "review pending" label, and the system retries on the next cron pass — fail-soft, not fail-blocking. UI shows a brief "checking your answers..." state during the synchronous review window.
+**Amendment rationale (v1.3):** The v1.1 Implications described a fail-soft "review pending" path while the same decision's `review_status` enumeration asserted "no pending state because review always completes before display" — an internal contradiction. CODE_SPEC §4 already modelled pending / confirmed / flagged correctly. This amendment makes DECISIONS internally consistent: pending is a real status — the fail-soft state between submit and successful cross-family review — not an impossible one.
+
+**Implications:** A sixth AI operation added to §6 (§6.6 — Grade review). Separate review prompt managed in version control. Grade entity gains `review_status` (pending / confirmed / flagged) and `review_reasoning`. pending is the fail-soft state when the review provider is unreachable at submit time; the system retries on the next cron pass. confirmed and flagged are terminal. System Settings entity gains a `review_provider` field (default OpenAI) alongside the existing model-per-operation map per AC-D12. Two API keys are now required in environment configuration: Anthropic (primary operations) and OpenAI (review pass and anchor self-review per AC-D23). Cost dashboard tracks review-pass cost against the OpenAI provider separately. If the review provider is unreachable at submit time, the grade displays as preliminary with an explicit "review pending" label, and the system retries on the next cron pass — fail-soft, not fail-blocking. UI shows a brief "checking your answers..." state during the synchronous review window.
 
 **Spec reference:** §6, §4.8, §7, §8.
 
