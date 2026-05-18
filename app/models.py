@@ -162,6 +162,15 @@ def _tenant_fk() -> Mapped[uuid.UUID]:
 
 
 class TimestampMixin:
+    """``created_at`` / ``updated_at`` per AC-CD4.
+
+    ``onupdate`` is ORM-level only — it does not fire on raw SQL,
+    ``Query.update()`` bulk updates, or out-of-app writes. The Slice 3
+    migration backstops this with a ``BEFORE UPDATE`` PG trigger
+    (``acumen.set_updated_at()``) on every TimestampMixin table so
+    ``updated_at`` is correct regardless of how the UPDATE is issued.
+    """
+
     created_at: Mapped[datetime] = mapped_column(
         server_default=text("now()"), nullable=False
     )
