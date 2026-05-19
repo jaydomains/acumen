@@ -307,6 +307,44 @@ def test_benchmark_sequential_next_is_capped(
     assert cat_client.post(f"/v1/attempts/{aid}/next", headers=th).json()["done"] is True
 
 
+def test_timeout_excludes_pause_duration(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """AC-D11: the clock stops during a pause — paused time must not
+    count toward the duration limit when deciding expiry."""
+    from app.models import Attempt
+
+    h = _admin(cat_session)
+    tid = cat_client.post(
+        "/v1/tests",
+        headers=h,
+        json={
+            "name": "T",
+            "mode": "frozen",
+            "timed": True,
+            "duration_minutes": 90,
+            "timeout_behaviour": "expire",
+        },
+    ).json()["id"]
+    cat_client.post(
+        f"/v1/tests/{tid}/questions",
+        headers=h,
+        json={"type": "true_false", "config": _TF, "assigned_difficulty": 1},
+    )
+    cat_client.post(f"/v1/tests/{tid}/publish", headers=h)
+    testee = _testee(cat_session)
+    th = bearer(testee)
+    aid = cat_client.post("/v1/attempts", headers=th, json={"test_id": tid}).json()["id"]
+    attempt = next(a for a in cat_session.store[Attempt] if str(a.id) == aid)
+    # Wall-clock 95min elapsed, but 20min of it was a (closed) pause →
+    # effective 75min < 90min → NOT expired.
+    attempt.started_at = attempt.started_at - timedelta(minutes=95)
+    attempt.total_pause_duration_seconds = 20 * 60
+    body = cat_client.post(f"/v1/attempts/{aid}/submit", headers=th).json()
+    assert body["submitted_at"] is not None
+    assert attempt.outcome != "expired"
+
+
 def test_attempt_not_visible_to_other_testee(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:

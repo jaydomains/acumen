@@ -427,10 +427,16 @@ def _stub_generate(test: Test, attempt_id: uuid.UUID) -> list[dict[str, Any]]:
 
 
 def _is_timed_out(attempt: Attempt, test: Test) -> bool:
+    """Effective test time excludes paused windows — the clock stops
+    during a pause (AC-D11). Pause duration is folded into
+    ``total_pause_duration_seconds`` on resume/lazy auto-resume, and
+    ``submit_attempt`` settles any open pause before calling this, so
+    the running total is current here."""
     if not test.timed or not test.duration_minutes or attempt.started_at is None:
         return False
     elapsed = (now_utc() - attempt.started_at).total_seconds()
-    return elapsed >= test.duration_minutes * 60
+    effective = elapsed - (attempt.total_pause_duration_seconds or 0)
+    return effective >= test.duration_minutes * 60
 
 
 async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[str, Any]:
