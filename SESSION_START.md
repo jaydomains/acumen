@@ -272,6 +272,9 @@ doc-only clarifications. Two P4 attempts (PRs #10, #12) closed unmerged
 due to mid-build spec drift; spec-audit ran read-only finding 18 items,
 16 folded into v1.6. **9 phases remain.** Next session starts at ROADMAP
 **P4 — Tests, assignments, attempts (deterministic)** — against the v1.6
-audited spec.
+audited spec. *(The footer below still reads "v1.2 document set" — this
+is a deliberate deferral per the header-only precedent from PR-011/PR-013;
+a future SESSION_START hardening PR will sweep it. See
+`handovers/PR-014-v1.6-spec-audit-consolidation.md`.)*
 
 *End of SESSION_START. Paired with the v1.2 document set.*
