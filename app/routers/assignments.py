@@ -33,7 +33,9 @@ _DEFAULT_LIMIT = assignment_domain.DEFAULT_PAGE_LIMIT
 _MAX_LIMIT = assignment_domain.MAX_PAGE_LIMIT
 
 
-async def _response(db: AsyncSession, assignment: Assignment) -> AssignmentResponse:
+def _response(
+    assignment: Assignment, assignee_ids: list[uuid.UUID]
+) -> AssignmentResponse:
     return AssignmentResponse(
         id=assignment.id,
         assigner_id=assignment.assigner_id,
@@ -43,7 +45,7 @@ async def _response(db: AsyncSession, assignment: Assignment) -> AssignmentRespo
         deadline=assignment.deadline,
         is_mandatory=assignment.is_mandatory,
         loop_mode=assignment.loop_mode,
-        assignee_ids=await assignment_domain.assignee_ids(db, assignment.id),
+        assignee_ids=assignee_ids,
         created_at=assignment.created_at,
         updated_at=assignment.updated_at,
     )
@@ -77,7 +79,7 @@ async def create_assignment(
         group_ids=body.group_ids,
     )
     await db.commit()
-    return await _response(db, assignment)
+    return _response(assignment, await assignment_domain.assignee_ids(db, assignment.id))
 
 
 @router.get("")
@@ -97,7 +99,7 @@ async def list_assignments(
             db, cursor=cursor, limit=limit, assignee_id=user.id
         )
     return Page[AssignmentResponse](
-        data=[await _response(db, a) for a in rows],
+        data=[_response(a, ids) for a, ids in rows],
         meta=PageMeta(next_cursor=next_cursor),
     )
 
@@ -111,10 +113,10 @@ async def get_assignment(
     assignment = await assignment_domain.get_assignment(db, assignment_id)
     if assignment is None:
         raise APIError(404, "not_found", "Assignment not found.")
-    if user.role != ROLE_ADMINISTRATOR:
-        if user.id not in await assignment_domain.assignee_ids(db, assignment_id):
-            raise APIError(404, "not_found", "Assignment not found.")
-    return await _response(db, assignment)
+    ids = await assignment_domain.assignee_ids(db, assignment_id)
+    if user.role != ROLE_ADMINISTRATOR and user.id not in ids:
+        raise APIError(404, "not_found", "Assignment not found.")
+    return _response(assignment, ids)
 
 
 @router.delete("/{assignment_id}", status_code=204, response_class=Response)

@@ -185,6 +185,23 @@ async def assignee_ids(db: AsyncSession, assignment_id: uuid.UUID) -> list[uuid.
     return [a.user_id for a in rows]
 
 
+async def _assignee_map(db: AsyncSession) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """All tenant assignee rows in a single query, grouped by assignment.
+
+    The list path filters/paginates in Python (the documented catalogue
+    precedent for v1 single-tenant scale; the AC-CD15 zero-DB harness is
+    id/tenant-equality only — no JOIN/IN). Loading the join table once
+    here keeps that shape while making the whole list path O(1) queries
+    instead of per-assignment N+1."""
+    result = await db.execute(
+        select(AssignmentAssignee).where(AssignmentAssignee.tenant_id == SEED_TENANT_ID)
+    )
+    grouped: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for row in result.scalars().all():
+        grouped.setdefault(row.assignment_id, []).append(row.user_id)
+    return grouped
+
+
 async def get_assignment(db: AsyncSession, assignment_id: uuid.UUID) -> Assignment | None:
     return await _by_id(db, Assignment, assignment_id)
 
@@ -196,19 +213,22 @@ async def list_assignments(
     limit: int,
     assignee_id: uuid.UUID | None = None,
     assigner_id: uuid.UUID | None = None,
-) -> tuple[list[Assignment], str | None]:
+) -> tuple[list[tuple[Assignment, list[uuid.UUID]]], str | None]:
     """Admin lists all (optionally by assigner); a Testee lists only
-    assignments they are a snapshotted assignee of."""
+    assignments they are a snapshotted assignee of.
+
+    Returns ``(assignment, assignee_ids)`` pairs so the router never
+    re-queries per row (mirrors the approved P3 ``list_groups`` shape).
+    Assignee rows are loaded once via ``_assignee_map`` — the filter and
+    the response both read that map, so the page costs O(1) queries."""
     rows = await _tenant_rows(db, Assignment)
     if assigner_id is not None:
         rows = [a for a in rows if a.assigner_id == assigner_id]
+    amap = await _assignee_map(db)
     if assignee_id is not None:
-        visible: list[Assignment] = []
-        for a in rows:
-            if assignee_id in await assignee_ids(db, a.id):
-                visible.append(a)
-        rows = visible
-    return paginate(rows, cursor, limit)
+        rows = [a for a in rows if assignee_id in amap.get(a.id, [])]
+    page, next_cursor = paginate(rows, cursor, limit)
+    return [(a, amap.get(a.id, [])) for a in page], next_cursor
 
 
 async def withdraw_assignment(
