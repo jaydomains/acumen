@@ -2,7 +2,7 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.4. Paired with `SPEC.md` v1.4.
+> **Status:** v1.5. Paired with `SPEC.md` v1.5.
 >
 > **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
@@ -84,7 +84,7 @@ The v1.4 review pass applied one clarifying amendment to AC-D26, making the Atte
 
 **Rationale:** KBC needs both modes — formal competency testing driven by admin AND self-directed learning. Unlimited retakes treat self-driven retesting as a learning tool, with the retake count visible so admins can distinguish "passed first time" from "passed on attempt seven." Private visibility supports probation reviews, hiring assessments, and any test where library exposure would defeat the purpose.
 
-**Implications:** Tests have status (draft / published) and visibility (library / private). Attempts record origin (self-initiated, assignment-driven, or loop-driven per amended AC-D18) and sequence number per Testee per test. Admin views show retake count next to latest score.
+**Implications:** Tests have status (draft / published) and visibility (library / private). Attempts record origin (self-initiated, assignment-driven, or loop-driven per amended AC-D18) and sequence number per Testee per Test. Admin views show retake count next to latest score.
 
 **Spec reference:** §3, §4.
 

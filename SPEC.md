@@ -3,7 +3,7 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.4. Paired with `DECISIONS.md` v1.4 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 amendments plus new AC-D27).
+> **Status:** v1.5. Paired with `DECISIONS.md` v1.5 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 amendments plus new AC-D27).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
 >
@@ -261,7 +261,7 @@ The application's domain consists of the entities below. Each is described conce
 
 **Question** — A single test item. Carries type (multiple choice, true/false, matching, short answer, scenario), type-specific config (options and correct answer for deterministic types; model answer and rubric for AI-graded types), pill tag(s), difficulty integer, **optional `question_group_id` per AC-D24** for case-study clustering, **`realism_flag_count` and `realism_flags` collection per AC-D22** for Testee feedback aggregation, and **(for anchor questions per AC-D20) running statistics: total attempts, pass rate, partial-credit distribution, effective_difficulty estimate**. For per-Testee mode the question lives against the attempt; for frozen and hand-authored modes it lives against the test; anchor questions live against the pill.
 
-**Attempt** — A Testee's run at a test. Carries origin (self-initiated / assignment-driven / **loop-driven per amended AC-D18**), sequence number per Testee per pill (the retake count), timing state (started_at, submitted_at, time_remaining for timed tests), parent attempt id if in an adaptive loop chain, overall score, outcome, **`shuffle_seed` derived from attempt_id for shared-test presentation shuffle per AC-D24**, and **anchor draw record (which anchor questions were drawn into this attempt's mix per AC-D20)**. Carries **`assignment_id`: nullable FK to Assignment, set at start_attempt when origin is assignment-driven or loop-driven, sourced from the assignment that initiated this attempt, and null for self-initiated origin, per AC-D26**. For attempts against frozen or hand-authored tests, also carries a snapshot of the question set as it stood at attempt start per AC-D17. Has a sub-collection of pause events (timestamps, durations, and any auto-resume from max-duration expiry per amended AC-D11) and focus events (tab switches) per AC-D4.
+**Attempt** — A Testee's run at a test. Carries origin (self-initiated / assignment-driven / **loop-driven per amended AC-D18**), **`sequence_number` scoped per Testee per Test (retake counter, AC-D3)**, timing state (started_at, submitted_at, time_remaining for timed tests), parent attempt id if in an adaptive loop chain, overall score, outcome, **`shuffle_seed` derived from attempt_id for shared-test presentation shuffle per AC-D24**, and **anchor draw record (which anchor questions were drawn into this attempt's mix per AC-D20)**. Carries **`assignment_id`: nullable FK to Assignment, set at start_attempt when origin is assignment-driven or loop-driven, sourced from the assignment that initiated this attempt, and null for self-initiated origin, per AC-D26**. For attempts against frozen or hand-authored tests, also carries a snapshot of the question set as it stood at attempt start per AC-D17. Has a sub-collection of pause events (timestamps, durations, and any auto-resume from max-duration expiry per amended AC-D11) and focus events (tab switches) per AC-D4.
 
 **Response** — A Testee's answer to a specific question within an attempt. Carries answer payload (type-specific), time-on-question, and link to its grade.
 
@@ -575,4 +575,4 @@ Items deferred to v1.x are tracked separately. None block v1 build.
 
 ---
 
-*End of Acumen specification. Status: v1.4. Paired with `DECISIONS.md` v1.4 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 amendments plus new AC-D27).*
+*End of Acumen specification. Status: v1.5. Paired with `DECISIONS.md` v1.5 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 amendments plus new AC-D27).*
