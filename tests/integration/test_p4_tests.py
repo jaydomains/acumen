@@ -265,6 +265,28 @@ def test_publish_succeeds_after_question_added(
     assert r.json()["status"] == "published"
 
 
+def test_publish_rejected_when_already_published(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    seed_system_settings(cat_session)
+    h = _admin_headers(cat_session)
+    test_id = _hand_authored_test(cat_client, h)
+    cat_client.post(
+        f"/v1/tests/{test_id}/questions",
+        headers=h,
+        json={
+            "type": "multiple_choice",
+            "config": _mcq_config(),
+            "assigned_difficulty": 4,
+        },
+    )
+    r = cat_client.post(f"/v1/tests/{test_id}/publish", headers=h)
+    assert r.status_code == 200
+    r = cat_client.post(f"/v1/tests/{test_id}/publish", headers=h)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "already_published"
+
+
 def test_per_testee_publishes_without_questions(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:

@@ -184,7 +184,11 @@ async def update_test(
 
 async def publish_test(db: AsyncSession, test: Test, *, actor_id: uuid.UUID) -> Test:
     """Draft → published. Frozen/hand-authored tests must carry at
-    least one authored question (AC-D5)."""
+    least one authored question (AC-D5). Re-publish is rejected — the
+    transition is one-shot so the audit log records one ``test.publish``
+    per test and admins get a clear error on the no-op call."""
+    if test.status == TestStatus.published:
+        raise APIError(409, "already_published", "This test is already published.")
     if test.mode in _AUTHORED_MODES:
         questions = await list_test_questions(db, test.id)
         if not questions:
