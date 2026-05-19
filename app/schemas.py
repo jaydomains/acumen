@@ -17,6 +17,7 @@ from typing import Annotated, Generic, TypeVar
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.models import (
+    AttemptOrigin,
     BenchmarkScope,
     LoopMode,
     QuestionType,
@@ -438,3 +439,42 @@ class AssignmentResponse(_Base):
     assignee_ids: list[uuid.UUID]
     created_at: datetime
     updated_at: datetime
+
+
+class AttemptStart(_Base):
+    test_id: uuid.UUID
+    # Present -> assignment-driven (the Testee must be a snapshotted
+    # assignee); absent -> self-initiated (AC-D3 / AC-D26).
+    assignment_id: uuid.UUID | None = None
+
+
+class ResponseSave(_Base):
+    question_id: uuid.UUID
+    answer_payload: dict | None = None
+
+
+class PresentedQuestion(_Base):
+    # ``id`` is the snapshot string id (AC-D17); answer keys are stripped
+    # from ``config`` before it reaches the Testee.
+    id: str
+    type: QuestionType
+    assigned_difficulty: int
+    question_group_id: str | None
+    config: dict
+
+
+class AttemptView(_Base):
+    id: uuid.UUID
+    test_id: uuid.UUID
+    assignment_id: uuid.UUID | None
+    origin: AttemptOrigin
+    status: str
+    paused: bool
+    sequence_number: int
+    started_at: datetime | None
+    submitted_at: datetime | None
+    pauses_used: int
+    pause_allowance: int | None
+    total_pause_duration_seconds: int
+    questions: list[PresentedQuestion]
+    responses: dict[str, dict | None]

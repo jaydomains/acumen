@@ -103,10 +103,12 @@ def test_key_columns_present() -> None:
     assert isinstance(ce.type, Float)
     assert ce.nullable is True
 
-    # AC-D24 / AC-D17 on attempt.
+    # AC-D24 / AC-D17 on attempt; AC-D26 v1.4 attribution link (0004).
     attempt = _table("attempt").c
     assert "shuffle_seed" in attempt
     assert "question_snapshot" in attempt
+    assert "assignment_id" in attempt
+    assert attempt["assignment_id"].nullable is True
 
     # AC-D24 / AC-D11 on test.
     test = _table("test").c
@@ -192,3 +194,24 @@ def test_migration_0003_safety_override_round_trip() -> None:
     )
     assert down.returncode == 0, down.stderr
     assert "DROP COLUMN safety_relevant_overridden_at" in down.stdout
+
+
+def test_migration_0004_attempt_assignment_round_trip() -> None:
+    # P4 (AC-D26 v1.4): additive attribution FK + index, reversible.
+    up = _alembic(
+        "upgrade",
+        "0003_p3_pill_safety_override:0004_p4_attempt_assignment_fk",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "ADD COLUMN assignment_id" in up.stdout
+    assert "ON DELETE SET NULL" in up.stdout
+    assert "ix_attempt_assignment_id" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0004_p4_attempt_assignment_fk:0003_p3_pill_safety_override",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP COLUMN assignment_id" in down.stdout

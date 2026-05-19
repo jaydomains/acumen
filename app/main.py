@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.permissions import register_exception_handlers
 from app.routers import (
     assignments,
+    attempts,
     auth,
     catalogue,
     groups,
@@ -64,12 +65,13 @@ def create_app() -> FastAPI:
     app.include_router(paths.router)
     app.include_router(groups.router)
 
-    # P4 Slice 1 — tests (four modes, lock/shuffle config, frozen
-    # question authoring) and assignments (Testee/Group targeting with
-    # the AC-D15 assignee snapshot). The attempts router wires in
-    # Slice 2.
+    # P4 — tests (four modes, lock/shuffle config, frozen question
+    # authoring) and assignments (Testee/Group targeting with the
+    # AC-D15 assignee snapshot) landed in Slice 1; the attempt
+    # lifecycle (snapshot/shuffle/pause + AC-D26 attribution) is Slice 2.
     app.include_router(tests.router)
     app.include_router(assignments.router)
+    app.include_router(attempts.router)
 
     return app
 

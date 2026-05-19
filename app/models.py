@@ -515,8 +515,11 @@ class Attempt(Base, TimestampMixin):
 
     ``question_snapshot`` is populated for frozen/hand-authored attempts
     only (AC-D17). ``shuffle_seed`` derives from the attempt id at start
-    (AC-D24). Pause/focus events and anchor draws are join tables
-    (Slice 2)."""
+    (AC-D24). ``assignment_id`` is the AC-D26 (v1.4) attribution link —
+    set at ``start_attempt`` when origin is assignment-/loop-driven,
+    null for self-initiated; ``ON DELETE SET NULL`` so withdrawing an
+    assignment preserves the attempt (column + index land in migration
+    ``0004``). Pause/focus events and anchor draws are join tables."""
 
     __tablename__ = "attempt"
 
@@ -540,6 +543,15 @@ class Attempt(Base, TimestampMixin):
     sequence_number: Mapped[int] = mapped_column(nullable=False, server_default=text("1"))
     parent_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.attempt.id"), index=True
+    )
+    # AC-D26 v1.4 attribution link (migration 0004). Set for assignment-
+    # /loop-driven origin; SET NULL on assignment withdrawal so the
+    # attempt is retained and engagement then reads "no attributed
+    # attempts" for the withdrawn assignment.
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.assignment.id", ondelete="SET NULL"),
+        index=True,
     )
     started_at: Mapped[datetime | None]
     submitted_at: Mapped[datetime | None]

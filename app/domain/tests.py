@@ -38,6 +38,7 @@ from app.domain.catalogue import (
 )
 from app.models import (
     SEED_TENANT_ID,
+    Attempt,
     LockMode,
     Question,
     QuestionType,
@@ -214,8 +215,24 @@ async def publish_test(db: AsyncSession, test: Test, *, actor_id: uuid.UUID) -> 
 
 
 async def delete_test(db: AsyncSession, test: Test, *, actor_id: uuid.UUID) -> None:
-    """Campaign-locked tests cannot be deleted while locked (AC-D24)."""
+    """Campaign-locked tests cannot be deleted while locked (AC-D24).
+    A test with historical attempts cannot be deleted — the attempt's
+    ``test_id`` FK is RESTRICT and historical results are retained
+    (AC-D14 / AC-D17); withdraw or retire instead."""
     _guard_unlocked(test)
+    result = await db.execute(
+        select(Attempt).where(
+            Attempt.test_id == test.id,
+            Attempt.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    if result.scalar_one_or_none() is not None:
+        raise APIError(
+            409,
+            "test_has_attempts",
+            "This test has attempts and cannot be deleted; "
+            "historical results are retained.",
+        )
     for question in await list_test_questions(db, test.id):
         await db.delete(question)
     await db.delete(test)
