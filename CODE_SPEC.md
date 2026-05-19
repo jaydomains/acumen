@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.2 / `DECISIONS.md` v1.2.
+> **Status:** v1 target. Paired with `SPEC.md` v1.4 / `DECISIONS.md` v1.4.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
@@ -175,7 +175,7 @@ Entity -> table mapping (SPEC §5 -> `acumen.*`):
 | Test | `test` | `mode`, `lock_mode`, `campaign_id`, shuffle flags (AC-D24) |
 | Question | `question` | `realism_flag_count`, `is_anchor`, `assigned_difficulty` |
 | Anchor pool | `anchor_question` | per pill+band frozen pool, `effective_difficulty` (AC-D27) |
-| Attempt | `attempt` | frozen snapshot, `shuffle_seed`, `anchor_draw` (AC-D20) |
+| Attempt | `attempt` | frozen snapshot, `shuffle_seed`, `anchor_draw` (AC-D20); `assignment_id` nullable FK→`assignment`, indexed, set at start_attempt for assignment-driven/loop-driven, null for self-initiated (AC-D26) |
 | Response | `response` | `response_score` 0.0–1.0, `time_ms` |
 | Grade | `grade` | rubric breakdown, AI provenance |
 | Cross-family review | `grade_review` | `status` confirmed/flagged/pending (AC-D19) |
@@ -191,7 +191,7 @@ Entity -> table mapping (SPEC §5 -> `acumen.*`):
 
 Indexing: `tenant_id` on every scoped table; `(pill_id, band)` on
 `anchor_question`; `(testee_id, pill_id)` on `competency_profile`;
-pgvector index on `drive_chunk.embedding` — **IVFFlat** at v1 scale
+`attempt.assignment_id`; pgvector index on `drive_chunk.embedding` — **IVFFlat** at v1 scale
 (small corpus, simpler than HNSW, adequate recall), revisited if the
 corpus grows. Anchored as **AC-CD3** (schema/migration) and **AC-CD4**
 (entity mapping & indexing).
@@ -586,5 +586,5 @@ AC-CD8. **Confidence:** confident default (per user).
 
 ---
 
-*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.2
-and `DECISIONS.md` v1.2. One open technical anchor: AC-CD11 (P6 gate).*
+*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.4
+and `DECISIONS.md` v1.4. One open technical anchor: AC-CD11 (P6 gate).*

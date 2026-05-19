@@ -2,9 +2,9 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.3. Paired with `SPEC.md` v1.3.
+> **Status:** v1.4. Paired with `SPEC.md` v1.4.
 >
-> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
+> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
 ---
 
@@ -39,6 +39,14 @@ The v1.3 review pass applied one clarifying amendment to resolve an internal con
 | Decision | Change summary |
 |---|---|
 | AC-D19 | Clarified that `review_status` has three states (pending / confirmed / flagged); removed contradictory "no pending state" phrasing — pending is the fail-soft state on review-provider outage |
+
+## Amendments applied in v1.4
+
+The v1.4 review pass applied one clarifying amendment to AC-D26, making the Attempt→Assignment attribution link explicit so `engagement_status` derives unambiguously. Current text below reflects the amended version; the change rationale is preserved inline within the decision.
+
+| Decision | Change summary |
+|---|---|
+| AC-D26 | Added explicit `Attempt.assignment_id` FK (set at start_attempt for assignment-driven / loop-driven origin) so `engagement_status` derives by assignment match, not origin/timing heuristics — removes ambiguity when a Testee has multiple assignments on the same pill or path |
 
 ---
 
@@ -582,6 +590,8 @@ Soft deadlines per AC-D3 remain soft; these mechanisms surface non-engagement, t
 **Rationale:** Acumen's data model captures attempt activity well but is blind to non-engagement. Admin assigns a mandatory paint QA assessment to a foreman; foreman ignores it for three weeks; admin has no signal until they happen to check. Four stacked mechanisms close this gap with no admin involvement after configuration. The escalation cap prevents noise; the four together cover both "I didn't see the assignment" and "I'm avoiding the assignment."
 
 **Implications:** Assignment entity gains derived engagement_status (computed at read time from attempt history; not stored). System Settings entity gains: `pending_assignment_age_threshold_days` (default 7), `reminder_schedule_with_deadline_days_before` (default [7, 1]), `reminder_schedule_no_deadline_days_after` (default [14, 30]), `escalation_enabled` (default true for mandatory only). Reminder and escalation email templates added to §7 SMTP integration. Reminder send history is stored against the assignment record. Audit log captures escalation events. Admin dashboard "pending engagement" widget renders the configurable threshold view. When Acumen ports to SiteMesh, the entire reminder/escalation mechanism routes through Comms per §9.5; the engagement_status field and dashboard surface remain in Acumen.
+
+**Engagement attribution:** Attempt → Assignment is linked via `Attempt.assignment_id` (set at start_attempt time when origin is assignment-driven or loop-driven). `engagement_status` derivation queries attempts where `assignment_id` matches the assignment, not heuristic origin/timing matching. This prevents ambiguity when a Testee has multiple assignments on the same pill or path. The column + index land with migration `0004` in P4; this v1.4 amendment is doc-only and v1 has no production data to backfill.
 
 **Spec reference:** §3, §4.4, §4.13, §5, §7.
 
