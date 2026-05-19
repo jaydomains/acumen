@@ -2,9 +2,9 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.5. Paired with `SPEC.md` v1.5.
+> **Status:** v1.6. Paired with `SPEC.md` v1.6.
 >
-> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
+> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link); 1 clarifying amendment applied in v1.5 to AC-D3 (sequence_number scope per Testee per Test); 6 amendments applied in v1.6 (pre-build spec-audit consolidation) to AC-D4, AC-D9, AC-D11, AC-D12, AC-D19, and AC-D26, plus technical-anchor updates to AC-CD8 and the AC-CD11 gate-checklist. Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
 ---
 
@@ -47,6 +47,21 @@ The v1.4 review pass applied one clarifying amendment to AC-D26, making the Atte
 | Decision | Change summary |
 |---|---|
 | AC-D26 | Added explicit `Attempt.assignment_id` FK (set at start_attempt for assignment-driven / loop-driven origin) so `engagement_status` derives by assignment match, not origin/timing heuristics — removes ambiguity when a Testee has multiple assignments on the same pill or path |
+
+## Amendments applied in v1.6
+
+The v1.6 review pass is a single consolidated pre-build spec-audit clarification. A read-only audit (`docs/_meta/spec-audit-2026-05-19.md`) of the P4/P5/P6 build surface flagged 18 drift items; 16 are folded here, 1 is deferred to the AC-CD11 gate (F10), 1 is dismissed (F17). The amendments reconcile spec prose with the already-shipped P1 schema — doc-only, no code, no migration, no anchor renames. (No "Amendments applied in v1.5" section exists: v1.5 was an editorial-only correction and PR-013 deliberately did not open one; the v1.5 narrative clause in the header above closes that narrative gap without changing that asymmetry.) Current text below reflects the amended version; the change rationale is preserved inline within each decision.
+
+| Decision | Change summary |
+|---|---|
+| AC-D4 | #5 n-gram overlap base scoped to AI-generated `served_text` only (admin-uploaded references and curated external links excluded) |
+| AC-D9 | Path-of-pills: assignment difficulty clamps per pill to each pill's `available_difficulty_range`; path completion = all in-scope pills attempted and submitted by the assignee |
+| AC-D11 | Pause snapshot/restore = flush-and-reload of autosaved `response` rows, not a new artifact; pause/focus persist to the shipped `attempt_pause_event` / `attempt_focus_event` child tables |
+| AC-D12 | Provider resolution restated; `system_settings.provider_by_operation` confirmed shipped (no AC-D12 wording dropped) — F8 inverted vs the audit's doc-only read |
+| AC-D19 | Review fields on `grade_review` (1:1 with `grade`, in-place reconcile, no history); deterministic responses have no review row; flagged grades show a provisional "under review" state (AI grade withheld); stuck-pending auto-flags after N retries; mixed-test result display gate; pending→retry runs on the new grade-review reconcile cron |
+| AC-D26 | `engagement_status` and reminder-cease are per (assignment, Testee); reminder send history stays assignment-scoped (shipped `assignment_reminder` has no `user_id`) |
+| AC-CD8 | (technical, CODE_SPEC §7) operation enum drives 7-operation → 4-method routing; provenance persists on every AI-produced entity via the shipped AI-provenance columns |
+| AC-CD11 | (technical, CODE_SPEC §18) gate-resolution checklist gains the deferred F10 note: closing the gate must also amend AC-D19's "10–30 second" submit-wait wording — deferred, not resolved in v1.6 |
 
 ---
 
@@ -95,6 +110,8 @@ The v1.4 review pass applied one clarifying amendment to AC-D26, making the Atte
 ## AC-D4 — Test integrity: deterrence, detection, and design
 
 > **Amended in v1.1** — #5 (AI-prose detection) replaced with deterministic n-gram overlap detection. See change rationale below.
+>
+> **Amended in v1.6** — #5 n-gram base scoped to AI-generated `served_text`. See v1.6 note in Implications.
 
 **Decision:** Acumen treats test integrity as a layered defence — deterrence, behavioural audit, and resistance through test design — rather than impossible prevention. The following measures apply during all attempts:
 
@@ -112,7 +129,7 @@ Webcam proctoring, browser lockdown extensions, and any pretence of OS-level scr
 
 **Amendment rationale (v1.1, #5):** Stylistic detection of AI-flavoured prose carries unacceptable false-positive risk — second-language English writers, Testees who recently absorbed the AI-generated explainer Acumen served them, and formally-trained staff all get flagged disproportionately to actual integrity violations. Deterministic overlap detection captures the actual concern (copy-paste from served material) with no false positives on writing style.
 
-**Implications:** Attempts table includes a sub-collection of focus events. Question rendering includes a watermark layer. Grade entity's integrity-flag field captures "served-material-overlap flag with overlap percentage" instead of a stylistic phrasing flag. New deterministic logic — text shingling, n-gram comparison, threshold check — runs in the grading pipeline; cheap, no AI cost. For Testees who were never served learning material for that pill, overlap check is skipped.
+**Implications:** Attempts table includes a sub-collection of focus events. Question rendering includes a watermark layer. Grade entity's integrity-flag field captures "served-material-overlap flag with overlap percentage" instead of a stylistic phrasing flag. New deterministic logic — text shingling, n-gram comparison, threshold check — runs in the grading pipeline; cheap, no AI cost. For Testees who were never served learning material for that pill, overlap check is skipped. **(v1.6)** The n-gram overlap base is the AI-generated explainer text only — `learning_material` rows with `source = ai_generated`, compared via the row's `served_text` snapshot captured at `served_at` (both shipped columns). Admin-uploaded references and curated external links are not n-gram compared.
 
 **Spec reference:** §4, §6.
 
@@ -188,6 +205,8 @@ The loop operates in two modes, configurable per test: **autonomous** (no admin 
 ## AC-D9 — Difficulty: 10-point slider with five anchored bands
 
 > **Amended in v1.1** — Added derived `competence_estimate` float per Testee per pill. The integer axis remains as question-side difficulty and human-facing label; competence is now estimated as a continuous float separately. **Amended again in v1.2** — the full competence formula (IRT-style per-attempt value, recency-weighted decay, explicit adaptive-loop target) is now specified. See change rationale below.
+>
+> **Amended in v1.6** — path-of-pills difficulty clamp + path completion rule. See v1.6 note in Implications.
 
 **Decision:** Acumen represents question-side difficulty as an integer 1–10 with five anchored bands:
 
@@ -238,7 +257,7 @@ Each pill carries an `available_difficulty_range` (min, max).
 
 **Amendment rationale (v1.2):** The v1.1 amendment specified the recency-weighting concept but left the per-attempt performance value undefined. An initial proposed formula (`response_score × effective_difficulty`) was rejected as backwards — it would have credited 50% on difficulty 8 as competence 4, when in reality scoring 50% on a near-Expert question demonstrates Advanced-level competence. The IRT-style formula above is the standard pattern from real adaptive testing (computer-adaptive GRE, SAT, and others use the same shape): score at the question's level means competence at the question's level, with adjustments above and below. All knobs configurable so behaviour can be tuned from pilot data.
 
-**Implications:** Pill metadata carries min/max difficulty range. Test generation prompt receives both signals. Adaptive loop progression uses the competence_estimate float; integer math operates on the rounded float. Competency Profile entity gains `competence_estimate` (float) per pill per Testee. Band labels for display continue to derive from integer bins but operate on the rounded float rather than the latest attempt's stamped integer. Historical attempts retain their stamped integers; the float is computed from attempt history and recomputed after each new attempt. Decay function configuration: `competence_decay_halflife_days` (default 90). System Settings entity gains `competence_sensitivity` (default 2.0) per the v1.2 formula. For a pill with zero attempts by a Testee, `competence_estimate` is null and the UI shows "no data yet" rather than a band; loop logic per AC-D6 treats null as needing a benchmark or first attempt, not a failing score. Admin views display both the integer band ("Working") and the float estimate ("6.7 / Working").
+**Implications:** Pill metadata carries min/max difficulty range. Test generation prompt receives both signals. Adaptive loop progression uses the competence_estimate float; integer math operates on the rounded float. Competency Profile entity gains `competence_estimate` (float) per pill per Testee. Band labels for display continue to derive from integer bins but operate on the rounded float rather than the latest attempt's stamped integer. Historical attempts retain their stamped integers; the float is computed from attempt history and recomputed after each new attempt. Decay function configuration: `competence_decay_halflife_days` (default 90). System Settings entity gains `competence_sensitivity` (default 2.0) per the v1.2 formula. For a pill with zero attempts by a Testee, `competence_estimate` is null and the UI shows "no data yet" rather than a band; loop logic per AC-D6 treats null as needing a benchmark or first attempt, not a failing score. Admin views display both the integer band ("Working") and the float estimate ("6.7 / Working"). **(v1.6)** When an assignment targets a Learning Path, the assignment-level difficulty integer applies per pill within the path, clamped to each pill's `available_difficulty_range`. Path completion = all in-scope pills attempted and submitted by the assignee; path `engagement_status` derives from the aggregate per-Testee completion across all path pills.
 
 **Spec reference:** §3, §4, §5, §6.3.
 
@@ -263,6 +282,8 @@ Each pill carries an `available_difficulty_range` (min, max).
 ## AC-D11 — Test timing and pause mechanics
 
 > **Amended in v1.1** — Pause now blanks all question content via overlay; max pause duration enforced. See change rationale below.
+>
+> **Amended in v1.6** — pause snapshot = autosave flush/reload; no separate artifact. See v1.6 note in Implications.
 
 **Decision:** Tests carry a `timed` flag set at creation by admin:
 
@@ -284,7 +305,7 @@ For all attempts, tab-focus events are tracked per AC-D4 outside of explicit pau
 
 **Amendment rationale (v1.1):** If question content remains visible during a pause, the pause becomes "stop the clock while I research the answer" and defeats the integrity purpose of timed tests entirely. Blanking content on pause preserves the integrity boundary while still allowing the genuine break. The maximum pause duration closes the remaining loophole — without it, a Testee could pause for hours, look up everything, and resume.
 
-**Implications:** Test entity carries `timed`, `duration_minutes` (nullable), `pause_allowance`, `timeout_behaviour`, `max_pause_duration_minutes` (default 30). Attempt entity gains `pauses_used`, `total_pause_duration`, and a sub-collection of pause-event records. Pause UI overlay added. Pause initiation triggers a server call that snapshots current input state before the overlay renders. Resume triggers a server call that restores the snapshotted state. Focus events during a pause are expected and not flagged.
+**Implications:** Test entity carries `timed`, `duration_minutes` (nullable), `pause_allowance`, `timeout_behaviour`, `max_pause_duration_minutes` (default 30). Attempt entity gains `pauses_used`, `total_pause_duration`, and a sub-collection of pause-event records. Pause UI overlay added. Pause initiation triggers a server call that snapshots current input state before the overlay renders. Resume triggers a server call that restores the snapshotted state. Focus events during a pause are expected and not flagged. **(v1.6)** Pause/resume reuses the existing autosaved `response` rows rather than a distinct snapshot artifact; "snapshot" and "restore" name the flush-and-reload of autosaved state, not new storage. Pause and focus events persist to the shipped `attempt_pause_event` (`started_at`, `ended_at`, `duration_seconds`, `auto_resumed`) and `attempt_focus_event` (`kind`, `occurred_at`, `duration_seconds`) child tables.
 
 **Spec reference:** §3, §4.
 
@@ -294,11 +315,13 @@ For all attempts, tab-focus events are tracked per AC-D4 outside of explicit pau
 
 ## AC-D12 — Model selection defaults
 
+> **Clarified in v1.6** — `provider_by_operation` confirmed shipped; resolution order restated. See v1.6 note in Implications.
+
 **Decision:** v1.1 defaults to Claude Sonnet for the five Anthropic-side AI operations (generation, grading, weakness identification, learning material, pill proposal) and OpenAI for the two cross-family operations (grade review per amended AC-D19, anchor self-review per AC-D23). Admins may override the default per operation in system settings. Model overrides are recorded against each AI-produced entity for traceability. Specific stakes-based overrides may be configured per Test.
 
 **Rationale:** Sonnet hits the right cost-quality balance for primary operations. OpenAI for cross-family review provides the orthogonal-signal benefit per amended AC-D19. Per-operation override exists for the genuine edge cases.
 
-**Implications:** System Settings entity carries a model-per-operation map plus a provider-per-operation map. Test entity optionally carries a per-operation model override. Each AI call resolves the effective model and provider: Test override > system override > default. Cost tracking aggregates by operation, model, and provider.
+**Implications:** System Settings entity carries a model-per-operation map plus a provider-per-operation map. Test entity optionally carries a per-operation model override. Each AI call resolves the effective model and provider: Test override > system override > default. Cost tracking aggregates by operation, model, and provider. **(v1.6)** Provider resolution mirrors model resolution: `system_settings.provider_by_operation` (shipped JSONB) is the per-operation provider map; `system_settings.review_provider` is the convenience default for the grade_review operation (and anchor self-review per AC-D23); the five Anthropic operations default to Anthropic when `provider_by_operation` has no entry. No AC-D12 wording is dropped — the shipped P1 schema confirms the per-operation map.
 
 **Spec reference:** §6.
 
@@ -429,6 +452,8 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 > **Amended in v1.1** — Review pass changed to cross-family (different provider from grading) and synchronous before band stamp displays. See change rationale below.
 >
 > **Clarified in v1.3** — `review_status` enumerated as pending / confirmed / flagged; removed the contradictory "no pending state" phrasing. See amendment rationale below.
+>
+> **Clarified in v1.6** — review lives on `grade_review` (1:1, in-place, no history); deterministic responses have no review row; flagged-grade display; stuck-pending auto-flag; mixed-test display gate; dedicated reconcile cron. See v1.6 note in Implications.
 
 **Decision:** v1 includes a sixth AI operation: **grade review**. After AI grading completes on a response, a separate AI call **on a different provider** reviews that grade by examining the question, the candidate response, the rubric, the AI's assigned grade, and the AI's reasoning. The review either confirms the grade or flags it for admin attention. **Reviews run synchronously before the Testee sees their result** — Testee waits an additional 10–30 seconds at submit; on completion, sees the post-review grade and band stamp.
 
@@ -444,7 +469,14 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 
 **Amendment rationale (v1.3):** The v1.1 Implications described a fail-soft "review pending" path while the same decision's `review_status` enumeration asserted "no pending state because review always completes before display" — an internal contradiction. CODE_SPEC §4 already modelled pending / confirmed / flagged correctly. This amendment makes DECISIONS internally consistent: pending is a real status — the fail-soft state between submit and successful cross-family review — not an impossible one.
 
-**Implications:** A sixth AI operation added to §6 (§6.6 — Grade review). Separate review prompt managed in version control. Grade entity gains `review_status` (pending / confirmed / flagged) and `review_reasoning`. pending is the fail-soft state when the review provider is unreachable at submit time; the system retries on the next cron pass. confirmed and flagged are terminal. System Settings entity gains a `review_provider` field (default OpenAI) alongside the existing model-per-operation map per AC-D12. Two API keys are now required in environment configuration: Anthropic (primary operations) and OpenAI (review pass and anchor self-review per AC-D23). Cost dashboard tracks review-pass cost against the OpenAI provider separately. If the review provider is unreachable at submit time, the grade displays as preliminary with an explicit "review pending" label, and the system retries on the next cron pass — fail-soft, not fail-blocking. UI shows a brief "checking your answers..." state during the synchronous review window.
+**Implications:** A sixth AI operation added to §6 (§6.6 — Grade review). Separate review prompt managed in version control. Grade entity gains `review_status` (pending / confirmed / flagged) and `review_reasoning`. pending is the fail-soft state when the review provider is unreachable at submit time; the system retries on the next cron pass. confirmed and flagged are terminal. System Settings entity gains a `review_provider` field (default OpenAI) alongside the existing model-per-operation map per AC-D12. Two API keys are now required in environment configuration: Anthropic (primary operations) and OpenAI (review pass and anchor self-review per AC-D23). Cost dashboard tracks review-pass cost against the OpenAI provider separately. If the review provider is unreachable at submit time, the grade displays as preliminary with an explicit "review pending" label, and the system retries on the next cron pass — fail-soft, not fail-blocking. UI shows a brief "checking your answers..." state during the synchronous review window. **(v1.6)** The following reconcile the DECISIONS prose with the shipped P1 schema:
+
+- `review_status` and `review_reasoning` live on the `grade_review` table, not on `grade`. Cardinality is strictly 1:1 (one `grade_review` per `grade`; `grade_id` is unique). The reconcile cron updates the existing `grade_review` row in place — no history table, no append. `grade` carries the Anthropic AI-grading provenance; `grade_review` carries the OpenAI review provenance (both via the shipped AI-provenance columns).
+- A `grade_review` row is created only for AI-graded responses (short_answer, scenario). Deterministic grades (MCQ / true-false / matching) have no `grade_review` row; the `review_status` enum stays {pending, confirmed, flagged} and the absence of a row denotes deterministic / not-applicable.
+- Flagged grades surface a provisional "under admin review" state to the Testee at result display; the AI grade is not shown until an admin resolves the flag (keep / accept reviewer / substitute). Only confirmed grades display synchronously and are durable post-display — preserving the AC-D19 no-internalise-then-walk-back rationale for the flagged branch.
+- After N consecutive cron-retry failures (default 10; a P6 behavioural default, not yet a `system_settings` column), a `pending` `grade_review` auto-promotes to `flagged` with reasoning `auto_flagged_stuck_pending` and surfaces in the admin review queue. Terminal states remain confirmed and flagged.
+- Mixed tests (containing any AI-graded item) gate the result page display on review completion; only fully-deterministic attempts display results immediately.
+- The pending→retry path runs on the dedicated grade-review reconcile cron added to §8.9 / CODE_SPEC §8 (every N minutes, default 5; a P6 behavioural default, not yet a `system_settings` column).
 
 **Spec reference:** §6, §4.8, §7, §8.
 
@@ -571,6 +603,8 @@ Frozen and hand-authored modes have no generation latency since content pre-exis
 
 ## AC-D26 — Assignment engagement tracking and auto-escalation
 
+> **Clarified in v1.6** — `engagement_status` + reminder-cease are per (assignment, Testee); reminder send history stays assignment-scoped. See v1.6 note in Implications.
+
 **Decision:** Assignment entity tracks engagement state and the system actively surfaces non-engagement without admin involvement. Four stacked mechanisms:
 
 1. **Derived `engagement_status` field** on Assignment, computed from attempt history:
@@ -589,7 +623,7 @@ Soft deadlines per AC-D3 remain soft; these mechanisms surface non-engagement, t
 
 **Rationale:** Acumen's data model captures attempt activity well but is blind to non-engagement. Admin assigns a mandatory paint QA assessment to a foreman; foreman ignores it for three weeks; admin has no signal until they happen to check. Four stacked mechanisms close this gap with no admin involvement after configuration. The escalation cap prevents noise; the four together cover both "I didn't see the assignment" and "I'm avoiding the assignment."
 
-**Implications:** Assignment entity gains derived engagement_status (computed at read time from attempt history; not stored). System Settings entity gains: `pending_assignment_age_threshold_days` (default 7), `reminder_schedule_with_deadline_days_before` (default [7, 1]), `reminder_schedule_no_deadline_days_after` (default [14, 30]), `escalation_enabled` (default true for mandatory only). Reminder and escalation email templates added to §7 SMTP integration. Reminder send history is stored against the assignment record. Audit log captures escalation events. Admin dashboard "pending engagement" widget renders the configurable threshold view. When Acumen ports to SiteMesh, the entire reminder/escalation mechanism routes through Comms per §9.5; the engagement_status field and dashboard surface remain in Acumen.
+**Implications:** Assignment entity gains derived engagement_status (computed at read time from attempt history; not stored). System Settings entity gains: `pending_assignment_age_threshold_days` (default 7), `reminder_schedule_with_deadline_days_before` (default [7, 1]), `reminder_schedule_no_deadline_days_after` (default [14, 30]), `escalation_enabled` (default true for mandatory only). Reminder and escalation email templates added to §7 SMTP integration. Reminder send history is stored against the assignment record. Audit log captures escalation events. Admin dashboard "pending engagement" widget renders the configurable threshold view. When Acumen ports to SiteMesh, the entire reminder/escalation mechanism routes through Comms per §9.5; the engagement_status field and dashboard surface remain in Acumen. **(v1.6)** `engagement_status` and the reminder-cease rule are tracked per (assignment, Testee), not per assignment — an assignment that fans out to a Group or multiple Testees (snapshotted into `assignment_assignee` at creation per AC-D15) has an independent derived status per assignee: `pending` (no attempt by this Testee on this assignment), `in_progress` (attempt opened, none submitted by this Testee), `complete` (≥1 submitted by this Testee), `overdue` (past deadline and not complete, per-Testee). Reminders cease per-Testee on that Testee's first attempt against the assignment. Reminder send history is stored per assignment in the shipped `assignment_reminder` table (`assignment_id`, `kind`, `sent_at` — no `user_id`); the per-Testee cease is a derivation over that Testee's attempts, not a per-assignee reminder row.
 
 **Engagement attribution:** Attempt → Assignment is linked via `Attempt.assignment_id` (set at start_attempt time when origin is assignment-driven or loop-driven). `engagement_status` derivation queries attempts where `assignment_id` matches the assignment, not heuristic origin/timing matching. This prevents ambiguity when a Testee has multiple assignments on the same pill or path. The column + index land with migration `0004` in P4; this v1.4 amendment is doc-only and v1 has no production data to backfill.
 

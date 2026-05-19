@@ -69,7 +69,10 @@ grading (MCQ/TF/matching); derived `engagement_status` (AC-D26); pause
 blanks content (amended AC-D11).
 **Done-when:** a frozen attempt auto-grades MCQ/TF/matching; shuffle seed
 is stable across resume; `engagement_status` derives correctly; pause
-blanks and restores.
+blanks and restores; deterministic grades compute immediately but the
+result page display is gated on an "all grading + review done" flag
+(forward-compatible with P6 — mixed tests withhold the result page until
+review completes).
 **Anchors:** AC-D3, AC-D5, AC-D11, AC-D17, AC-D24, AC-D26.
 **Risks:** seed determinism under resume — covered by a unit test.
 
@@ -154,10 +157,10 @@ machine; E2E buffer tests.
 
 **Deliverables:** AC-D23 idempotent bootstrap job (anchor self-review via
 OpenAI); AC-D21 web-search safety-link curation + monthly link-check; all
-six crons scheduled in beat; cost dashboard + budget alerts; SMTP
+seven crons scheduled in beat; cost dashboard + budget alerts; SMTP
 (setup/reset/reminder/escalation); attempt PDF export.
 **Done-when:** one-command bootstrap populates anchors/links/index and is
-re-runnable without duplication; the six crons are scheduled; a budget
+re-runnable without duplication; the seven crons are scheduled; a budget
 alert fires at threshold; an attempt exports to PDF; reminder/escalation
 emails send per AC-D26.
 **Anchors:** AC-D18, AC-D21, AC-D23, AC-D26; AC-CD7.

@@ -155,7 +155,7 @@ are on by its ROADMAP name.
 | **P8** | Anchor calibration | Anchors drawn indistinguishably; shrinkage updates, equals `assigned_difficulty` at n=0; preliminary→confident at n threshold; fresh delta per attempt |
 | **P9** | Drive RAG + realism feedback | Folder doc indexed + retrieved into a generation prompt; realism pool weights generation; embedding spend on OpenAI |
 | **P10** | JIT streaming generation (per-Testee) | Q1 < ~3s; buffer maintained; mid-stream failure pauses; resume replays snapshot, stable order; benchmark verified sequential |
-| **P11** | Bootstrap, safety links, crons, cost, comms | One-command bootstrap is idempotent; six crons scheduled; budget alert fires; attempt PDF export; reminder/escalation emails send |
+| **P11** | Bootstrap, safety links, crons, cost, comms | One-command bootstrap is idempotent; seven crons scheduled; budget alert fires; attempt PDF export; reminder/escalation emails send |
 
 P12 (hardening / full E2E) folds into P11's done-when, or becomes a
 follow-up PR if scope grows past one squash.
@@ -264,13 +264,14 @@ Copy this verbatim at the start of every session:
 > a phase lands, update *only* this section and the corresponding
 > `CHECKLIST.md` rows — nothing else in this file moves.
 
-Specs are at **v1.2** — the v1.2 clarification resolved the previously
-under-specified statistical anchors: AC-D9 (competence formula),
-AC-D20/AC-D27 (calibration math), AC-D22 (embedding model), AC-D25
-(benchmark carve-out). `CODE_SPEC.md` / `ROADMAP.md` / `CHECKLIST.md` are
-written. **P0, P1, P2, P3 are landed** — Scaffold & stack lock, Data
-model & migrations, Auth & user management, Catalogue. **9 phases
-remain.** The next session starts at ROADMAP **P4 — Tests, assignments,
-attempts (deterministic)**.
+Specs are at **v1.6** (post-audit consolidation of P4/P5/P6 pre-build
+clarifications). **P0, P1, P2, P3 landed** (Scaffold & stack lock, Data
+model & migrations, Auth & user management, Catalogue). v1.4 (AC-D26
+Attempt→Assignment FK) and v1.5 (AC-D3 sequence_number scope) merged as
+doc-only clarifications. Two P4 attempts (PRs #10, #12) closed unmerged
+due to mid-build spec drift; spec-audit ran read-only finding 18 items,
+16 folded into v1.6. **9 phases remain.** Next session starts at ROADMAP
+**P4 — Tests, assignments, attempts (deterministic)** — against the v1.6
+audited spec.
 
 *End of SESSION_START. Paired with the v1.2 document set.*

@@ -130,7 +130,7 @@
 |---|---|---|---|---|---|
 | Idempotent bootstrap job | P11 | AC-D23; AC-CD7 | `app/domain/bootstrap.py` | missing | |
 | Safety-link curation + monthly check | P11 | AC-D21 | `app/domain/safety_links.py` | missing | |
-| Six crons scheduled | P11 | AC-CD7 | `app/beat_schedule.py` | missing | |
+| Seven crons scheduled | P11 | AC-CD7 | `app/beat_schedule.py` | missing | |
 | Cost dashboard + budget alerts | P11 | AC-D18 | `app/routers/cost.py` | missing | |
 | SMTP (setup/reset/reminder/escalation) | P11 | AC-D26 | `app/domain/` | missing | |
 | Attempt PDF export | P11 | AC-D26 | `app/routers/attempts.py` | missing | |
