@@ -17,6 +17,7 @@ from typing import Annotated, Generic, TypeVar
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.models import (
+    AttemptOrigin,
     BenchmarkScope,
     LoopMode,
     QuestionType,
@@ -438,3 +439,40 @@ class AssignmentResponse(_Base):
     assignee_ids: list[uuid.UUID]
     created_at: datetime
     updated_at: datetime
+
+
+# --- Attempts (P4 Slice 2) --------------------------------------------
+
+
+class AttemptStartRequest(_Base):
+    test_id: uuid.UUID
+    origin: AttemptOrigin = AttemptOrigin.self_initiated
+
+
+class AutosaveRequest(_Base):
+    question_id: uuid.UUID
+    answer_payload: dict | None = None
+    time_ms: Annotated[int, Field(ge=0, le=100_000_000)] | None = None
+
+
+class AttemptView(_Base):
+    id: uuid.UUID
+    test_id: uuid.UUID
+    testee_id: uuid.UUID
+    origin: AttemptOrigin
+    sequence_number: int
+    started_at: datetime | None
+    submitted_at: datetime | None
+    paused: bool
+    pauses_used: int
+    pause_allowance: int
+    pause_seconds_remaining: int | None
+    watermark: str | None
+    questions: list[dict] | None
+
+
+class BenchmarkNextResponse(_Base):
+    done: bool
+    step: int | None = None
+    asked: int | None = None
+    question: dict | None = None

@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.permissions import register_exception_handlers
 from app.routers import (
     assignments,
+    attempts,
     auth,
     catalogue,
     groups,
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     # and assignments (Testee/Group targeting with assignee snapshot).
     app.include_router(tests.router)
     app.include_router(assignments.router)
+    app.include_router(attempts.router)
 
     return app
 
