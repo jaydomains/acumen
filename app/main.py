@@ -14,7 +14,15 @@ from fastapi.responses import ORJSONResponse
 
 from app.config import get_settings
 from app.permissions import register_exception_handlers
-from app.routers import auth, catalogue, groups, paths, users
+from app.routers import (
+    assignments,
+    auth,
+    catalogue,
+    groups,
+    paths,
+    tests,
+    users,
+)
 
 
 def create_app() -> FastAPI:
@@ -55,6 +63,11 @@ def create_app() -> FastAPI:
     app.include_router(catalogue.router)
     app.include_router(paths.router)
     app.include_router(groups.router)
+
+    # P4 Slice 1 — Tests + Assignments (CODE_SPEC §3). Attempt lifecycle,
+    # deterministic grading + engagement land in Slices 2/3.
+    app.include_router(tests.router)
+    app.include_router(assignments.router)
 
     return app
 
