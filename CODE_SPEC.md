@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.5 / `DECISIONS.md` v1.5.
+> **Status:** v1 target. Paired with `SPEC.md` v1.6 / `DECISIONS.md` v1.6.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
@@ -105,7 +105,7 @@ acumen/
     schemas.py         # Pydantic v2 request/response models
     permissions.py     # role-check dependency; port seam to Auth Hub
     worker.py          # make_celery(); task registry
-    beat_schedule.py   # the six crons + bootstrap enqueue
+    beat_schedule.py   # the seven crons + bootstrap enqueue
     routers/
       auth.py users.py groups.py catalogue.py paths.py tests.py
       assignments.py attempts.py grading.py review.py loop.py
@@ -171,22 +171,26 @@ Entity -> table mapping (SPEC §5 -> `acumen.*`):
 | Subject | `subject` | safety keyword tags (AC-D21) |
 | Pill | `pill` | `available_difficulty_min/max` (AC-D9), `is_safety` (AC-D21) |
 | Learning Path | `learning_path`, `learning_path_pill` | ordered join |
-| Assignment | `assignment` | `engagement_status` derived at read time (AC-D26) |
+| Assignment | `assignment` | `engagement_status` derived per (assignment, assignee) at read time from the assignee's attempts (AC-D26 v1.6); not a stored column |
+| AssignmentAssignee | `assignment_assignee` | assignee snapshot at creation (AC-D15): `assignment_id`, `user_id`, `via_group_id` nullable (NULL = direct target; non-NULL = via that Group's membership snapshot); unique (`assignment_id`, `user_id`) |
+| — | `assignment_reminder` | reminder/escalation send history, assignment-scoped (AC-D26): `assignment_id`, `kind` (reminder/escalation), `sent_at`; per-Testee reminder-cease is derived, not stored here |
 | Test | `test` | `mode`, `lock_mode`, `campaign_id`, shuffle flags (AC-D24) |
-| Question | `question` | `realism_flag_count`, `is_anchor`, `assigned_difficulty` |
-| Anchor pool | `anchor_question` | per pill+band frozen pool, `effective_difficulty` (AC-D27) |
-| Attempt | `attempt` | frozen snapshot, `shuffle_seed`, `anchor_draw` (AC-D20); `assignment_id` nullable FK→`assignment`, indexed, set at start_attempt for assignment-driven/loop-driven, null for self-initiated (AC-D26); unique (test_id, testee_id, sequence_number) — retake counter per AC-D3 |
+| Question | `question` | three-way nullable owner `test_id` XOR `attempt_id` XOR `pill_id` (exactly one set: frozen/hand-authored→test, per-Testee→attempt, anchor-pool→pill; AC-D5/D17/D20); `realism_flag_count`, `assigned_difficulty`, `question_group_id`; AI-provenance columns (AC-CD8) |
+| Anchor pool | `anchor_question` | per pill+band frozen pool, `effective_difficulty` (AC-D27); the calibration projection of the per-pill anchor questions also reachable via `question.pill_id`; AI-provenance columns (AC-CD8) |
+| Attempt | `attempt` | frozen snapshot, `shuffle_seed`, `anchor_draw` (AC-D20); `assignment_id` nullable FK→`assignment`, indexed, set at start_attempt for assignment-driven/loop-driven, null for self-initiated (AC-D26); unique (test_id, testee_id, sequence_number) — retake counter per AC-D3; pause/focus events are child tables (below), not JSON |
+| — | `attempt_pause_event` | pause windows (AC-D11): `attempt_id`, `started_at`, `ended_at` nullable, `duration_seconds` nullable, `auto_resumed` bool |
+| — | `attempt_focus_event` | tab-switch / focus events (AC-D4 #3): `attempt_id`, `kind` (`focus_event_kind` enum), `occurred_at`, `duration_seconds` nullable |
 | Response | `response` | `response_score` 0.0–1.0, `time_ms` |
-| Grade | `grade` | rubric breakdown, AI provenance |
-| Cross-family review | `grade_review` | `status` confirmed/flagged/pending (AC-D19) |
-| WeaknessReport | `weakness_report` | per attempt |
-| LearningMaterial | `learning_material` | served-set tracking for n-gram (AC-D4 #5) |
+| Grade | `grade` | score/verdict/source, Anthropic AI-grading provenance (AC-CD8); review fields are NOT here — see `grade_review` |
+| Cross-family review | `grade_review` | 1:1 with `grade` (`grade_id` unique); `status` {pending, confirmed, flagged} + `review_reasoning`; OpenAI review provenance (AC-CD8); created only for AI-graded responses (deterministic grades have no row); cron reconcile updates in place, no history (AC-D19 v1.6) |
+| WeaknessReport | `weakness_report` | per attempt; AI-generation provenance columns (AC-CD8 / F7) |
+| LearningMaterial | `learning_material` | `served_at` + `served_text` (the `ai_generated` explainer snapshot — the n-gram comparison base for AC-D4 #5); `source`; AI-generation provenance columns (AC-CD8) |
 | CompetencyProfile | `competency_profile` | `competence_estimate` float per Testee+pill (AC-D9) |
 | DriveIndex | `drive_chunk` | `embedding vector(1536)`, source ref, indexed-at (AC-D22) |
 | Realism flag | `realism_flag` | per question per Testee |
-| SystemSettings | `system_settings` | one row per tenant; all knobs (below) |
+| SystemSettings | `system_settings` | one row per tenant; all knobs (below) incl. `model_by_operation`, `provider_by_operation`, `review_provider` (AC-D12); grade-review reconcile interval (5) & max-retry (10) are P6 behavioural defaults, not yet columns |
 | AuditLog | `audit_log` | append-only |
-| — | `processing_tasks` | async status (SiteMesh contract) |
+| — | `processing_tasks` | async status (SiteMesh contract); pill-proposal store — AI-generation provenance carried in `payload` JSON (AC-CD8 / F7) |
 | — | `password_reset_token`, `account_setup_token` | auth (AC-D10) |
 
 Indexing: `tenant_id` on every scoped table; `(pill_id, band)` on
@@ -272,6 +276,24 @@ provider call captures token counts and computed cost via
 OpenAI, per amended AC-D18). `tenacity` wraps external calls with bounded
 exponential backoff. Anchored as **AC-CD8**.
 
+**(v1.6, AC-CD8)** Every provider call carries an `operation` enum
+{generation, grading, weakness, learning_material, pill_proposal,
+grade_review, anchor_self_review}; the enum (not the method) drives
+per-operation model + prompt_version resolution and cost/provenance
+persistence. The seven operations route to the four protocol methods:
+generation / weakness / learning_material / pill_proposal -> `generate()`;
+grading -> `grade()`; grade_review / anchor_self_review -> `review()`;
+embed (Drive RAG only) -> `embed()`. Resolution order per operation per
+AC-D12: Test override -> `system_settings.provider_by_operation` /
+`model_by_operation` -> coded default; `review_provider` is the
+convenience default for grade_review / anchor_self_review. Provenance
+(provider, model, prompt_version, prompt_tokens, completion_tokens,
+cost_usd) persists on **every** AI-produced entity — the shipped
+AI-provenance columns on `grade`, `grade_review`, `question`,
+`anchor_question`, `weakness_report`, `learning_material`, and the
+`processing_tasks.payload` for pill proposals (SPEC §6 literal reading;
+broadens the earlier "every grade/question row" wording).
+
 ---
 
 ## 8. Background processing
@@ -279,10 +301,14 @@ exponential backoff. Anchored as **AC-CD8**.
 Celery + Redis. `app/worker.py` exposes `make_celery(...)` (SiteMesh
 pattern). `processing_tasks` rows track async work
 (`pending|running|done|failed` + payload + error). `app/beat_schedule.py`
-registers the six crons (SPEC §8.9): Drive ingest (daily), anchor
+registers the seven crons (SPEC §8.9): Drive ingest (daily), anchor
 calibration recompute (daily), realism aggregation (nightly), safety-link
 check (monthly), cost/budget sweep (daily), reminder/escalation sweep
-(daily). The AC-D23 bootstrap run is an **idempotent enqueued job**
+(daily), grade-review reconcile (every N minutes, default 5 — retries
+pending `grade_review` rows against the configured review provider,
+updating in place to confirmed/flagged on success, leaving pending on
+continued failure; the interval is a P6 behavioural default, not yet a
+`system_settings` column) (AC-D19 / F3). The AC-D23 bootstrap run is an **idempotent enqueued job**
 (re-runnable; skips already-populated anchors/links/index). Anchored as
 **AC-CD7**.
 
@@ -329,6 +355,16 @@ result shows, and a retry cron reconciles. Flagged reviews surface in an
 admin queue. The per-response-vs-batched policy and the hard latency
 ceiling are **unresolved** and deferred to the P6 build gate. Covered by
 **AC-CD11** (**needs user input** — see §18).
+
+**(v1.6)** The reconcile runs on the dedicated grade-review reconcile cron
+(§8, SPEC §8.9). `grade_review` is 1:1 with `grade`, updated **in place**
+(no history); only AI-graded responses (short_answer, scenario) get a
+`grade_review` row. Flagged → the Testee sees a provisional "under admin
+review" state, not the AI grade, until an admin resolves the flag. After
+N consecutive failed retries (default 10; a P6 behavioural default, not
+yet a `system_settings` column) a `pending` row auto-promotes to
+`flagged` with reasoning `auto_flagged_stuck_pending`. Confirmed and
+flagged remain the only terminal states (AC-D19 v1.6).
 
 ---
 
@@ -493,7 +529,7 @@ frontend contract.
 doc). **Confidence:** confident default.
 
 ### AC-CD7 — Celery + Redis + beat; `processing_tasks`; bootstrap as job
-**Decision:** §8 background design; six crons; idempotent bootstrap job.
+**Decision:** §8 background design; seven crons; idempotent bootstrap job.
 **Rationale:** SiteMesh-compatible async contract.
 **Implications:** beat schedule in VCS; bootstrap re-runnable.
 **Confidence:** confident default.
@@ -531,6 +567,14 @@ AI-graded responses per attempt is the fragile case; the budget shape
 materially changes the implementation.
 **Implications:** resolve at the **P6 build gate** before the blocking
 path is built; seeded as a CHECKLIST drift question.
+**Gate-resolution checklist (F10 — deferred to gate closure, NOT resolved
+in v1.6):** resolving the per-response-vs-batched mode and the hard
+latency ceiling must **also** amend AC-D19's stated "10–30 second"
+submit-wait wording, which presupposes batched/parallel execution
+(per-response-sequential review of N AI-graded responses is N×(10–30s)).
+The actual resolution waits for the P6 gate; v1.6 only records the
+dependency so the gate is not closed leaving AC-D19's latency wording
+internally inconsistent.
 **Confidence:** **needs user input** (P6 gate).
 
 ### AC-CD12 — effective_difficulty estimator + fresh-vs-anchor delta
