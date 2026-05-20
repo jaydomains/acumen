@@ -44,6 +44,7 @@ sweep itself (Slice 3) reads these constants directly.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -54,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import record_provenance_share
 from app.ai.provider import Operation, resolve_provider
+from app.domain._scoring import outcome_for
 from app.models import (
     SEED_TENANT_ID,
     Attempt,
@@ -212,8 +214,6 @@ async def _review_ai_grades(
     settings = await _system_settings(db)
     provider = resolve_provider(Operation.grade_review, system_settings=settings)
     items_payload = [item for _, _, item in pending_pairs]
-    import json
-
     payload = {
         "items": items_payload,
         "items_json": json.dumps(items_payload),
@@ -369,17 +369,7 @@ async def _recompute_overall_score(
         return
     overall = sum(eligible_scores) / len(eligible_scores)
     attempt.overall_score = overall
-    attempt.outcome = _outcome_for(overall, test)
-
-
-def _outcome_for(score: float, test: Test) -> str:
-    """Mirrors :func:`app.domain.attempts._outcome_for` exactly. Kept
-    local so this module doesn't import back into ``attempts`` (the
-    other direction of the dependency edge would risk a cycle when
-    Slice 3 / Slice 4 also import recompute logic from here)."""
-    if test.pass_threshold is None:
-        return "pass"
-    return "pass" if score >= test.pass_threshold else "fail"
+    attempt.outcome = outcome_for(overall, test)
 
 
 def _emit_telemetry(

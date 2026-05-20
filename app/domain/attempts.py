@@ -49,6 +49,7 @@ from app.ai.cost import (
     record_provenance_share,
 )
 from app.ai.provider import Operation, resolve_provider
+from app.domain._scoring import outcome_for as _outcome_for
 from app.domain.catalogue import record_audit
 from app.domain.grade_review import _review_ai_grades
 from app.models import (
@@ -991,12 +992,6 @@ async def _ai_grade_responses(db: AsyncSession, attempt: Attempt) -> None:
     # per attempt, not per response) — keeps the post-call hook cheap
     # while still firing at the next threshold cross.
     await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
-
-
-def _outcome_for(score: float, test: Test) -> str:
-    if test.pass_threshold is None:
-        return "pass"
-    return "pass" if score >= test.pass_threshold else "fail"
 
 
 # --- result view (F14 mixed-test display gate) ----------------------
