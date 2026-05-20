@@ -23,7 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.provider import resolve_provider
+from app.ai.provider import Operation, resolve_provider
 from app.domain.safety_links import auto_tag_safety
 from app.models import (
     SEED_TENANT_ID,
@@ -476,12 +476,16 @@ async def enqueue_pill_proposal(
     available_difficulty_max: int = 10,
     estimated_minutes: int | None = None,
 ) -> ProcessingTask:
-    """Build a proposal via the stubbed AIProvider and persist it
-    ``pending`` for admin review. No network (AC-CD15); P5 swaps in the
-    real model at ``resolve_provider``."""
-    provider = resolve_provider("pill_proposal")
-    proposal = await provider.generate(
-        "pill_proposal",
+    """Build a proposal via the configured AIProvider and persist it
+    ``pending`` for admin review. P5 Slice 1 swaps the call signature
+    to the new ``Operation`` enum + :class:`~app.ai.provider.AIResult`
+    shape; P5 Slice 2 persists full provenance (provider, model,
+    prompt_version, tokens, cost) inside ``payload`` per AC-CD8 v1.6.
+    No network in tests (AC-CD15) — ``RecordingProvider`` substitutes
+    the module-level provider singleton."""
+    provider = resolve_provider(Operation.pill_proposal)
+    result = await provider.generate(
+        Operation.pill_proposal,
         {
             "subject_id": str(subject_id),
             "name": name,
@@ -495,7 +499,7 @@ async def enqueue_pill_proposal(
         tenant_id=SEED_TENANT_ID,
         task_name=PROPOSAL_TASK_NAME,
         status=ProcessingTaskStatus.pending,
-        payload={"proposal": proposal},
+        payload={"proposal": result.content},
     )
     db.add(task)
     await db.flush()
