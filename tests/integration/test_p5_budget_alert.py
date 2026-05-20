@@ -222,6 +222,58 @@ async def test_no_active_admin_logs_warning_no_alert(
     assert cat_session.store.get(AuditLog, []) == []
 
 
+async def test_never_raises_on_poisoned_dependency(
+    cat_session: CatalogueFakeSession,
+) -> None:
+    """The "never raises" contract is a real invariant, not a
+    docstring promise — a DB / SMTP / audit-write failure inside the
+    inner body MUST be caught and logged, returning ``[]``, so the
+    primary AI call path never fails due to a monitoring side-effect
+    (Gitar PR-#16 Slice 3 finding #1).
+
+    Poisons ``db.execute`` to raise on every call. Without the
+    top-level wrapper this would propagate out of every call site
+    (start_attempt, submit_attempt, enqueue_pill_proposal) and break
+    the testee experience.
+    """
+    _seed_settings(cat_session, monthly_budget=100.0)
+    _admin(cat_session)
+    _add_grade(cat_session, 55.0)
+
+    async def _boom(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("simulated DB outage during budget poll")
+
+    cat_session.execute = _boom  # type: ignore[method-assign]
+
+    # MUST NOT raise.
+    crossed = await maybe_fire_budget_alert(cat_session, tenant_id=SEED_TENANT_ID)
+    assert crossed == []
+    # No email side-effect either — the call short-circuits cleanly.
+    assert p.captured_emails() == []
+
+
+async def test_current_month_spend_has_docstring(
+    cat_session: CatalogueFakeSession,
+) -> None:
+    """``current_month_spend.__doc__`` is a real string, not ``None``
+    — guards against the parenthesised-concatenation regression Gitar
+    flagged on Slice 3 (PR-#16 finding #2). Cheap CI-time guard
+    against the easy mistake of wrapping a docstring expression in
+    parens for line-length and silently losing ``__doc__``."""
+    from app.ai.cost import current_month_spend
+
+    doc = current_month_spend.__doc__
+    assert doc is not None, (
+        "current_month_spend.__doc__ is None — likely a parenthesised "
+        "string-concat expression silently turned the docstring into "
+        "a discarded expression."
+    )
+    assert "rolling monthly AI spend" in doc
+    # The entity-table list moved into the docstring text itself; assert
+    # the AC-CD8 v1.6 final clause's pill_proposal hint is present.
+    assert "pill_proposal" in doc
+
+
 async def test_deactivated_admin_does_not_receive_alert(
     cat_session: CatalogueFakeSession,
 ) -> None:

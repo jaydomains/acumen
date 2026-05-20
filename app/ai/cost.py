@@ -147,14 +147,10 @@ OP_TO_METHOD: dict[Operation, str] = {
 # the pill-proposal provenance dict in ``processing_tasks.payload``.
 # The dashboard endpoint in :mod:`app.routers.cost` consumes these.
 
-# The 6 entity tables that carry ``AIProvenanceMixin`` columns. Listed
-# explicitly so an added/removed mixin user is caught at lint time
-# (no clever metaclass discovery).
-_PROVENANCE_ENTITIES_HINT = (
-    "Grade, GradeReview, Question, AnchorQuestion, WeaknessReport, "
-    "LearningMaterial; plus processing_tasks.payload['provenance'] "
-    "for pill_proposal."
-)
+# The 6 entity tables that carry ``AIProvenanceMixin`` columns are
+# enumerated explicitly in :func:`current_month_spend` so an
+# added/removed mixin user is caught at lint time (no clever metaclass
+# discovery).
 
 
 def _start_of_current_month(now: datetime) -> datetime:
@@ -239,15 +235,21 @@ async def current_month_spend(
     tenant_id: uuid.UUID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    (
-        """Aggregate rolling monthly AI spend across every provenance-bearing
+    """Aggregate rolling monthly AI spend across every provenance-bearing
     entity (AC-D18 cost dashboard surface).
 
     Returns ``{"total_usd": float, "by_provider": dict, "by_model":
-    dict, "since": datetime}``. Tables included:
+    dict, "since": datetime}``. Tables included: Grade, GradeReview,
+    Question, AnchorQuestion, WeaknessReport, LearningMaterial; plus
+    ``processing_tasks.payload['provenance']`` for pill_proposal.
+
+    The original implementation tried to interpolate
+    ``_PROVENANCE_ENTITIES_HINT`` into this docstring via string
+    concatenation, but Python only assigns ``__doc__`` from a bare
+    string literal — a parenthesised concatenation expression
+    silently leaves ``__doc__ = None``, breaking ``help()`` and IDE
+    tooltips (Gitar PR-#16 Slice 3 finding #2).
     """
-        + _PROVENANCE_ENTITIES_HINT
-    )
     from app.models import (
         AnchorQuestion,
         Grade,
@@ -355,11 +357,39 @@ async def maybe_fire_budget_alert(
     never refuses an AI call; it only notifies. The caller is
     responsible for invoking it post-call.
 
+    The top-level ``try/except`` makes the "never raises" contract a
+    real invariant rather than a docstring promise — a DB / SMTP /
+    audit-write failure inside the inner body would otherwise
+    propagate into the primary AI call path and fail the business
+    operation due to a monitoring side-effect (Gitar PR-#16 Slice 3
+    finding #1). The inner body lives in
+    :func:`_maybe_fire_budget_alert_inner` so the happy path is
+    testable in isolation and the wrapper stays narrow.
+
     Fail-soft on every dependency: a missing monthly_ai_budget skips
     silently; a missing settings row skips silently; the SMTP seam
     is already fail-soft (captures emails in tests, logs a warning
     when SMTP is unconfigured in dev).
     """
+    try:
+        return await _maybe_fire_budget_alert_inner(db, tenant_id=tenant_id, now=now)
+    except Exception:
+        logger.warning(
+            "Budget alert poll failed (fail-soft, no hard enforcement)",
+            exc_info=True,
+        )
+        return []
+
+
+async def _maybe_fire_budget_alert_inner(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    now: datetime | None = None,
+) -> list[int]:
+    """Inner body of :func:`maybe_fire_budget_alert` — does the actual
+    work and is allowed to raise. The public wrapper catches and logs
+    so callers see a never-raises contract."""
     from app.domain.catalogue import record_audit
     from app.models import AppUser, SystemSettings, UserStatus
     from app.permissions import ROLE_ADMINISTRATOR, SMTPClient
