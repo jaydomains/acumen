@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.cost import maybe_fire_budget_alert
 from app.ai.provider import Operation, resolve_provider
 from app.domain.safety_links import auto_tag_safety
 from app.models import (
@@ -521,6 +522,7 @@ async def enqueue_pill_proposal(
     db.add(task)
     await db.flush()
     await db.refresh(task)
+    await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
     return task
 
 

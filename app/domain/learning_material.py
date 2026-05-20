@@ -23,7 +23,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.cost import record_provenance
+from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
 from app.models import (
     SEED_TENANT_ID,
@@ -126,4 +126,5 @@ async def generate_for_weakness(
     db.add(material)
     await db.flush()
     await db.refresh(material)
+    await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
     return material

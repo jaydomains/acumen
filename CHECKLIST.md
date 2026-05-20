@@ -73,11 +73,11 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| `AIProvider` abstraction + resolution order | P5 | AC-D12; AC-CD8 | `app/ai/provider.py` | missing | |
-| VCS prompt registry + persisted version | P5 | AC-CD8 | `app/ai/prompts/` | missing | |
-| Per-call cost capture | P5 | AC-D18; AC-CD8 | `app/ai/cost.py` | missing | |
-| 5 Anthropic ops (non-streaming) | P5 | AC-D12 | `app/ai/anthropic.py` | missing | |
-| Model-ID env defaults | P5 | AC-CD18 | `app/config.py` | missing | |
+| `AIProvider` abstraction + resolution order | P5 | AC-D12; AC-CD8 | `app/ai/provider.py` | built | `tests/unit/test_p5_resolve.py` (resolution-order coverage incl. plan-review additions for stub fallback + JSONB falsy values) |
+| VCS prompt registry + persisted version | P5 | AC-CD8 | `app/ai/prompts/` | built | `tests/unit/test_p5_prompts.py` (5 Anthropic ops registered with semver + JSON contract); `tests/integration/test_p5_generation.py::test_per_testee_start_invokes_generation_with_provenance` (`ai_prompt_version` persisted on Question rows) |
+| Per-call cost capture | P5 | AC-D18; AC-CD8 | `app/ai/cost.py`, `app/routers/cost.py` | built | `tests/unit/test_p5_cost.py` (compute_cost + price-table coverage + provenance helpers); `tests/integration/test_p5_budget_alert.py` (alerts at 50/80/100 % via SMTPClient seam); `tests/integration/test_p5_cost_dashboard.py` (admin GET `/v1/admin/cost/summary` aggregates across 6 entity tables + processing_tasks.payload); `tests/integration/test_p5_rate_limit.py` (AC-D18 v1.1 self_initiated-only carve-out) |
+| 5 Anthropic ops (non-streaming) | P5 | AC-D12 | `app/ai/anthropic.py`, `app/domain/attempts.py`, `app/domain/catalogue.py`, `app/domain/weakness.py`, `app/domain/learning_material.py` | built | `tests/integration/test_p5_generation.py` (per_testee start_attempt), `tests/integration/test_p5_grading.py::test_short_answer_submit_writes_ai_grade_with_provenance` (P5 done-when criterion), `tests/integration/test_p5_weakness.py` (callable), `tests/integration/test_p5_material.py` (callable + F18 served_at/served_text + AC-D21 safety skip), `tests/integration/test_p5_pill_proposal.py` (provenance in payload); `tests/unit/test_p5_anthropic.py` (contextual-error paths) |
+| Model-ID env defaults | P5 | AC-CD18 | `app/config.py` | built | `tests/unit/test_p5_resolve.py::test_model_coded_defaults_come_from_config`; `tests/unit/test_p5_cost.py::test_price_table_covers_every_coded_default_model_id` (CI-time drift guard) |
 
 ## P6 — Cross-family review
 

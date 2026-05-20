@@ -43,7 +43,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.cost import record_provenance, record_provenance_share
+from app.ai.cost import (
+    maybe_fire_budget_alert,
+    record_provenance,
+    record_provenance_share,
+)
 from app.ai.provider import Operation, resolve_provider
 from app.domain.catalogue import record_audit
 from app.models import (
@@ -560,6 +564,9 @@ async def start_attempt(
             "assignment_id": str(assignment_id) if assignment_id else None,
         },
     )
+    # Per-call budget-alert poll (AC-D18 v1.1). Fail-soft — no hard
+    # enforcement; alert emails go through the P2 SMTPClient seam.
+    await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
     return attempt
 
 
@@ -968,6 +975,10 @@ async def _ai_grade_responses(db: AsyncSession, attempt: Attempt) -> None:
         record_provenance(grade, grade_result)
         response.response_score = score
         db.add(grade)
+    # Single budget-alert poll after the full grading batch (one call
+    # per attempt, not per response) — keeps the post-call hook cheap
+    # while still firing at the next threshold cross.
+    await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
 
 
 def _outcome_for(score: float, test: Test) -> str:

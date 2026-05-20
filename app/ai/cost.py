@@ -1,10 +1,11 @@
-"""Per-call AI cost capture (CODE_SPEC §7, AC-CD8 / amended AC-D18).
+"""Per-call AI cost capture + monthly aggregation + budget alerts
+(CODE_SPEC §7, AC-CD8 / amended AC-D18).
 
-Slice 1 of P5 lands the pricing table, the cost computation, and the
-provenance helper that stamps :class:`app.models.AIProvenanceMixin`
-columns on producing entities. The monthly-spend aggregator and the
-budget-alert dispatcher (AC-D18 v1.1: alerts at 50/80/100 %, operations
-continue — no hard enforcement) land in Slice 3.
+Slice 1 landed the pricing table, the per-call cost computation, and
+the provenance helper. Slice 3 adds the monthly-spend aggregator
+(``current_month_spend``) and the budget-alert dispatcher
+(``maybe_fire_budget_alert`` — AC-D18 v1.1: alerts at 50/80/100 %,
+operations continue, no hard enforcement).
 
 Embedding spend is tracked against the OpenAI provider per amended
 AC-D18 (Drive RAG / AC-D22 / P9).
@@ -12,9 +13,18 @@ AC-D18 (Drive RAG / AC-D22 / P9).
 
 from __future__ import annotations
 
+import logging
+import uuid
+from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.ai.provider import AIResult, EmbedResult, Operation
+from app.permissions import now_utc
+
+logger = logging.getLogger(__name__)
 
 # (provider, model) → (input_usd_per_1m_tokens, output_usd_per_1m_tokens).
 # Source: provider public price sheets (Anthropic, OpenAI) at v1 build time.
@@ -129,3 +139,304 @@ OP_TO_METHOD: dict[Operation, str] = {
     Operation.anchor_self_review: "review",
     Operation.embed: "embed",
 }
+
+
+# --- Monthly spend aggregation (AC-D18) ------------------------------
+# The cost dashboard surfaces rolling monthly AI spend across every
+# AI-produced entity carrying :class:`AIProvenanceMixin` columns plus
+# the pill-proposal provenance dict in ``processing_tasks.payload``.
+# The dashboard endpoint in :mod:`app.routers.cost` consumes these.
+
+# The 6 entity tables that carry ``AIProvenanceMixin`` columns. Listed
+# explicitly so an added/removed mixin user is caught at lint time
+# (no clever metaclass discovery).
+_PROVENANCE_ENTITIES_HINT = (
+    "Grade, GradeReview, Question, AnchorQuestion, WeaknessReport, "
+    "LearningMaterial; plus processing_tasks.payload['provenance'] "
+    "for pill_proposal."
+)
+
+
+def _start_of_current_month(now: datetime) -> datetime:
+    """First instant of the calendar month containing ``now`` (UTC).
+    Used to scope rolling-month aggregations."""
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def _spend_for_table(
+    db: AsyncSession,
+    model: Any,
+    *,
+    tenant_id: uuid.UUID,
+    since: datetime,
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Sum ``ai_cost_usd`` for a single AIProvenanceMixin-bearing table
+    within the current month. Returns ``(total, by_provider, by_model)``.
+
+    Iterates in Python because the FakeSession harness has no aggregate
+    SUM / GROUP BY; at v1 scale (tens of users, hundreds of
+    attempts/month) the row count is small enough that pulling rows
+    and reducing in Python is fine. Profile in P11 if the deployment
+    ever outgrows this.
+    """
+    result = await db.execute(select(model).where(model.tenant_id == tenant_id))
+    total = 0.0
+    by_provider: dict[str, float] = {}
+    by_model: dict[str, float] = {}
+    for row in result.scalars().all():
+        created_at = getattr(row, "created_at", None)
+        if created_at is None or created_at < since:
+            continue
+        cost = getattr(row, "ai_cost_usd", None)
+        if cost is None:
+            continue
+        total += cost
+        provider = getattr(row, "ai_provider", None) or "(unknown)"
+        model_name = getattr(row, "ai_model", None) or "(unknown)"
+        by_provider[provider] = by_provider.get(provider, 0.0) + cost
+        by_model[model_name] = by_model.get(model_name, 0.0) + cost
+    return total, by_provider, by_model
+
+
+async def _pill_proposal_spend(
+    db: AsyncSession, *, tenant_id: uuid.UUID, since: datetime
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Sum the ``provenance.cost_usd`` carried in
+    ``processing_tasks.payload`` for pill_proposal rows in the current
+    month (the proposal provenance lives in the JSON payload per
+    AC-CD8 v1.6 final clause, not in ``AIProvenanceMixin`` columns)."""
+    from app.models import ProcessingTask
+
+    PROPOSAL_TASK_NAME = "pill_proposal"
+    result = await db.execute(
+        select(ProcessingTask).where(ProcessingTask.tenant_id == tenant_id)
+    )
+    total = 0.0
+    by_provider: dict[str, float] = {}
+    by_model: dict[str, float] = {}
+    for row in result.scalars().all():
+        if row.task_name != PROPOSAL_TASK_NAME:
+            continue
+        created_at = getattr(row, "created_at", None)
+        if created_at is None or created_at < since:
+            continue
+        payload = row.payload or {}
+        prov = payload.get("provenance") or {}
+        cost = prov.get("cost_usd")
+        if cost is None:
+            continue
+        total += cost
+        provider = prov.get("provider") or "(unknown)"
+        model_name = prov.get("model") or "(unknown)"
+        by_provider[provider] = by_provider.get(provider, 0.0) + cost
+        by_model[model_name] = by_model.get(model_name, 0.0) + cost
+    return total, by_provider, by_model
+
+
+async def current_month_spend(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    (
+        """Aggregate rolling monthly AI spend across every provenance-bearing
+    entity (AC-D18 cost dashboard surface).
+
+    Returns ``{"total_usd": float, "by_provider": dict, "by_model":
+    dict, "since": datetime}``. Tables included:
+    """
+        + _PROVENANCE_ENTITIES_HINT
+    )
+    from app.models import (
+        AnchorQuestion,
+        Grade,
+        GradeReview,
+        LearningMaterial,
+        Question,
+        WeaknessReport,
+    )
+
+    when = now or now_utc()
+    since = _start_of_current_month(when)
+
+    total = 0.0
+    by_provider: dict[str, float] = {}
+    by_model: dict[str, float] = {}
+
+    for model in (
+        Grade,
+        GradeReview,
+        Question,
+        AnchorQuestion,
+        WeaknessReport,
+        LearningMaterial,
+    ):
+        sub_total, sub_provider, sub_model = await _spend_for_table(
+            db, model, tenant_id=tenant_id, since=since
+        )
+        total += sub_total
+        for p, c in sub_provider.items():
+            by_provider[p] = by_provider.get(p, 0.0) + c
+        for m, c in sub_model.items():
+            by_model[m] = by_model.get(m, 0.0) + c
+
+    # Pill proposals live in processing_tasks.payload, not on a mixin.
+    sub_total, sub_provider, sub_model = await _pill_proposal_spend(
+        db, tenant_id=tenant_id, since=since
+    )
+    total += sub_total
+    for p, c in sub_provider.items():
+        by_provider[p] = by_provider.get(p, 0.0) + c
+    for m, c in sub_model.items():
+        by_model[m] = by_model.get(m, 0.0) + c
+
+    return {
+        "total_usd": total,
+        "by_provider": by_provider,
+        "by_model": by_model,
+        "since": since,
+    }
+
+
+# --- Budget alerts (AC-D18 v1.1: alerts at 50/80/100 %, no hard enforcement)
+
+
+def _year_month_key(now: datetime) -> str:
+    """``YYYY-MM`` calendar-month key used in the alert-deduplication
+    audit-log row's ``detail``."""
+    return f"{now.year:04d}-{now.month:02d}"
+
+
+async def _alert_already_fired_this_month(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    threshold: int,
+    year_month: str,
+) -> bool:
+    """Check the audit log for a ``budget_alert.fired`` row at this
+    threshold for this calendar month. The audit-log row IS the
+    dedupe state — no separate alerts table. P11 may add a richer
+    surface; the simple one suffices for AC-D18 v1.1."""
+    from app.models import AuditLog
+
+    result = await db.execute(select(AuditLog).where(AuditLog.tenant_id == tenant_id))
+    for row in result.scalars().all():
+        if row.action != "budget_alert.fired":
+            continue
+        detail = row.detail or {}
+        if (
+            detail.get("threshold") == threshold
+            and detail.get("year_month") == year_month
+        ):
+            return True
+    return False
+
+
+async def maybe_fire_budget_alert(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    now: datetime | None = None,
+) -> list[int]:
+    """Compute rolling monthly spend vs the configured budget; for any
+    threshold newly crossed this month, send one alert email via the
+    P2 ``SMTPClient`` seam and record a ``budget_alert.fired`` audit
+    row so the threshold is not re-sent this month.
+
+    Returns the list of thresholds fired in this call (most calls
+    return ``[]``; the first call after crossing a threshold returns
+    e.g. ``[50]``; if spend leaps from 0 % to 85 % between calls
+    BOTH ``[50, 80]`` fire on the next call).
+
+    AC-D18 v1.1: **operations continue regardless of threshold
+    crossings — no hard enforcement.** This helper never raises and
+    never refuses an AI call; it only notifies. The caller is
+    responsible for invoking it post-call.
+
+    Fail-soft on every dependency: a missing monthly_ai_budget skips
+    silently; a missing settings row skips silently; the SMTP seam
+    is already fail-soft (captures emails in tests, logs a warning
+    when SMTP is unconfigured in dev).
+    """
+    from app.domain.catalogue import record_audit
+    from app.models import AppUser, SystemSettings, UserStatus
+    from app.permissions import ROLE_ADMINISTRATOR, SMTPClient
+
+    when = now or now_utc()
+    settings_row = (
+        await db.execute(
+            select(SystemSettings).where(SystemSettings.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if settings_row is None:
+        return []
+    budget = getattr(settings_row, "monthly_ai_budget", None)
+    if budget is None or budget <= 0:
+        return []
+    thresholds = sorted(int(t) for t in (settings_row.budget_alert_thresholds or []))
+    if not thresholds:
+        return []
+
+    spend = await current_month_spend(db, tenant_id=tenant_id, now=when)
+    percent = (spend["total_usd"] / budget) * 100.0
+    year_month = _year_month_key(when)
+
+    crossed: list[int] = []
+    for threshold in thresholds:
+        if percent < threshold:
+            continue
+        if await _alert_already_fired_this_month(
+            db, tenant_id=tenant_id, threshold=threshold, year_month=year_month
+        ):
+            continue
+        crossed.append(threshold)
+
+    if not crossed:
+        return []
+
+    # Find an admin recipient. P11 may add a configurable
+    # ``budget_alert_email`` field on system_settings; for now we pick
+    # the first active admin for the tenant.
+    admin_result = await db.execute(select(AppUser).where(AppUser.tenant_id == tenant_id))
+    admin_email: str | None = None
+    for user in admin_result.scalars().all():
+        if user.role == ROLE_ADMINISTRATOR and user.status == UserStatus.active:
+            admin_email = user.email
+            break
+    if admin_email is None:
+        logger.warning(
+            "Budget alert thresholds crossed (%s) but no active admin "
+            "recipient found for tenant %s — alert not sent.",
+            crossed,
+            tenant_id,
+        )
+        return []
+
+    smtp = SMTPClient()
+    for threshold in crossed:
+        subject = f"Acumen AI budget alert: {threshold}% of monthly cap"
+        body = (
+            f"Acumen monthly AI spend has reached {percent:.1f}% of the "
+            f"configured ${budget:.2f} monthly budget "
+            f"({year_month}). This is informational — operations "
+            f"continue per AC-D18 (no hard enforcement). Total spend "
+            f"this month: ${spend['total_usd']:.4f}."
+        )
+        smtp.send(admin_email, subject, body)
+        await record_audit(
+            db,
+            actor_id=None,
+            action="budget_alert.fired",
+            target_entity="system_settings",
+            target_id=settings_row.id,
+            detail={
+                "threshold": threshold,
+                "year_month": year_month,
+                "spend_usd": spend["total_usd"],
+                "budget_usd": budget,
+                "percent": percent,
+            },
+        )
+    return crossed
