@@ -21,13 +21,13 @@ are *documented, not built* in v1.
 1. **This file.**
 2. The **most recent handover** in `/handovers/` — the live state of the
    build, what the last PR closed, traps it flagged.
-3. **`SPEC.md`** (functional, v1.2) — refresh the product.
+3. **`SPEC.md`** (functional, v1.7) — refresh the product.
 4. **`CODE_SPEC.md`** (technical spec + stack lock, AC-CD1–AC-CD18) — the
    codebase is the source of truth; unbuilt items are `(pending P{n})`.
 5. **`ROADMAP.md`** (phased plan P0–P11) — identify the phase you close.
 6. **`CHECKLIST.md`** — what is `built`/`partial`/`missing`, and the open
    Drift questions.
-7. **`DECISIONS.md`** (product anchors AC-D1–AC-D27, v1.2) — the AC-D
+7. **`DECISIONS.md`** (product anchors AC-D1–AC-D27, v1.7) — the AC-D
    anchors the phase cites.
 
 ## Working agreement (discipline — non-negotiable)
@@ -150,7 +150,7 @@ are on by its ROADMAP name.
 | **P3** | Catalogue | Subjects/Pills/Paths/Groups CRUD + safety auto-tag + discovery filter; proposal queue persists (AI stubbed) |
 | **P4** | Tests, assignments, attempts (deterministic) | Frozen attempt auto-grades MCQ/TF/matching; shuffle seed stable across resume; `engagement_status` derives; pause blanks/restores |
 | **P5** | AI provider layer + 5 Anthropic ops (non-streaming) | Spec produces a generated set; AI grade persists with cost + prompt version; model-resolution order unit-tested |
-| **P6** | Cross-family review | **AC-CD11 gate first.** AI-graded response carries confirmed/flagged before display; provider-down → preliminary + cron retry; latency rule recorded in AC-CD11 |
+| **P6** | Cross-family review | **AC-CD11 gate closed at v1.7** (batched per attempt, 60-s ceiling). AI-graded response carries confirmed/flagged before display; over-ceiling or provider-down → preliminary + cron retry per AC-D19 / AC-CD11 v1.7 |
 | **P7** | Adaptive loop, competence, integrity | Failed pill serves material then queues follow-up; competence float decays vs fixtures; n-gram flag fires; null competence = "no data yet" |
 | **P8** | Anchor calibration | Anchors drawn indistinguishably; shrinkage updates, equals `assigned_difficulty` at n=0; preliminary→confident at n threshold; fresh delta per attempt |
 | **P9** | Drive RAG + realism feedback | Folder doc indexed + retrieved into a generation prompt; realism pool weights generation; embedding spend on OpenAI |
@@ -172,8 +172,9 @@ Files to touch · Status · Evidence. Record progress **at PR close**:
   artifact that exists) is real. Status/Evidence stay blank until the
   phase lands.
 - The **Drift questions** section holds open, unresolved items the build
-  must close (currently only AC-CD11). Resolved spec/implementation
-  divergences are recorded in the **per-PR handover**, not added here.
+  must close (currently none — AC-CD11 was the only entry and closed
+  at v1.7). Resolved spec/implementation divergences are recorded in
+  the **per-PR handover**, not added here.
 
 ## CODE_SPEC decisions never to silently violate
 
@@ -227,17 +228,20 @@ work from the DECISIONS formulas, flag any ambiguity before coding.
   `text-embedding-3-small` (1536-dim), diff-based daily ingest, embedding
   spend tracked to **OpenAI**.
 - **Cross-family review — AC-D19 (AC-CD11), `app/routers/review.py`.**
-  Synchronous pre-stamp OpenAI review, fail-soft "review pending" +
-  reconcile cron. **The open anchor — see below.**
+  Synchronous pre-stamp OpenAI review, **batched per attempt with a
+  60-second hard ceiling** (AC-CD11 v1.7); fail-soft `pending` +
+  reconcile cron on ceiling-exceeded or provider-unavailable. Closed
+  anchor at v1.7.
 
-## The one open item — AC-CD11 (P6 gate)
+## Open items (none)
 
-**AC-CD11** (cross-family review latency rule) is the single unresolved
-technical anchor. The per-response-vs-batched mode and the hard latency
-ceiling before the fail-soft path triggers are **unresolved**. There is a
-**pre-build gate at P6**: resolve it *with the user* before building the
-blocking submit path; record the resolution in `CODE_SPEC.md` AC-CD11.
-Tracked as the only live CHECKLIST Drift question.
+AC-CD11 (cross-family review latency rule) — the only technical anchor
+that ever carried a pre-build gate — was **closed at v1.7**: batched
+per attempt, 60-s hard ceiling, over-ceiling falls through to the v1.6
+grade-review reconcile cron; AC-D19's submit-wait wording was realigned
+in the same change (F10). See `CODE_SPEC.md` §18 AC-CD11 and
+`DECISIONS.md` AC-D19. P6 builds against locked text; no live drift
+question remains.
 
 ## Paste-ready session-start script
 
@@ -264,17 +268,20 @@ Copy this verbatim at the start of every session:
 > a phase lands, update *only* this section and the corresponding
 > `CHECKLIST.md` rows — nothing else in this file moves.
 
-Specs are at **v1.6** (post-audit consolidation of P4/P5/P6 pre-build
-clarifications). **P0, P1, P2, P3 landed** (Scaffold & stack lock, Data
-model & migrations, Auth & user management, Catalogue). v1.4 (AC-D26
-Attempt→Assignment FK) and v1.5 (AC-D3 sequence_number scope) merged as
-doc-only clarifications. Two P4 attempts (PRs #10, #12) closed unmerged
-due to mid-build spec drift; spec-audit ran read-only finding 18 items,
-16 folded into v1.6. **9 phases remain.** Next session starts at ROADMAP
-**P4 — Tests, assignments, attempts (deterministic)** — against the v1.6
-audited spec. *(The footer below still reads "v1.2 document set" — this
-is a deliberate deferral per the header-only precedent from PR-011/PR-013;
-a future SESSION_START hardening PR will sweep it. See
-`handovers/PR-014-v1.6-spec-audit-consolidation.md`.)*
+Specs are at **v1.7** (AC-CD11 P6 gate closure — cross-family review
+locked as batched per attempt, 60-s ceiling, over-ceiling routes to the
+v1.6 grade-review reconcile cron; AC-D19 submit-wait wording realigned).
+**P0–P5 landed** (Scaffold & stack lock, Data model & migrations, Auth
+& user management, Catalogue, deterministic P4, AI provider layer + 5
+Anthropic ops at P5/PR-016). v1.4 / v1.5 merged as doc-only
+clarifications; v1.6 consolidated the pre-build spec-audit; v1.7 closes
+AC-CD11. **6 phases remain.** Next session starts at ROADMAP **P6 —
+Cross-family review** — the AC-CD11 gate is closed, so P6 builds
+against the locked contract directly. *(The footer below still reads
+"v1.2 document set" — deliberate deferral per the header-only
+precedent from PR-011/PR-013/PR-014; a future SESSION_START hardening
+PR will sweep it together with the stale DECISIONS and CODE_SPEC
+footers. See `handovers/PR-014-v1.6-spec-audit-consolidation.md` and
+this PR's handover.)*
 
 *End of SESSION_START. Paired with the v1.2 document set.*
