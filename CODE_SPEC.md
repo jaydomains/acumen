@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.6 / `DECISIONS.md` v1.6.
+> **Status:** v1 target. Paired with `SPEC.md` v1.7 / `DECISIONS.md` v1.7.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
@@ -348,13 +348,16 @@ benchmark/JIT tension resolved by the v1.2 AC-D25 carve-out).
 
 ## 11. Cross-family review (AC-D19)
 
-After grading an AI-graded response, a **synchronous** OpenAI review pass
-runs before the band stamp displays. On provider error/timeout the path
-**fails soft**: the response is marked `review pending`, a preliminary
-result shows, and a retry cron reconciles. Flagged reviews surface in an
-admin queue. The per-response-vs-batched policy and the hard latency
-ceiling are **unresolved** and deferred to the P6 build gate. Covered by
-**AC-CD11** (**needs user input** — see §18).
+After AI grading completes on the attempt's AI-graded responses, a
+**synchronous** OpenAI review pass runs before the band stamp displays.
+The review is **batched per attempt** — one review call per submit
+reviews every AI-graded response together — with a **60-second hard
+ceiling at the submit path** (AC-CD11 v1.7). On provider error/timeout
+or ceiling-exceeded the path **fails soft**: every `grade_review` row
+for the attempt is marked `pending`, a preliminary result page renders,
+and the §8 grade-review reconcile cron picks the rows up on its next
+pass. Flagged reviews surface in an admin queue. Covered by
+**AC-CD11** (resolved at v1.7 — see §18).
 
 **(v1.6)** The reconcile runs on the dedicated grade-review reconcile cron
 (§8, SPEC §8.9). `grade_review` is 1:1 with `grade`, updated **in place**
@@ -365,6 +368,10 @@ N consecutive failed retries (default 10; a P6 behavioural default, not
 yet a `system_settings` column) a `pending` row auto-promotes to
 `flagged` with reasoning `auto_flagged_stuck_pending`. Confirmed and
 flagged remain the only terminal states (AC-D19 v1.6).
+
+**(v1.7)** At the v1.6 defaults (cron every 5 min, max-retry 10) the
+auto-promote-to-`flagged` window is ≈50 minutes wall-clock from initial
+submit — the operator-visible SLA for "stuck pending".
 
 ---
 
@@ -471,11 +478,13 @@ Secrets only via environment (SPEC §8.3). Backups per SPEC §8.5
    regeneration), explicit buffer state machine, E2E buffer tests.
 3. **Synchronous external AI on submit (AC-D19) + Drive RAG ingest
    reliability (AC-D22).** A blocking OpenAI call before the Testee sees
-   a result couples submit UX to third-party latency; the unresolved
-   latency rule (AC-CD11) is the open risk. Mitigation: the fail-soft
-   "review pending" + reconcile cron is already specified; resolve the
-   ceiling/batching policy at the P6 gate before building the blocking
-   path.
+   a result couples submit UX to third-party latency. **Mitigation
+   (v1.7):** AC-CD11 P6 gate closed — review is batched per attempt
+   (single call per submit) with a 60-s hard ceiling; over-ceiling
+   falls through to the existing fail-soft `pending` + reconcile-cron
+   path. The submit path's worst-case latency is now bounded
+   independent of N (the AI-graded response count), and the bounded
+   case lives in the rare-failure path rather than the normal one.
 
 ---
 
@@ -483,8 +492,10 @@ Secrets only via environment (SPEC §8.3). Backups per SPEC §8.5
 
 Each anchor: **Decision / Rationale / Implications / Confidence**.
 Confidence is `confident default` or `needs user input`. Per the v1.2
-spec clarification, the formerly under-specified anchors are now
-**confident**; only **AC-CD11** remains open.
+spec clarification, the formerly under-specified anchors are
+**confident**; **AC-CD11** was the last to carry `needs user input`
+and was **closed at v1.7** (P6 gate resolved — see the AC-CD11 entry
+below). All AC-CD anchors now read `confident default`.
 
 ### AC-CD1 — Stack lock & exact version pins
 **Decision:** pin every dependency at the §2 versions; mirror SiteMesh
@@ -559,23 +570,45 @@ contradiction.
 **Confidence:** confident default (resolved by v1.2).
 
 ### AC-CD11 — Cross-family review pipeline & latency budget
-**Decision:** synchronous pre-stamp review with fail-soft "review
-pending" + reconcile cron; **the per-response-vs-batched mode and the
-hard latency ceiling are unresolved.**
-**Rationale:** blocking external AI on the submit path with several
-AI-graded responses per attempt is the fragile case; the budget shape
-materially changes the implementation.
-**Implications:** resolve at the **P6 build gate** before the blocking
-path is built; seeded as a CHECKLIST drift question.
-**Gate-resolution checklist (F10 — deferred to gate closure, NOT resolved
-in v1.6):** resolving the per-response-vs-batched mode and the hard
-latency ceiling must **also** amend AC-D19's stated "10–30 second"
-submit-wait wording, which presupposes batched/parallel execution
-(per-response-sequential review of N AI-graded responses is N×(10–30s)).
-The actual resolution waits for the P6 gate; v1.6 only records the
-dependency so the gate is not closed leaving AC-D19's latency wording
-internally inconsistent.
-**Confidence:** **needs user input** (P6 gate).
+
+> **Resolved at v1.7** — P6 build gate closed. Mode locked as batched
+> per attempt; hard latency ceiling locked at 60 s; over-ceiling routes
+> to the existing v1.6 grade-review reconcile cron. AC-D19's
+> submit-wait wording realigned in the same change (F10 honoured).
+
+**Decision:** synchronous pre-stamp cross-family review is **batched
+per attempt** — exactly one OpenAI `review()` call per submit, payload
+covers every AI-graded response in the attempt together (each item
+carries `{question, response, rubric, ai_grade, ai_reasoning}`),
+structured response is an array of `{grade_id, verdict, reasoning?}`.
+**Hard latency ceiling at the submit path is 60 seconds.**
+Over-ceiling or provider-unavailable: every `grade_review` row for the
+attempt stays `pending`, the result page renders in preliminary mode,
+and the §8 grade-review reconcile cron picks the rows up on its next
+pass (every 5 min by default; after 10 consecutive failures a
+`pending` row auto-promotes to `flagged` with reason
+`auto_flagged_stuck_pending` — ≈50-minute stuck-pending wall-clock).
+**Rationale:** batched-per-attempt is the smallest call count that
+keeps the submit-path latency shape sub-linear in N, matches the
+AC-D19 single submit-wait UX, and gives the reconcile cron one row
+set per attempt to retry rather than N independent fates.
+Per-response sequential is the rejected anti-pattern that motivated
+the F10 dependency in the first place (N×ceiling). Per-response
+parallel is a defensible alternative but multiplies upstream
+rate-limit load by N and complicates partial-failure UX (some
+confirmed, some pending across the same attempt) without buying
+meaningful headroom at the typical 3–5-AI-graded-response attempt
+size.
+**Implications:** `app/routers/review.py` (planned at P6) calls
+`AIProvider.review()` once per attempt with the full AI-graded
+response list, wrapping it in a 60-s timeout/deadline; the timeout
+raises the same fail-soft branch as a provider error. The §8 cron
+already retries `pending` rows (v1.6 / F3); no new cron is introduced.
+AC-D19 v1.1 "10–30 seconds" wording is amended in the same change.
+AC-CD11 retires from the `CHECKLIST.md` drift-question list;
+`SESSION_START.md` "one open item" paragraph retires.
+**Confidence:** **confident default** (closed at v1.7 with user
+sign-off).
 
 ### AC-CD12 — effective_difficulty estimator + fresh-vs-anchor delta
 **Decision:** §12 Bayesian-shrinkage estimator + same-attempt delta for

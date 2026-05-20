@@ -89,16 +89,28 @@ captured cost + prompt version; model resolution order unit-tested.
 
 ## P6 — Cross-family review
 
-**Gate first:** resolve **AC-CD11** (per-response vs batched; hard
-latency ceiling) with the user *before* building the blocking path.
-**Deliverables:** synchronous OpenAI review before band stamp; fail-soft
-"review pending"; reconcile cron; admin flag queue.
-**Done-when:** an AI-graded response carries confirmed/flagged before the
-result displays; provider-down yields a preliminary result + cron
-retry; the resolved latency rule is recorded in CODE_SPEC AC-CD11.
+**Gate closed at v1.7** (AC-CD11 — see `CODE_SPEC.md` §18): mode =
+batched per attempt, hard latency ceiling = 60 s, over-ceiling routes
+to the v1.6 grade-review reconcile cron. Build against the locked
+contract; no further user gate.
+**Deliverables:** synchronous batched-per-attempt OpenAI review before
+band stamp (one call per submit) with a 60-s submit-path timeout;
+fail-soft `pending` + the §8.9 grade-review reconcile cron (already
+scheduled in v1.6); admin flag queue. P6 build must emit observability
+on every `review()` call — at minimum `latency_ms`, `success` (bool),
+`batched_payload_size` (count), `ceiling_breached` (bool) — so the
+60-s ceiling is empirically tunable.
+**Done-when:** an AI-graded response carries confirmed/flagged before
+the result displays for the within-60-s batched path; over-ceiling or
+provider-down yields a preliminary result page with `pending` rows;
+the reconcile cron picks them up; `app/routers/review.py` enforces the
+60-s submit deadline.
 **Anchors:** AC-D19; AC-CD11.
-**Risks:** the open anchor — do not build the blocking path before the
-gate is answered.
+**Risks:** the 60-s ceiling is a single tunable — instrument it so a
+future tuning pass has the data to widen or tighten. Partial-batch
+parsing errors (review returns malformed structured output) must fall
+through to the same `pending` branch as a provider error, never crash
+the submit path.
 
 ## P7 — Adaptive loop, competence, integrity
 
@@ -174,8 +186,8 @@ emails send per AC-D26.
 ## Anchor coverage
 
 Every AC-D1–AC-D27 and every AC-CD1–AC-CD18 is referenced by at least one
-phase above and one CHECKLIST row. AC-CD11 is the single anchor carrying
-an explicit pre-build gate (P6).
+phase above and one CHECKLIST row. AC-CD11's pre-build gate at P6 was
+**closed at v1.7**; no anchor now carries an unresolved pre-build gate.
 
 *End of Acumen ROADMAP. Paired with `CODE_SPEC.md`, `SPEC.md` v1.2,
 `DECISIONS.md` v1.2.*

@@ -3,7 +3,7 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.6. Paired with `DECISIONS.md` v1.6 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 amendments plus new AC-D27).
+> **Status:** v1.7. Paired with `DECISIONS.md` v1.7 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 amendments plus new AC-D27; v1.7 also closes the AC-CD11 P6 gate).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
 >
@@ -16,6 +16,8 @@
 > **Changes in v1.5:** Clarifying amendment to AC-D3 — `Attempt.sequence_number` scope corrected to per Testee per Test; canonical uniqueness constraint recorded in CODE_SPEC §4. Doc-only.
 >
 > **Changes in v1.6:** Pre-build spec-audit consolidation — 16 amendments across AC-D4 / D9 / D11 / D12 / D19 / D26, AC-CD8, the AC-CD11 gate-checklist, and SPEC §5 / §4.8 / §4.13 / §8.9, resolving P4/P5/P6 build-blocking gaps surfaced by `docs/_meta/spec-audit-2026-05-19.md` before mid-phase stops occurred. Doc-only; reconciles spec prose with the already-shipped P1 schema.
+>
+> **Changes in v1.7:** AC-CD11 P6 gate closure — locks cross-family review as batched per attempt (single OpenAI call per submit, all AI-graded responses in one payload) with a 60-second hard ceiling; over-ceiling routes to the existing fail-soft `pending` + reconcile cron path. Amends AC-D19's "10–30 second" submit-wait wording to match (F10 resolved). Names the cron 5-min × max-retry 10 → ≈50-min stuck-pending auto-flag window explicitly (F11 amplified, no default changes). Doc-only.
 
 ---
 
@@ -213,7 +215,7 @@ Testee starts an attempt (assigned or self-initiated). **For per-Testee mode, AI
 
 ### 4.8 Grading pipeline
 
-On submit, deterministic question types (MCQ, T/F, matching) auto-grade immediately. Deterministic grades are computed immediately, but the result page display is gated on an "all grading + review complete" flag: a fully-deterministic attempt displays results immediately; a mixed attempt (containing any AI-graded item) withholds the result page until AI grading and cross-family review have completed (AC-D19). The gate is forward-compatible with P6 review completion. Short-answer and scenario types submit to AI grading (Anthropic per AC-D12) with each question's rubric. Each graded response is tagged with one or more pills from the question's metadata. Per-pill, per-difficulty score is computed. **Synchronously after AI grading, every AI-graded response goes through cross-family grade review per amended AC-D19** — an OpenAI call evaluating "is this grade defensible given the rubric?" with the verdict (confirmed or flagged) finalised before the Testee sees their result. Brief "checking your answers..." UI state during the review window. **Deterministic n-gram overlap check per amended AC-D4 #5** runs against the Testee's most recently served learning material on the pill, flagging high-overlap responses. Per-Testee competency profile is updated using the new attempt outcomes; **competence_estimate per amended AC-D9 is recomputed** including the new attempt with appropriate decay weighting.
+On submit, deterministic question types (MCQ, T/F, matching) auto-grade immediately. Deterministic grades are computed immediately, but the result page display is gated on an "all grading + review complete" flag: a fully-deterministic attempt displays results immediately; a mixed attempt (containing any AI-graded item) withholds the result page until AI grading and cross-family review have completed (AC-D19). The gate is forward-compatible with P6 review completion. Short-answer and scenario types submit to AI grading (Anthropic per AC-D12) with each question's rubric. Each graded response is tagged with one or more pills from the question's metadata. Per-pill, per-difficulty score is computed. **Synchronously after AI grading, every AI-graded response goes through cross-family grade review per amended AC-D19** — an OpenAI call evaluating "is this grade defensible given the rubric?" with the verdict (confirmed or flagged) finalised before the Testee sees their result. Brief "checking your answers..." UI state during the review window; the review runs as a single batched call per attempt with a 60-second hard ceiling, over which the result page renders in preliminary mode and the grade-review reconcile cron (§8.9) picks the row up on its next pass (AC-D19 v1.7 / AC-CD11). **Deterministic n-gram overlap check per amended AC-D4 #5** runs against the Testee's most recently served learning material on the pill, flagging high-overlap responses. Per-Testee competency profile is updated using the new attempt outcomes; **competence_estimate per amended AC-D9 is recomputed** including the new attempt with appropriate decay weighting.
 
 ### 4.9 Results, learning material, and the adaptive loop
 
@@ -345,7 +347,7 @@ Analyses recent test generation and Testee behaviour to surface coverage gaps in
 
 ### 6.6 Grade review (cross-family, synchronous)
 
-Reviews each AI-graded response (short-answer and scenario types only) by independent AI call **on a different provider from the primary grader per amended AC-D19** — Anthropic-graded responses are reviewed by OpenAI by default. Runs **synchronously** before the Testee sees the result.
+Reviews each AI-graded response (short-answer and scenario types only) by independent AI call **on a different provider from the primary grader per amended AC-D19** — Anthropic-graded responses are reviewed by OpenAI by default. Runs **synchronously** before the Testee sees the result — **batched per attempt** (one call per submit reviewing every AI-graded response together) with a **60-second hard ceiling**; over the ceiling the path **fails soft** (`grade_review` rows stay `pending`, preliminary result renders, the §8.9 grade-review reconcile cron reconciles on its next pass) per AC-D19 v1.7 / AC-CD11.
 
 **Inputs:** question, candidate response, rubric, AI's grade and reasoning.
 
@@ -476,7 +478,7 @@ Acumen runs several scheduled background processes, all initiated and maintained
 - **Continuous anchor calibration recomputation** per AC-D20 — updates effective_difficulty estimates for anchor questions as new attempts accumulate.
 - **Continuous competence_estimate recomputation** per amended AC-D9 — updates competence floats for affected Testees after each new attempt outcome.
 - **Continuous engagement reminder dispatch** per AC-D26 — checks for assignments due for reminder dispatch on the configured schedule.
-- **Continuous grade-review reconcile** per amended AC-D19 — retries `grade_review` rows still `pending` (review provider was unreachable at submit) against the configured review provider; on success updates the row in place to `confirmed` or `flagged`, leaving it `pending` on continued failure. Runs every N minutes (default 5; a P6 behavioural default, not yet a `system_settings` column).
+- **Continuous grade-review reconcile** per amended AC-D19 — retries `grade_review` rows still `pending` (review provider was unreachable or over-ceiling at submit) against the configured review provider; on success updates the row in place to `confirmed` or `flagged`, leaving it `pending` on continued failure. Runs every N minutes (default 5; a P6 behavioural default, not yet a `system_settings` column). After max-retry consecutive failures (default 10; AC-D19 v1.6) a `pending` row auto-promotes to `flagged` with reason `auto_flagged_stuck_pending` — at the 5-min × 10 defaults this is a ≈50-minute wall-clock window before auto-flag (AC-CD11 v1.7).
 
 ---
 
@@ -563,7 +565,7 @@ All open questions surfaced during the v1.0 and v1.1 audit passes have been reso
 - **10.5 Frozen test versioning** — locked as AC-D17 (snapshot-at-attempt); campaign lock added in AC-D24
 - **10.6 Pill merge** — deferred to v1.x (retirement only in v1)
 - **10.7 AI cost controls** — locked as AC-D18 (visibility + alerts + rate limits, worked example and loop exemptions added in v1.1 amendment)
-- **10.8 AI grading calibration** — locked as AC-D19 (cross-family synchronous review per v1.1 amendment)
+- **10.8 AI grading calibration** — locked as AC-D19 (cross-family synchronous review per v1.1 amendment; latency contract locked at v1.7 — batched per attempt, 60 s ceiling)
 - **10.9 Admin prompt customisation** — deferred to v1.x
 - **10.10 Terminology consistency** — "Pill" used throughout; "sub-topic" retired from spec
 - **10.11 Per-Testee comparability** — resolved via AC-D20 anchor calibration and amended AC-D9 competence estimate

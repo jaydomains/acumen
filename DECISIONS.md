@@ -2,9 +2,9 @@
 
 > Companion to `acumen/SPEC.md`. Each decision records what's locked, why, and what it implies. Decisions are ordered by ID. Cross-references use `AC-D{n}` for Acumen decisions and other prefixes (CH-D, TF-D, MC-D, PA-D, etc.) for platform-wide rules anchored in other modules' audits.
 >
-> **Status:** v1.6. Paired with `SPEC.md` v1.6.
+> **Status:** v1.7. Paired with `SPEC.md` v1.7.
 >
-> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link); 1 clarifying amendment applied in v1.5 to AC-D3 (sequence_number scope per Testee per Test); 6 amendments applied in v1.6 (pre-build spec-audit consolidation) to AC-D4, AC-D9, AC-D11, AC-D12, AC-D19, and AC-D26, plus technical-anchor updates to AC-CD8 and the AC-CD11 gate-checklist. Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
+> **Decision count:** 27 decisions (AC-D1 through AC-D27; AC-D27 added in v1.2). 6 amendments applied in v1.1 to AC-D4, AC-D9, AC-D11, AC-D18, AC-D19, and §8.7; 3 further amendments applied in v1.2 to AC-D9, AC-D22 (with §7.3), and AC-D25; 1 clarifying amendment applied in v1.3 to AC-D19 (review_status pending state); 1 clarifying amendment applied in v1.4 to AC-D26 (Attempt→Assignment attribution link); 1 clarifying amendment applied in v1.5 to AC-D3 (sequence_number scope per Testee per Test); 6 amendments applied in v1.6 (pre-build spec-audit consolidation) to AC-D4, AC-D9, AC-D11, AC-D12, AC-D19, and AC-D26, plus technical-anchor updates to AC-CD8 and the AC-CD11 gate-checklist; 1 amendment applied in v1.7 (AC-CD11 P6 gate closure) to AC-D19 — submit-wait wording realigned to the batched / 60-s-ceiling contract (F10 resolved) — plus the AC-CD11 technical anchor itself moving from deferred to resolved (mode + latency ceiling locked). Original v1.0/v1.1 wording preserved in git history; current document reflects amended decisions as the authoritative text.
 
 ---
 
@@ -62,6 +62,17 @@ The v1.6 review pass is a single consolidated pre-build spec-audit clarification
 | AC-D26 | `engagement_status` and reminder-cease are per (assignment, Testee); reminder send history stays assignment-scoped (shipped `assignment_reminder` has no `user_id`) |
 | AC-CD8 | (technical, CODE_SPEC §7) operation enum drives 7-operation → 4-method routing; provenance persists on every AI-produced entity via the shipped AI-provenance columns |
 | AC-CD11 | (technical, CODE_SPEC §18) gate-resolution checklist gains the deferred F10 note: closing the gate must also amend AC-D19's "10–30 second" submit-wait wording — deferred, not resolved in v1.6 |
+
+---
+
+## Amendments applied in v1.7
+
+The v1.7 review pass closes the AC-CD11 P6 build gate (cross-family review pipeline & latency budget — deferred since v1.0). One product anchor (AC-D19) is amended so its submit-wait wording matches the resolved contract (F10 in the v1.6 spec-audit). The AC-CD11 technical anchor itself moves from "needs user input (P6 gate)" to resolved (CODE_SPEC §18). The 5-min × 10-retry ≈ 50-min stuck-pending auto-flag window already locked in v1.6 is named explicitly in AC-D19 / AC-CD11 / SPEC §8.9 (F11 amplified, no default changes). Doc-only; no schema delta; no migration; AC-CD11 retires from the CHECKLIST drift list. Current text below reflects the amended version; the change rationale is preserved inline within the decision.
+
+| Decision | Change summary |
+|---|---|
+| AC-D19 | Submit-wait wording realigned to batched-per-attempt review with a 60-second hard ceiling; over-ceiling routes to the existing `pending` + reconcile-cron fail-soft path; ≈50-min auto-flag window named explicitly (F10 resolved, F11 amplified) |
+| AC-CD11 | (technical, CODE_SPEC §18) P6 build gate closed — mode locked as batched per attempt, hard latency ceiling locked at 60 s, over-ceiling routes to the v1.6 grade-review reconcile cron |
 
 ---
 
@@ -454,8 +465,10 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 > **Clarified in v1.3** — `review_status` enumerated as pending / confirmed / flagged; removed the contradictory "no pending state" phrasing. See amendment rationale below.
 >
 > **Clarified in v1.6** — review lives on `grade_review` (1:1, in-place, no history); deterministic responses have no review row; flagged-grade display; stuck-pending auto-flag; mixed-test display gate; dedicated reconcile cron. See v1.6 note in Implications.
+>
+> **Amended in v1.7** — submit-wait wording realigned to batched-per-attempt review with a 60-second hard ceiling (AC-CD11 P6 gate closure); over-ceiling routes to the existing fail-soft `pending` + reconcile-cron path. See v1.7 note in Implications.
 
-**Decision:** v1 includes a sixth AI operation: **grade review**. After AI grading completes on a response, a separate AI call **on a different provider** reviews that grade by examining the question, the candidate response, the rubric, the AI's assigned grade, and the AI's reasoning. The review either confirms the grade or flags it for admin attention. **Reviews run synchronously before the Testee sees their result** — Testee waits an additional 10–30 seconds at submit; on completion, sees the post-review grade and band stamp.
+**Decision:** v1 includes a sixth AI operation: **grade review**. After AI grading completes on a response, a separate AI call **on a different provider** reviews that grade by examining the question, the candidate response, the rubric, the AI's assigned grade, and the AI's reasoning. The review either confirms the grade or flags it for admin attention. **Reviews run synchronously before the Testee sees their result, batched per attempt — a single review call per submit covers every AI-graded response together — with a 60-second hard ceiling at the submit path (AC-CD11 v1.7).** On completion the Testee sees the post-review grades and band stamp; on ceiling-exceeded or provider-unavailable the result page renders in preliminary mode and the grade-review reconcile cron (§8.9) takes over.
 
 **Scope:** v1 reviews 100% of AI-graded short-answer and scenario responses. MCQ, true/false, and matching are deterministic and skip review. Deterministic-graded items display immediately if they are the only items on the test; mixed tests render the result page after all AI grading and review have completed.
 
@@ -465,7 +478,7 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 
 **Rationale:** Manual admin calibration forces admins to do review work the system itself can do. A second AI call examining the grade in light of the rubric is structurally a review — cheaper than admin time at any reasonable scale, surfaces disagreements automatically. The pending status enables fail-soft behaviour without blocking the submit path indefinitely; in normal operation the synchronous review completes before display and pending is never visible, but provider outages do not stall the Testee experience.
 
-**Amendment rationale (v1.1):** Same-provider review reuses the inductive biases of the original grading model — homophily that defeats the purpose of independent review. Cross-family review (different provider, different training distribution, different inductive task framing) generates the orthogonal signal the review pass exists to provide. Asynchronous post-display review created a worse failure mode than the latency it avoided: a Testee internalises "Working band" then sees it walked back the next day after admin reviews the flagged grade. Synchronous review trades 10–30 seconds of submit-time wait for grade durability.
+**Amendment rationale (v1.1):** Same-provider review reuses the inductive biases of the original grading model — homophily that defeats the purpose of independent review. Cross-family review (different provider, different training distribution, different inductive task framing) generates the orthogonal signal the review pass exists to provide. Asynchronous post-display review created a worse failure mode than the latency it avoided: a Testee internalises "Working band" then sees it walked back the next day after admin reviews the flagged grade. Synchronous review trades up to a 60-second batched submit-time wait (AC-CD11 v1.7 budget) for grade durability; over-ceiling responses fall through to the reconcile cron rather than blocking the result page indefinitely.
 
 **Amendment rationale (v1.3):** The v1.1 Implications described a fail-soft "review pending" path while the same decision's `review_status` enumeration asserted "no pending state because review always completes before display" — an internal contradiction. CODE_SPEC §4 already modelled pending / confirmed / flagged correctly. This amendment makes DECISIONS internally consistent: pending is a real status — the fail-soft state between submit and successful cross-family review — not an impossible one.
 
@@ -477,6 +490,8 @@ Hard budget enforcement, graceful model degradation, and per-pill or per-subject
 - After N consecutive cron-retry failures (default 10; a P6 behavioural default, not yet a `system_settings` column), a `pending` `grade_review` auto-promotes to `flagged` with reasoning `auto_flagged_stuck_pending` and surfaces in the admin review queue. Terminal states remain confirmed and flagged.
 - Mixed tests (containing any AI-graded item) gate the result page display on review completion; only fully-deterministic attempts display results immediately.
 - The pending→retry path runs on the dedicated grade-review reconcile cron added to §8.9 / CODE_SPEC §8 (every N minutes, default 5; a P6 behavioural default, not yet a `system_settings` column).
+
+**(v1.7)** Cross-family review is **batched per attempt** — one review call per submit reviews every AI-graded response in the attempt together, returning a structured array of `{grade_id, verdict, reasoning?}` items. Hard latency ceiling at the submit path is **60 seconds**; on ceiling-exceeded or provider-unavailable, every `grade_review` row for the attempt stays `pending`, the result page renders in preliminary mode (the F14 display gate accepts `pending` as a resolved-state-not-yet-confirmed, not as "review absent"), and the §8.9 grade-review reconcile cron picks the rows up. At the v1.6 defaults (cron every 5 min, max-retry 10) the auto-promote-to-`flagged` window is ≈50 minutes wall-clock from initial submit; this is named explicitly here so the operator-visible SLA lives in one place (F11 amplified, no default changes).
 
 **Spec reference:** §6, §4.8, §7, §8.
 

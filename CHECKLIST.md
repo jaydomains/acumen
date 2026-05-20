@@ -83,7 +83,7 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| **AC-CD11 latency rule resolved (gate)** | P6 | AC-CD11 | `CODE_SPEC.md` | missing | |
+| **AC-CD11 latency rule resolved (gate)** | P6 | AC-CD11 | `CODE_SPEC.md` | built | `CODE_SPEC.md` §18 AC-CD11 v1.7; `DECISIONS.md` AC-D19 v1.7; `SPEC.md` §6.6 / §4.8 v1.7 |
 | Synchronous OpenAI review before stamp | P6 | AC-D19 | `app/routers/review.py` | missing | |
 | Fail-soft "review pending" + reconcile cron | P6 | AC-D19 | `app/domain/`,`app/beat_schedule.py` | missing | |
 | Admin flag queue | P6 | AC-D19 | `app/routers/admin.py` | missing | |
@@ -145,12 +145,11 @@
 Open, unresolved items the build must close. Resolved spec/implementation
 divergences are recorded in per-PR handovers, not here.
 
-1. **AC-CD11 — cross-family review latency rule (P6 gate).** Is the
-   AC-D19 review per-response sequential, batched, or parallel, and what
-   is the hard latency ceiling before the fail-soft "review pending" path
-   triggers? **Unresolved.** Must be answered with the user at the P6
-   gate before the blocking submit path is built. Recorded in CODE_SPEC
-   AC-CD11.
+*None.* AC-CD11 — the only drift question opened during v1.0 spec
+authoring — was **closed at v1.7** (cross-family review locked as
+batched per attempt, 60-s hard ceiling, over-ceiling routes to the v1.6
+grade-review reconcile cron). See `handovers/PR-017-v1.7-ac-cd11-gate-closure.md`,
+`CODE_SPEC.md` §18 AC-CD11, `DECISIONS.md` AC-D19.
 
 > Note: the v1.2 benchmark/JIT prose divergence (SPEC §4.3/§4.7/§4.12/
 > §6.1, DECISIONS AC-D13 vs amended AC-D25) was **resolved inline** in
