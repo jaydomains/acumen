@@ -197,6 +197,45 @@ def test_scenario_submit_writes_ai_grade(
     assert len(grades) == 1
 
 
+def test_non_numeric_score_defaults_to_zero(
+    cat_client: TestClient,
+    cat_session: CatalogueFakeSession,
+    recording_provider: RecordingProvider,
+) -> None:
+    """A model that returns a non-numeric score (e.g. "high", "N/A")
+    must NOT crash the submit path — the score defaults to 0.0 and
+    the audit trail still captures the verbatim reasoning string for
+    review (Gitar PR-#16 Slice 2 finding #2)."""
+    recording_provider.set_response(
+        Operation.grading,
+        {
+            "score": "high",  # not numeric
+            "verdict": "partial",
+            "reasoning": "Reasoning preserved verbatim.",
+        },
+    )
+    seed_system_settings(cat_session)
+    t = _testee(cat_session)
+    test = _frozen_mixed_test(cat_session)
+    sa = _q(
+        cat_session,
+        test.id,
+        QuestionType.short_answer,
+        {"prompt": "p", "rubric": "r", "model_answer": "m"},
+    )
+    started = _start(cat_client, t, test.id)
+    _autosave(cat_client, t, started["id"], str(sa.id), {"text": "answer"})
+    # Submit must succeed despite the bad score.
+    r = cat_client.post(f"/v1/attempts/{started['id']}/submit", headers=bearer(t))
+    assert r.status_code == 200
+
+    grades = cat_session.store.get(Grade, [])
+    assert len(grades) == 1
+    assert grades[0].score == 0.0
+    assert grades[0].verdict == GradeVerdict.partial  # verdict survived
+    assert grades[0].ai_reasoning == "Reasoning preserved verbatim."
+
+
 def test_unanswered_ai_question_still_grades(
     cat_client: TestClient,
     cat_session: CatalogueFakeSession,

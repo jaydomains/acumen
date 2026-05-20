@@ -513,19 +513,30 @@ async def start_attempt(
                 "attempt_id": str(attempt.id),
             },
         )
-        generated = gen_result.content.get("questions", [])
+        generated = gen_result.content.get("questions") or []
+        # Defensive: skip malformed specs rather than crash the attempt.
+        # Matches the AI-grading path's defensive posture below — a
+        # single bad spec must not block a testee from starting.
+        # Provenance is shared across VALID questions only so the cost
+        # dashboard's sum-to-call-total invariant holds (Gitar PR-#16
+        # Slice 2 finding #1).
+        valid_questions: list[Question] = []
         for spec in generated:
-            question = Question(
-                tenant_id=SEED_TENANT_ID,
-                attempt_id=attempt.id,
-                type=QuestionType(spec["type"]),
-                config=spec["config"],
-                assigned_difficulty=spec["assigned_difficulty"],
-                realism_flag_count=0,
-            )
-            record_provenance_share(
-                question, gen_result, share_count=max(1, len(generated))
-            )
+            try:
+                question = Question(
+                    tenant_id=SEED_TENANT_ID,
+                    attempt_id=attempt.id,
+                    type=QuestionType(spec["type"]),
+                    config=spec["config"],
+                    assigned_difficulty=spec["assigned_difficulty"],
+                    realism_flag_count=0,
+                )
+            except (KeyError, ValueError, TypeError):
+                continue
+            valid_questions.append(question)
+        share_count = max(1, len(valid_questions))
+        for question in valid_questions:
+            record_provenance_share(question, gen_result, share_count=share_count)
             db.add(question)
         await db.flush()
         attempt.question_snapshot = {
@@ -932,14 +943,19 @@ async def _ai_grade_responses(db: AsyncSession, attempt: Attempt) -> None:
                 "candidate_response": candidate_text,
             },
         )
-        score = float(grade_result.content.get("score", 0.0))
+        # Defensive on both score AND verdict — both come from the
+        # same untrusted AI output (Gitar PR-#16 Slice 2 finding #2).
+        # A non-numeric ``score`` (e.g. "high", "N/A") defaults to 0.0
+        # so the grade row exists with a "didn't grade" verdict and
+        # the audit trail captures the verbatim reasoning string.
+        try:
+            score = float(grade_result.content.get("score", 0.0))
+        except (ValueError, TypeError):
+            score = 0.0
         verdict_raw = str(grade_result.content.get("verdict", "none"))
         try:
             verdict = GradeVerdict(verdict_raw)
         except ValueError:
-            # Defensive: a model that returns a non-enum verdict surfaces
-            # as ``none`` rather than crashing the submit path. The audit
-            # trail captures the verbatim reasoning string for review.
             verdict = GradeVerdict.none
         grade = Grade(
             tenant_id=SEED_TENANT_ID,
