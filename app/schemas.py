@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Generic, TypeVar
+from typing import Annotated, Generic, Literal, TypeVar
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -532,3 +532,70 @@ class GradeReviewReconcileResult(_Base):
     rows_flagged: int
     rows_auto_flagged: int
     rows_still_pending: int
+
+
+class FlaggedGradeReviewItem(_Base):
+    """One flagged grade_review row waiting for admin resolution
+    (AC-D19 v1.6: flagged grades surface in the admin queue). The
+    admin sees the AI grade alongside the reviewer's pushback so the
+    keep/accept/substitute decision is informed."""
+
+    grade_review_id: uuid.UUID
+    grade_id: uuid.UUID
+    attempt_id: uuid.UUID
+    question_id: uuid.UUID
+    ai_score: float
+    ai_verdict: str
+    ai_reasoning: str | None
+    review_reasoning: str | None
+    created_at: datetime
+
+
+class FlaggedGradeReviewListResponse(_Base):
+    data: list[FlaggedGradeReviewItem]
+
+
+class GradeReviewResolveRequest(_Base):
+    """Admin resolution of a flagged grade_review (AC-D19 v1.6
+    "admin chooses to keep the AI grade, accept the reviewer's
+    verdict, or substitute their own"; AC-D2 override mechanism).
+
+    * ``keep_ai`` — Grade.score / verdict / ai_reasoning unchanged;
+      override columns set so the row is marked admin-resolved.
+    * ``accept_reviewer`` — Grade.score → 0.0, verdict → none,
+      ai_reasoning → ``grade_review.review_reasoning`` (so the
+      reviewer's pushback is preserved on the Grade row).
+    * ``substitute`` — admin supplies ``score`` (required, 0..1) and
+      ``verdict`` (required, "full"|"partial"|"none"); ``reasoning``
+      is optional but recommended.
+    """
+
+    action: Literal["keep_ai", "accept_reviewer", "substitute"]
+    score: float | None = Field(default=None, ge=0.0, le=1.0)
+    verdict: Literal["full", "partial", "none"] | None = None
+    reasoning: str | None = None
+
+    @model_validator(mode="after")
+    def _check_substitute_required_fields(self) -> GradeReviewResolveRequest:
+        if self.action == "substitute":
+            if self.score is None or self.verdict is None:
+                raise ValueError(
+                    "action='substitute' requires both 'score' and 'verdict'"
+                )
+        return self
+
+
+class GradeReviewResolveResult(_Base):
+    """Response shape after a successful admin resolution. Returns the
+    canonical post-resolution state of the underlying Grade so the
+    admin UI can render the new score / outcome without a second
+    round-trip."""
+
+    grade_review_id: uuid.UUID
+    grade_id: uuid.UUID
+    attempt_id: uuid.UUID
+    action: str
+    grade_score: float
+    grade_verdict: str
+    attempt_overall_score: float | None
+    attempt_outcome: str | None

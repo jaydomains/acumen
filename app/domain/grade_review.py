@@ -57,12 +57,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.cost import record_provenance_share
 from app.ai.provider import Operation, resolve_provider
 from app.domain._scoring import outcome_for
+from app.domain.catalogue import record_audit
 from app.models import (
     SEED_TENANT_ID,
+    AppUser,
     Attempt,
     Grade,
     GradeReview,
     GradeSource,
+    GradeVerdict,
     Question,
     QuestionType,
     Response,
@@ -70,7 +73,7 @@ from app.models import (
     SystemSettings,
     Test,
 )
-from app.permissions import now_utc
+from app.permissions import APIError, now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -691,3 +694,183 @@ async def reconcile_pending_grade_reviews(db: AsyncSession) -> dict[str, int]:
         await _recompute_overall_score(db, attempt, test)
 
     return counts
+
+
+# --- Admin flag queue (Slice 4 — AC-D19 v1.6 / AC-D2) -----------------
+
+
+async def list_flagged_reviews(db: AsyncSession) -> list[dict[str, Any]]:
+    """List flagged ``grade_review`` rows whose underlying Grade has
+    NOT been admin-overridden — the admin queue surface (AC-D19 v1.6).
+
+    Once an admin resolves a flag via :func:`resolve_flagged_review`,
+    ``Grade.overridden_at`` is set and the row drops off the queue.
+    The GradeReview.status stays ``flagged`` (the resolution is
+    recorded on the Grade, not on the review row) — that's why the
+    filter joins on the override column rather than checking review
+    status alone.
+
+    Returns a list of dicts shaped for ``FlaggedGradeReviewItem``. The
+    caller (router) converts to Pydantic.
+    """
+    flagged = await db.execute(
+        select(GradeReview).where(
+            GradeReview.status == ReviewStatus.flagged,
+            GradeReview.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    rows = list(flagged.scalars().all())
+    out: list[dict[str, Any]] = []
+    for gr in rows:
+        grade = await _grade_by_id(db, gr.grade_id)
+        if grade is None or grade.overridden_at is not None:
+            continue
+        response = await _response_by_id(db, grade.response_id)
+        if response is None:
+            continue
+        out.append(
+            {
+                "grade_review_id": gr.id,
+                "grade_id": grade.id,
+                "attempt_id": response.attempt_id,
+                "question_id": response.question_id,
+                "ai_score": float(grade.score),
+                "ai_verdict": grade.verdict.value,
+                "ai_reasoning": grade.ai_reasoning,
+                "review_reasoning": gr.review_reasoning,
+                "created_at": gr.created_at,
+            }
+        )
+    # Oldest-first so the admin queue surfaces the longest-waiting
+    # row at the top of the list (operator priority hint).
+    out.sort(key=lambda r: r["created_at"])
+    return out
+
+
+async def resolve_flagged_review(
+    db: AsyncSession,
+    grade_review_id: uuid.UUID,
+    admin: AppUser,
+    *,
+    action: str,
+    score: float | None = None,
+    verdict: str | None = None,
+    reasoning: str | None = None,
+) -> dict[str, Any]:
+    """Resolve one flagged ``grade_review`` per admin's chosen action
+    (AC-D19 v1.6 / AC-D2 override mechanism). Writes the override
+    columns on the underlying Grade, recomputes ``overall_score`` for
+    the attempt, and writes an audit-log entry.
+
+    Raises :class:`APIError` 404 if the GradeReview is missing, 409 if
+    the GradeReview is not currently ``flagged``, or 409 if the Grade
+    has already been overridden (idempotency guard — admin can't
+    resolve the same row twice).
+
+    Returns a dict shaped for ``GradeReviewResolveResult``.
+    """
+    gr = await db.execute(
+        select(GradeReview).where(
+            GradeReview.id == grade_review_id,
+            GradeReview.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    gr_row = gr.scalar_one_or_none()
+    if gr_row is None:
+        raise APIError(404, "grade_review_not_found", "grade_review not found")
+    if gr_row.status != ReviewStatus.flagged:
+        raise APIError(
+            409,
+            "grade_review_not_flagged",
+            "Only flagged grade_review rows can be resolved.",
+        )
+    grade = await _grade_by_id(db, gr_row.grade_id)
+    if grade is None:
+        raise APIError(404, "grade_not_found", "Underlying grade row not found.")
+    if grade.overridden_at is not None:
+        raise APIError(
+            409,
+            "grade_already_overridden",
+            "The underlying grade has already been resolved by an admin.",
+        )
+
+    if action == "keep_ai":
+        # Grade.score / verdict / ai_reasoning unchanged; admin
+        # explicitly chooses to trust the AI's grade despite the
+        # reviewer's pushback.
+        pass
+    elif action == "accept_reviewer":
+        # The reviewer's verdict is binary (flagged); accepting it
+        # means revoking the AI's grade. score → 0.0, verdict → none,
+        # ai_reasoning → review_reasoning so the reviewer's pushback
+        # is preserved on the Grade row.
+        grade.score = 0.0
+        grade.verdict = GradeVerdict.none
+        grade.ai_reasoning = gr_row.review_reasoning
+    elif action == "substitute":
+        # Pydantic enforces both ``score`` and ``verdict`` are present
+        # for substitute; the asserts here are defensive against a
+        # direct domain call that bypassed the schema.
+        if score is None or verdict is None:
+            raise APIError(
+                422,
+                "substitute_missing_score_or_verdict",
+                "action='substitute' requires both 'score' and 'verdict'.",
+            )
+        grade.score = float(score)
+        try:
+            grade.verdict = GradeVerdict(verdict)
+        except ValueError as exc:
+            raise APIError(
+                422,
+                "invalid_verdict",
+                f"verdict={verdict!r} is not one of full / partial / none.",
+            ) from exc
+        if reasoning is not None:
+            grade.ai_reasoning = reasoning
+    else:
+        raise APIError(
+            422,
+            "invalid_action",
+            f"action={action!r} is not keep_ai / accept_reviewer / substitute.",
+        )
+
+    # Common per-action: mark Grade as admin-resolved + update the
+    # response_score the result page reads from + recompute attempt.
+    now = now_utc()
+    grade.overridden_by = admin.id
+    grade.overridden_at = now
+    response = await _response_by_id(db, grade.response_id)
+    if response is not None:
+        response.response_score = grade.score
+    attempt = (
+        await _attempt_by_id(db, response.attempt_id) if response is not None else None
+    )
+    test = await _test_by_id(db, attempt.test_id) if attempt is not None else None
+    if attempt is not None and test is not None:
+        await _recompute_overall_score(db, attempt, test)
+
+    await record_audit(
+        db,
+        actor_id=admin.id,
+        action="grade_review.resolve",
+        target_entity="grade_review",
+        target_id=gr_row.id,
+        detail={
+            "action": action,
+            "score": grade.score,
+            "verdict": grade.verdict.value,
+            "reasoning": reasoning,
+        },
+    )
+
+    return {
+        "grade_review_id": gr_row.id,
+        "grade_id": grade.id,
+        "attempt_id": attempt.id if attempt is not None else uuid.UUID(int=0),
+        "action": action,
+        "grade_score": float(grade.score),
+        "grade_verdict": grade.verdict.value,
+        "attempt_overall_score": attempt.overall_score if attempt is not None else None,
+        "attempt_outcome": attempt.outcome if attempt is not None else None,
+    }
