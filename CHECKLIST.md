@@ -59,12 +59,15 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Four test modes data path | P4 | AC-D5 | `app/routers/tests.py` | missing | |
-| Frozen attempt snapshot | P4 | AC-D17 | `app/routers/attempts.py` | missing | |
-| Presentation shuffle from seed | P4 | AC-D24 | `app/domain/streaming.py` | missing | |
-| Deterministic grading (MCQ/TF/matching) | P4 | AC-D5 | `app/routers/grading.py` | missing | |
-| Derived `engagement_status` | P4 | AC-D26 | `app/domain/engagement.py` | missing | |
-| Pause blanks content | P4 | AC-D11 | `app/routers/attempts.py` | missing | |
+| Four test modes data path | P4 | AC-D5 | `app/domain/tests.py`, `app/routers/tests.py` | built | `pytest tests/integration/test_p4_tests.py` |
+| Frozen attempt snapshot | P4 | AC-D17 | `app/domain/attempts.py`, `app/routers/attempts.py` | built | `pytest tests/integration/test_p4_attempts.py::test_frozen_attempt_snapshots_questions` |
+| Presentation shuffle from seed | P4 | AC-D24 | `app/domain/attempts.py`, `tests/unit/test_p4_shuffle.py` | built | `pytest tests/unit/test_p4_shuffle.py` + `pytest tests/integration/test_p4_attempts.py::test_block_internal_shuffle_preserved_across_pause_and_resume` |
+| Deterministic grading (MCQ/TF/matching) | P4 | AC-D5, AC-D19 v1.6 | `app/domain/attempts.py` (`_auto_grade_deterministic`, `result_view`) | built | `pytest tests/integration/test_p4_grading.py` |
+| Derived `engagement_status` | P4 | AC-D26 v1.6 | `app/domain/engagement.py`, `app/routers/admin.py` | built | `pytest tests/integration/test_p4_engagement.py` |
+| Pause blanks content | P4 | AC-D11 v1.6 | `app/domain/attempts.py` (lazy auto-resume) | built | `pytest tests/integration/test_p4_attempts.py::test_pause_blanks_question_content_and_restores_on_resume tests/integration/test_p4_attempts.py::test_lazy_max_duration_auto_resume` |
+| Attempt→Assignment FK + sequence uniqueness | P4 | AC-D26 v1.4, AC-D3 v1.5 | `app/models.py` (Attempt), `alembic/versions/0004_p4_attempt_assignment_fk.py`, `alembic/versions/0005_p4_attempt_sequence_unique.py` | built | `pytest tests/unit/test_p4_schema.py` |
+| Result-display gate (F14 mixed-test) | P4 | AC-D19 v1.6 / SPEC §4.8 | `app/domain/attempts.py::result_view`, `app/routers/attempts.py::attempt_result` | built | `pytest tests/integration/test_p4_grading.py::test_result_endpoint_mixed_test_returns_review_pending tests/integration/test_p4_grading.py::test_result_endpoint_deterministic_attempt_returns_ready` |
+| Engagement sweep + admin pending widget | P4 | AC-D26 v1.6 | `app/domain/engagement.py::run_engagement_sweep`, `app/routers/admin.py` | built | `pytest tests/integration/test_p4_engagement.py::test_sweep_sends_reminder_to_pending_assignees tests/integration/test_p4_engagement.py::test_sweep_escalates_after_second_reminder tests/integration/test_p4_engagement.py::test_pending_widget_lists_stale_mandatory_pending_only` |
 
 ## P5 — AI provider layer + 5 Anthropic ops
 
