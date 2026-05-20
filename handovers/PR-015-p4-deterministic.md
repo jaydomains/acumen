@@ -241,7 +241,9 @@ canonical-doc change needed.
   AC-D3/D11/D13/D17/D18/D24; `attempt.assignment_id` populated and
   validated against the snapshot for assignment_driven and
   loop_driven origins (AC-D26 v1.4); `(test_id, testee_id,
-  sequence_number)` unique + `IntegrityError`-retry (AC-D3 v1.5);
+  sequence_number)` unique + `IntegrityError`-retry bounded by
+  `_SEQUENCE_RETRY_LIMIT = 5` (`app/domain/attempts.py:113`) per
+  AC-D3 v1.5;
   64-bit shuffle seed from the low 8 bytes of the attempt UUID with
   block-internal preservation (AC-D24); lazy max-duration
   auto-resume (AC-D11 v1.6); deterministic auto-grading on submit
