@@ -55,6 +55,43 @@ def get_prompt(operation: Operation) -> tuple[str, str]:
         ) from exc
 
 
+def render_prompt(
+    template: str, payload: dict[str, object], *, operation: Operation
+) -> str:
+    """Substitute ``payload`` keys into ``template`` and surface a clear
+    error if anything is missing or malformed.
+
+    Domain code and prompt templates evolve independently — a missing
+    payload key surfaced as a raw ``KeyError("subject_name")`` would
+    leave the operator guessing which call, which prompt, and which
+    field. Re-raising as :class:`ValueError` with the op name + the
+    missing key + the available keys is the operator-friendly form.
+    Also catches the rare malformed-template :class:`ValueError` (e.g.
+    a stray ``{`` left over from a prompt edit) by wrapping with the
+    same context (Gitar PR-#16 finding on Slice 1).
+    """
+    try:
+        return template.format(**payload)
+    except KeyError as exc:
+        # ``exc.args[0]`` is the missing key name; ``str(exc)`` would
+        # render it with surrounding quotes which is noisier in the
+        # error message.
+        missing = exc.args[0] if exc.args else "<unknown>"
+        raise ValueError(
+            f"Prompt template for {operation.value!r} requires key "
+            f"{missing!r} which is missing from the payload. Available "
+            f"keys: {sorted(payload)}."
+        ) from exc
+    except (ValueError, IndexError) as exc:
+        # ValueError: malformed template (unmatched brace, bad format
+        # spec); IndexError: positional placeholders ({0}) with no args.
+        # Both are author-time mistakes worth surfacing with context.
+        raise ValueError(
+            f"Prompt template for {operation.value!r} could not be "
+            f"rendered: {exc}. Available payload keys: {sorted(payload)}."
+        ) from exc
+
+
 def registered_operations() -> frozenset[Operation]:
     """Snapshot of which operations have a registered prompt — used by
     :mod:`tests.unit.test_p5_prompts` to assert the full Anthropic set."""

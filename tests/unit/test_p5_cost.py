@@ -149,3 +149,38 @@ def test_op_to_method_routes_per_ac_cd8_v1_6() -> None:
     assert OP_TO_METHOD[Operation.grade_review] == "review"
     assert OP_TO_METHOD[Operation.anchor_self_review] == "review"
     assert OP_TO_METHOD[Operation.embed] == "embed"
+
+
+# --- PRICE_TABLE coverage of every coded-default model (Gitar #3) ----
+
+
+def test_price_table_covers_every_coded_default_model_id() -> None:
+    """Every model ID :mod:`app.config` exposes as an env-overridable
+    default must have a :data:`PRICE_TABLE` entry under the right
+    provider. Catches the drift Gitar PR-#16 flagged: an admin bumps
+    ``ANTHROPIC_MODEL_GENERATION`` to a newer Sonnet, the matching
+    PRICE_TABLE row is forgotten, and ``compute_cost`` would raise on
+    the first live AI call. CI-time check is preferable to a runtime
+    startup hook — the structure gate forbids ``app.ai`` imports from
+    ``app/main.py`` so a runtime check would violate the setup-only
+    contract anyway (AC-CD2)."""
+    from app.config import get_settings
+
+    cfg = get_settings()
+    expected_pairs: set[tuple[str, str]] = {
+        ("anthropic", cfg.anthropic_model_generation),
+        ("anthropic", cfg.anthropic_model_grading),
+        ("anthropic", cfg.anthropic_model_weakness),
+        ("anthropic", cfg.anthropic_model_material),
+        ("anthropic", cfg.anthropic_model_pill_proposal),
+        ("openai", cfg.openai_model_review),
+        ("openai", cfg.openai_embedding_model),
+    }
+    missing = expected_pairs - set(PRICE_TABLE)
+    assert not missing, (
+        f"PRICE_TABLE is missing pricing for the following coded-default "
+        f"(provider, model) pairs: {sorted(missing)}. Update "
+        f"app/ai/cost.py::PRICE_TABLE whenever a default model ID in "
+        f"app/config.py is bumped — otherwise compute_cost will raise on "
+        f"the first live call (Gitar PR-#16 Slice 1 finding #3)."
+    )

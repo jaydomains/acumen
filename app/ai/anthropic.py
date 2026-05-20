@@ -36,7 +36,7 @@ from tenacity import (
 )
 
 from app.ai.cost import compute_cost
-from app.ai.prompts import get_prompt
+from app.ai.prompts import get_prompt, render_prompt
 from app.ai.provider import AIResult, EmbedResult, Operation, resolve_model
 from app.config import get_settings
 
@@ -132,7 +132,12 @@ class AnthropicProvider:
     async def _call(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
         template, prompt_version = get_prompt(operation)
         model = resolve_model(operation)
-        prompt = template.format(**payload)
+        # ``render_prompt`` wraps str.format() with a clear error that
+        # carries the operation + missing key + available keys — a
+        # missing payload key now surfaces as a debuggable ValueError
+        # instead of an opaque ``KeyError("subject_name")`` (Gitar
+        # PR-#16, Slice 1 finding #1).
+        prompt = render_prompt(template, payload, operation=operation)
         max_tokens = _MAX_OUTPUT_TOKENS[operation]
         response = await _invoke(
             self._get_client(),
@@ -140,7 +145,18 @@ class AnthropicProvider:
             prompt=prompt,
             max_tokens=max_tokens,
         )
-        content = _parse_json_content(response)
+        # Same loud-error pattern for the JSON-parse path: re-raise with
+        # operation + model + a truncated snippet of the raw response so
+        # a model that drifts off the JSON-only contract surfaces with
+        # enough context to debug (Gitar PR-#16, Slice 1 finding #2).
+        try:
+            content = _parse_json_content(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Model returned non-JSON for {operation.value!r} "
+                f"(provider={self.name}, model={model}): "
+                f"{_raw_text(response)[:200]!r}"
+            ) from exc
         prompt_tokens = response.usage.input_tokens
         completion_tokens = response.usage.output_tokens
         cost = compute_cost(self.name, model, prompt_tokens, completion_tokens)
@@ -179,16 +195,23 @@ async def _invoke(
     )
 
 
+def _raw_text(response: anthropic.types.Message) -> str:
+    """Join the text blocks of a Messages-API response. Used by the
+    JSON parser and by the JSON-parse error path so the operator sees
+    the same raw string the parser saw."""
+    text_blocks = [
+        b.text for b in response.content if isinstance(b, anthropic.types.TextBlock)
+    ]
+    return "".join(text_blocks).strip()
+
+
 def _parse_json_content(response: anthropic.types.Message) -> dict[str, Any]:
     """Pull the JSON object the prompts request out of the model's
     first text block. The prompts all say "JSON only" — if the model
     leaks prose around it, fall back to a best-effort JSON object scan
     so a single stray sentence does not crash the call.
     """
-    text_blocks = [
-        b.text for b in response.content if isinstance(b, anthropic.types.TextBlock)
-    ]
-    raw = "".join(text_blocks).strip()
+    raw = _raw_text(response)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
