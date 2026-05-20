@@ -540,6 +540,49 @@ def test_resolve_404_when_grade_review_not_found(
     assert r.status_code == 404
 
 
+def test_resolve_500_when_grade_chain_is_broken(
+    cat_client: TestClient,
+    cat_session: CatalogueFakeSession,
+    recording_provider: RecordingProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the Grade → Response → Attempt → Test FK chain is missing a
+    link, ``resolve_flagged_review`` raises 500 ``broken_grade_chain``
+    rather than returning a sentinel UUID (Gitar PR-#18 Slice 4
+    finding). The FK constraints make this impossible in production,
+    but the test forces the state to verify the guard fires."""
+    _attempt_id, _t = _submit_with_flagged_review(
+        cat_client, cat_session, recording_provider, monkeypatch
+    )
+    admin_user = _admin(cat_session)
+    listing = cat_client.get(
+        "/v1/admin/grade-reviews/flagged", headers=bearer(admin_user)
+    ).json()
+    gr_id = listing["data"][0]["grade_review_id"]
+
+    # Force the chain to break: clear the Response store so the Grade
+    # row points at a non-existent response. The Grade's overridden_by /
+    # overridden_at columns get set before the chain check, which is
+    # acceptable — the 500 makes the partial state visible to the
+    # operator. (Production with real FK constraints would never reach
+    # this state.)
+    from app.models import Response as ResponseModel
+
+    cat_session.store[ResponseModel] = []
+
+    r = cat_client.post(
+        f"/v1/admin/grade-reviews/{gr_id}/resolve",
+        headers=bearer(admin_user),
+        json={"action": "keep_ai"},
+    )
+    assert r.status_code == 500
+    body = r.json()
+    assert (
+        body.get("error", {}).get("code") == "broken_grade_chain"
+        or body.get("code") == "broken_grade_chain"
+    )
+
+
 def test_resolve_forbidden_for_non_admin(
     cat_client: TestClient,
     cat_session: CatalogueFakeSession,

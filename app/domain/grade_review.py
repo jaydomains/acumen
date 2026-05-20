@@ -840,15 +840,28 @@ async def resolve_flagged_review(
     now = now_utc()
     grade.overridden_by = admin.id
     grade.overridden_at = now
+
+    # The grade → response → attempt → test chain is an invariant
+    # (Grade.response_id is a non-null FK, Response.attempt_id is a
+    # non-null FK, Attempt.test_id is a non-null FK). If any link is
+    # missing the row set is corrupt — fail loudly with 500 rather
+    # than fabricate a sentinel ``uuid.UUID(int=0)`` that would
+    # silently pass schema validation and confuse the admin UI
+    # (Gitar PR-#18 Slice 4 finding).
     response = await _response_by_id(db, grade.response_id)
-    if response is not None:
-        response.response_score = grade.score
     attempt = (
         await _attempt_by_id(db, response.attempt_id) if response is not None else None
     )
     test = await _test_by_id(db, attempt.test_id) if attempt is not None else None
-    if attempt is not None and test is not None:
-        await _recompute_overall_score(db, attempt, test)
+    if response is None or attempt is None or test is None:
+        raise APIError(
+            500,
+            "broken_grade_chain",
+            "Grade references a missing response / attempt / test row — "
+            "possible data corruption. Investigate before re-running.",
+        )
+    response.response_score = grade.score
+    await _recompute_overall_score(db, attempt, test)
 
     await record_audit(
         db,
@@ -867,10 +880,10 @@ async def resolve_flagged_review(
     return {
         "grade_review_id": gr_row.id,
         "grade_id": grade.id,
-        "attempt_id": attempt.id if attempt is not None else uuid.UUID(int=0),
+        "attempt_id": attempt.id,
         "action": action,
         "grade_score": float(grade.score),
         "grade_verdict": grade.verdict.value,
-        "attempt_overall_score": attempt.overall_score if attempt is not None else None,
-        "attempt_outcome": attempt.outcome if attempt is not None else None,
+        "attempt_overall_score": attempt.overall_score,
+        "attempt_outcome": attempt.outcome,
     }
