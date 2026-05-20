@@ -351,6 +351,31 @@ async def test_sweep_skips_optional_assignments(
     assert p.captured_emails() == []
 
 
+async def test_sweep_steps_chronologically_regardless_of_input_order(
+    cat_session: CatalogueFakeSession,
+) -> None:
+    """Gitar PR-#15: ``_reminder_steps`` sorts its output so an
+    out-of-order admin schedule config doesn't make the break-on-future
+    loop skip a due step. Configure ``[30, 14]`` instead of the
+    canonical ``[14, 30]``: at day 20, the first listed step is
+    +30d (future) and would cause a premature break under the old
+    code; sorting puts +14d first so the actually-due step fires."""
+    cat_session.add(
+        SystemSettings(
+            tenant_id=SEED_TENANT_ID,
+            reminder_schedule_no_deadline_days_after=[30, 14],
+        )
+    )
+    admin = _admin(cat_session)
+    t = _testee(cat_session, "t@kbc.com")
+    _assignment(cat_session, assigner=admin, testees=[t], age_days=20)
+    summary = await engagement_domain.run_engagement_sweep(cat_session)
+    # The +14d step is due (6 days ago); the +30d step is still 10
+    # days out. With chronological sorting, exactly one reminder
+    # fires; without the fix, none would (break tripped early).
+    assert summary["reminders_sent"] == 1
+
+
 async def test_sweep_with_deadline_schedule(
     cat_session: CatalogueFakeSession,
 ) -> None:

@@ -93,19 +93,15 @@ async def _attempts_for(
     return list(result.scalars().all())
 
 
-async def derive_engagement_status(
-    db: AsyncSession,
-    *,
+def _status_from_attempts(
+    attempts: list[Attempt],
     assignment: Assignment,
-    testee_id: uuid.UUID,
-    now: datetime | None = None,
+    now: datetime,
 ) -> str:
-    """The per-(assignment, Testee) derivation locked in AC-D26 v1.6.
-    Path-level aggregation (per AC-D9 v1.6 "all in-scope pills
-    attempted and submitted by the assignee") is a P7 concern — P4
-    surfaces the per-Testee status against each assignment row."""
-    now = now or now_utc()
-    attempts = await _attempts_for(db, assignment.id, testee_id)
+    """Pure derivation over a pre-fetched attempts list. The sweep
+    and the widget pre-fetch their attempts in a single query and
+    call this directly; the public ``derive_engagement_status`` keeps
+    its one-shot signature for callers that don't need batch reads."""
     if not attempts:
         status = EngagementStatus.pending
     elif any(a.submitted_at is not None for a in attempts):
@@ -121,19 +117,65 @@ async def derive_engagement_status(
     return status
 
 
-# --- pending widget --------------------------------------------------
+async def derive_engagement_status(
+    db: AsyncSession,
+    *,
+    assignment: Assignment,
+    testee_id: uuid.UUID,
+    now: datetime | None = None,
+) -> str:
+    """The per-(assignment, Testee) derivation locked in AC-D26 v1.6.
+    Path-level aggregation (per AC-D9 v1.6 "all in-scope pills
+    attempted and submitted by the assignee") is a P7 concern — P4
+    surfaces the per-Testee status against each assignment row."""
+    now = now or now_utc()
+    attempts = await _attempts_for(db, assignment.id, testee_id)
+    return _status_from_attempts(attempts, assignment, now)
 
 
-async def _assignees(
-    db: AsyncSession, assignment_id: uuid.UUID
-) -> list[AssignmentAssignee]:
+# --- pre-fetched indices (Gitar PR-#15 N+1) --------------------------
+# The sweep and the widget run over the whole tenant on a cron, so the
+# naive "load assignment → load assignees → query attempts per assignee"
+# pattern is O(assignments × assignees) DB calls. These helpers each
+# issue ONE tenant-scoped query and Python-index the result; the
+# downstream loops do all their lookups in memory.
+
+
+async def _assignees_by_assignment(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[AssignmentAssignee]]:
     result = await db.execute(
-        select(AssignmentAssignee).where(
-            AssignmentAssignee.assignment_id == assignment_id,
-            AssignmentAssignee.tenant_id == SEED_TENANT_ID,
-        )
+        select(AssignmentAssignee).where(AssignmentAssignee.tenant_id == SEED_TENANT_ID)
     )
-    return list(result.scalars().all())
+    index: dict[uuid.UUID, list[AssignmentAssignee]] = {}
+    for row in result.scalars().all():
+        index.setdefault(row.assignment_id, []).append(row)
+    return index
+
+
+async def _attempts_by_assignment_testee(
+    db: AsyncSession,
+) -> dict[tuple[uuid.UUID, uuid.UUID], list[Attempt]]:
+    """Pre-fetch every Attempt in the tenant and index by
+    ``(assignment_id, testee_id)``. The shipped harness parses
+    ``where`` clauses as equality only — pulling all tenant attempts
+    in one query and filtering nulls in Python keeps the test seam
+    intact while collapsing the N+1."""
+    result = await db.execute(select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID))
+    index: dict[tuple[uuid.UUID, uuid.UUID], list[Attempt]] = {}
+    for attempt in result.scalars().all():
+        if attempt.assignment_id is None:
+            continue
+        index.setdefault((attempt.assignment_id, attempt.testee_id), []).append(attempt)
+    return index
+
+
+async def _users_by_id(db: AsyncSession) -> dict[uuid.UUID, AppUser]:
+    result = await db.execute(select(AppUser).where(AppUser.tenant_id == SEED_TENANT_ID))
+    return {u.id: u for u in result.scalars().all()}
+
+
+# --- pending widget --------------------------------------------------
 
 
 async def list_pending_assignments(
@@ -143,7 +185,12 @@ async def list_pending_assignments(
     mandatory assignment that has at least one assignee stuck in
     ``pending`` past ``pending_assignment_age_threshold_days``
     (default 7). Returns one entry per stuck (assignment, Testee)
-    pair so the admin sees who needs nudging."""
+    pair so the admin sees who needs nudging.
+
+    Uses the pre-fetched indices so the whole widget costs four
+    bounded queries (settings + assignments + assignees + attempts),
+    not O(assignments × assignees) per call.
+    """
     now = now or now_utc()
     settings = await _settings(db)
     threshold_days = _DEFAULT_THRESHOLD_DAYS
@@ -153,6 +200,8 @@ async def list_pending_assignments(
     ):
         threshold_days = settings.pending_assignment_age_threshold_days
     cutoff = now - timedelta(days=threshold_days)
+    assignees_index = await _assignees_by_assignment(db)
+    attempts_index = await _attempts_by_assignment_testee(db)
     rows: list[dict[str, Any]] = []
     result = await db.execute(
         select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
@@ -162,10 +211,9 @@ async def list_pending_assignments(
             continue
         if assignment.created_at > cutoff:
             continue
-        for assignee in await _assignees(db, assignment.id):
-            status = await derive_engagement_status(
-                db, assignment=assignment, testee_id=assignee.user_id, now=now
-            )
+        for assignee in assignees_index.get(assignment.id, []):
+            attempts = attempts_index.get((assignment.id, assignee.user_id), [])
+            status = _status_from_attempts(attempts, assignment, now)
             if status == EngagementStatus.pending:
                 rows.append(
                     {
@@ -182,18 +230,21 @@ async def list_pending_assignments(
 # --- reminder + escalation sweep -------------------------------------
 
 
-async def _prior_reminders(
-    db: AsyncSession, assignment_id: uuid.UUID
-) -> list[AssignmentReminder]:
+async def _reminders_by_assignment(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[AssignmentReminder]]:
+    """Tenant-wide reminder history, indexed by assignment_id and
+    sorted by ``sent_at`` per bucket so the sweep can read step
+    coverage in O(1)."""
     result = await db.execute(
-        select(AssignmentReminder).where(
-            AssignmentReminder.assignment_id == assignment_id,
-            AssignmentReminder.tenant_id == SEED_TENANT_ID,
-        )
+        select(AssignmentReminder).where(AssignmentReminder.tenant_id == SEED_TENANT_ID)
     )
-    rows = list(result.scalars().all())
-    rows.sort(key=lambda r: r.sent_at)
-    return rows
+    index: dict[uuid.UUID, list[AssignmentReminder]] = {}
+    for row in result.scalars().all():
+        index.setdefault(row.assignment_id, []).append(row)
+    for bucket in index.values():
+        bucket.sort(key=lambda r: r.sent_at)
+    return index
 
 
 def _reminder_steps(
@@ -202,7 +253,14 @@ def _reminder_steps(
     """The absolute moments at which the next-scheduled reminder is
     due. Tests with a deadline use ``[7, 1]`` days before; tests
     without use ``[14, 30]`` days after creation. The settings JSONB
-    columns override the defaults when present."""
+    columns override the defaults when present.
+
+    Result is **sorted chronologically** (Gitar PR-#15): the sweep
+    loop breaks on the first future step, so a non-ascending admin
+    config (e.g. ``[30, 14]`` instead of ``[14, 30]``) must not make
+    us miss a due step. Sort here, once, rather than asserting
+    ordering at write time and risking drift between writers.
+    """
     if assignment.deadline is not None:
         days = _DEFAULT_WITH_DEADLINE
         if (
@@ -210,21 +268,16 @@ def _reminder_steps(
             and settings.reminder_schedule_with_deadline_days_before is not None
         ):
             days = list(settings.reminder_schedule_with_deadline_days_before)
-        return [assignment.deadline - timedelta(days=d) for d in days]
-    days = _DEFAULT_NO_DEADLINE
-    if (
-        settings is not None
-        and settings.reminder_schedule_no_deadline_days_after is not None
-    ):
-        days = list(settings.reminder_schedule_no_deadline_days_after)
-    return [assignment.created_at + timedelta(days=d) for d in days]
-
-
-async def _user(db: AsyncSession, user_id: uuid.UUID) -> AppUser | None:
-    result = await db.execute(
-        select(AppUser).where(AppUser.id == user_id, AppUser.tenant_id == SEED_TENANT_ID)
-    )
-    return result.scalar_one_or_none()
+        steps = [assignment.deadline - timedelta(days=d) for d in days]
+    else:
+        days = _DEFAULT_NO_DEADLINE
+        if (
+            settings is not None
+            and settings.reminder_schedule_no_deadline_days_after is not None
+        ):
+            days = list(settings.reminder_schedule_no_deadline_days_after)
+        steps = [assignment.created_at + timedelta(days=d) for d in days]
+    return sorted(steps)
 
 
 def _smtp() -> SMTPClient:
@@ -259,18 +312,25 @@ async def run_engagement_sweep(
     summary = {"reminders_sent": 0, "escalations_sent": 0}
     smtp = _smtp()
 
+    # Pre-fetched indices (Gitar PR-#15 N+1): each is one tenant
+    # query; all downstream lookups are in-memory.
+    assignees_index = await _assignees_by_assignment(db)
+    attempts_index = await _attempts_by_assignment_testee(db)
+    reminders_index = await _reminders_by_assignment(db)
+    users_index = await _users_by_id(db)
+
     result = await db.execute(
         select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
     )
     for assignment in result.scalars().all():
         if not assignment.is_mandatory:
             continue
-        history = await _prior_reminders(db, assignment.id)
+        history = reminders_index.get(assignment.id, [])
         reminder_count = sum(
             1 for r in history if r.kind == AssignmentReminderKind.reminder
         )
         steps = _reminder_steps(assignment, settings)
-        assignees = await _assignees(db, assignment.id)
+        assignees = assignees_index.get(assignment.id, [])
         for step_index, step_due_at in enumerate(steps):
             if step_index < reminder_count:
                 continue
@@ -278,11 +338,10 @@ async def run_engagement_sweep(
                 break
             recipients_pending: list[AppUser] = []
             for assignee in assignees:
-                status = await derive_engagement_status(
-                    db, assignment=assignment, testee_id=assignee.user_id, now=now
-                )
+                attempts = attempts_index.get((assignment.id, assignee.user_id), [])
+                status = _status_from_attempts(attempts, assignment, now)
                 if status == EngagementStatus.pending:
-                    user = await _user(db, assignee.user_id)
+                    user = users_index.get(assignee.user_id)
                     if user is not None:
                         recipients_pending.append(user)
             if not recipients_pending:
@@ -320,13 +379,12 @@ async def run_engagement_sweep(
         ):
             still_pending = []
             for assignee in assignees:
-                status = await derive_engagement_status(
-                    db, assignment=assignment, testee_id=assignee.user_id, now=now
-                )
+                attempts = attempts_index.get((assignment.id, assignee.user_id), [])
+                status = _status_from_attempts(attempts, assignment, now)
                 if status == EngagementStatus.pending:
                     still_pending.append(assignee)
             if still_pending:
-                assigner = await _user(db, assignment.assigner_id)
+                assigner = users_index.get(assignment.assigner_id)
                 if assigner is not None:
                     subj, body = _escalation_email_content(assignment, len(still_pending))
                     smtp.send(to=assigner.email, subject=subj, body=body)
