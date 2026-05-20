@@ -16,18 +16,19 @@ import pytest
 from app.ai.prompts import get_prompt, registered_operations, render_prompt
 from app.ai.provider import Operation
 
-# The 5 Anthropic-side operations P5 ships prompts for.
-_P5_OPERATIONS: list[Operation] = [
+# The 5 Anthropic-side operations P5 ships prompts for, plus the
+# cross-family ``grade_review`` prompt P6 adds.
+_REGISTERED_OPERATIONS: list[Operation] = [
     Operation.generation,
     Operation.grading,
     Operation.weakness,
     Operation.learning_material,
     Operation.pill_proposal,
+    Operation.grade_review,
 ]
 
 # Operations whose prompts are deferred to a later phase.
 _DEFERRED_OPERATIONS: list[Operation] = [
-    Operation.grade_review,  # P6
     Operation.anchor_self_review,  # P8 / P11
     Operation.embed,  # P9 (no prompt — embedding has no template)
 ]
@@ -35,15 +36,15 @@ _DEFERRED_OPERATIONS: list[Operation] = [
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
 
 
-def test_registry_holds_exactly_the_five_anthropic_ops() -> None:
-    """The registry must hold the 5 Anthropic-side operations and only
-    them. Adding grade_review/anchor_self_review/embed before P6/P9 would
-    silently let production code call an unimplemented review() or embed()
-    path."""
-    assert registered_operations() == frozenset(_P5_OPERATIONS)
+def test_registry_holds_exactly_the_shipped_ops() -> None:
+    """The registry holds the 5 Anthropic-side operations plus the
+    cross-family ``grade_review`` op P6 adds. Adding anchor_self_review
+    or embed before P8/P9 would silently let production code call an
+    unimplemented review() / embed() path on those ops."""
+    assert registered_operations() == frozenset(_REGISTERED_OPERATIONS)
 
 
-@pytest.mark.parametrize("op", _P5_OPERATIONS)
+@pytest.mark.parametrize("op", _REGISTERED_OPERATIONS)
 def test_every_p5_op_has_a_non_empty_template(op: Operation) -> None:
     """Every registered prompt has a substantive template (>= 100 chars
     of meaningful content). A trivially short template usually indicates
@@ -55,7 +56,7 @@ def test_every_p5_op_has_a_non_empty_template(op: Operation) -> None:
     )
 
 
-@pytest.mark.parametrize("op", _P5_OPERATIONS)
+@pytest.mark.parametrize("op", _REGISTERED_OPERATIONS)
 def test_every_p5_op_has_a_valid_semver_version(op: Operation) -> None:
     """The ``VERSION`` constant on each prompt file must be a valid
     semver string so the value persisted on every produced entity is
@@ -66,7 +67,7 @@ def test_every_p5_op_has_a_valid_semver_version(op: Operation) -> None:
     ), f"prompt VERSION for {op.value!r} = {version!r} is not valid semver"
 
 
-@pytest.mark.parametrize("op", _P5_OPERATIONS)
+@pytest.mark.parametrize("op", _REGISTERED_OPERATIONS)
 def test_every_p5_template_documents_a_json_output_contract(
     op: Operation,
 ) -> None:
@@ -84,9 +85,9 @@ def test_every_p5_template_documents_a_json_output_contract(
 @pytest.mark.parametrize("op", _DEFERRED_OPERATIONS)
 def test_deferred_op_lookup_raises_with_phase_pointer(op: Operation) -> None:
     """Calling :func:`get_prompt` for a deferred op raises ``KeyError``
-    with a clear "P6/P9" pointer in the message — a defensive guard so
+    with a clear "P8/P9" pointer in the message — a defensive guard so
     a later-phase wiring failure points at the right phase to fix."""
-    with pytest.raises(KeyError, match=r"P[689]"):
+    with pytest.raises(KeyError, match=r"P[89]"):
         get_prompt(op)
 
 

@@ -7,9 +7,10 @@ is persisted on the producing entity's
 :class:`app.models.AIProvenanceMixin` columns — never global.
 
 P5 ships the five Anthropic-side prompts (generation / grading /
-weakness / learning_material / pill_proposal). The cross-family review
-prompts (grade_review, anchor_self_review) and the embedding "prompt"
-(no template required) are P6 / P8 / P9.
+weakness / learning_material / pill_proposal). P6 adds the cross-family
+``grade_review`` prompt for the OpenAI-side review pass (AC-D19 /
+AC-CD11 v1.7). ``anchor_self_review`` lands with P8; ``embed`` has no
+template (P9 Drive RAG).
 
 Bumping a prompt's text bumps its file's ``VERSION`` constant manually;
 the registry has no auto-derivation in v1. Prompt changes are reviewed
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 from app.ai.prompts import (
     generation,
+    grade_review,
     grading,
     learning_material,
     pill_proposal,
@@ -36,6 +38,7 @@ _REGISTRY: dict[Operation, tuple[str, str]] = {
         learning_material.VERSION,
     ),
     Operation.pill_proposal: (pill_proposal.TEMPLATE, pill_proposal.VERSION),
+    Operation.grade_review: (grade_review.TEMPLATE, grade_review.VERSION),
 }
 
 
@@ -43,15 +46,15 @@ def get_prompt(operation: Operation) -> tuple[str, str]:
     """Return ``(template, version)`` for ``operation``.
 
     Raises :class:`KeyError` for operations whose prompts are deferred
-    to a later phase (grade_review / anchor_self_review → P6, embed → P9).
+    to a later phase (anchor_self_review → P8, embed → P9).
     """
     try:
         return _REGISTRY[operation]
     except KeyError as exc:
         raise KeyError(
             f"No prompt registered for {operation.value!r}. "
-            "grade_review and anchor_self_review prompts land in P6; "
-            "embed has no prompt template (P9 Drive RAG)."
+            "anchor_self_review prompt lands in P8; embed has no prompt "
+            "template (P9 Drive RAG)."
         ) from exc
 
 
