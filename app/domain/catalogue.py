@@ -495,11 +495,28 @@ async def enqueue_pill_proposal(
             "estimated_minutes": estimated_minutes,
         },
     )
+    # Per AC-CD8 v1.6 (final sentence): provenance persists on every
+    # AI-produced entity — for pill proposals (which use
+    # ``processing_tasks`` as their persistence row per AC-CD7), the
+    # provenance dict lives alongside the proposal in ``payload`` so
+    # the cost dashboard's per-operation aggregation can sum proposal
+    # spend without a separate provenance column on
+    # ``processing_tasks`` itself.
     task = ProcessingTask(
         tenant_id=SEED_TENANT_ID,
         task_name=PROPOSAL_TASK_NAME,
         status=ProcessingTaskStatus.pending,
-        payload={"proposal": result.content},
+        payload={
+            "proposal": result.content,
+            "provenance": {
+                "provider": result.provider,
+                "model": result.model,
+                "prompt_version": result.prompt_version,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "cost_usd": result.cost_usd,
+            },
+        },
     )
     db.add(task)
     await db.flush()

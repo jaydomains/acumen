@@ -6,9 +6,13 @@ benchmark sequential carve-out is a *scheduling* concern, not a prompt
 concern). RAG context (AC-D22) and anchor exemplars (AC-D20) are wired
 into the payload in P9 / P8 respectively; P5 ships without them.
 
-Payload keys consumed:
-    subject_name, target_difficulty, question_count,
-    question_type_mix, optional_weakness_profile
+Payload keys consumed (P5):
+    test_name, target_difficulty, question_count, attempt_id
+
+The ``attempt_id`` key is consumed by :class:`~app.ai.provider.StubAIProvider`
+for deterministic seeding when the dev/local fallback path runs; the
+real :class:`~app.ai.anthropic.AnthropicProvider` ignores extra payload
+keys (``str.format`` silently skips them).
 
 Output JSON contract:
     {"questions": [{"type": str, "config": dict,
@@ -23,24 +27,22 @@ TEMPLATE = """\
 You are an expert assessment author producing a calibrated question set
 for the Acumen competency-assessment platform.
 
-Subject: {subject_name}
+Test: {test_name}
 Target difficulty band (1-10): {target_difficulty}
 Number of questions to produce: {question_count}
-Question type mix (counts per type): {question_type_mix}
-Optional weakness profile (pills the testee struggled with previously):
-{optional_weakness_profile}
 
 Produce questions that are:
-- Answerable from the pill's domain (not trivia adjacent to it).
+- Answerable from the test's domain (not trivia adjacent to it).
 - Calibrated to the difficulty band (cross-reference standards for the
   band; do not drift up or down).
 - Free of trick framing, ambiguous wording, or unstated assumptions.
 - Varied across runs (different surface form, examples, framings).
 
 For multiple_choice items, supply 3-5 options with exactly one correct
-answer; for true_false, supply a single assertion; for matching, supply
-left/right item pairs; for short_answer / scenario, supply a rubric and
-a model answer the grader can compare against.
+answer and a 0-based ``correct`` index; for true_false, supply a
+single assertion and a boolean ``correct``; for matching, supply
+left/right item pairs; for short_answer / scenario, supply a rubric
+and a model answer the grader can compare against.
 
 Return strictly valid JSON of shape:
 

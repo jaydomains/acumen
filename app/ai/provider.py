@@ -34,6 +34,90 @@ from typing import Any, Protocol, runtime_checkable
 _STUB_SAFETY_CUES = ("safety", "hazard", "ppe", "electrical", "confined")
 
 
+def _stub_pill_proposal_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the stubbed AI pill-proposal payload — safety-classified
+    against the small local cue list. Kept module-level so the stub
+    body stays small and the logic is testable in isolation."""
+    name = str(payload.get("name", "")).strip()
+    description = str(payload.get("description", "")).strip()
+    haystack = f"{name} {description}".lower()
+    safety = any(cue in haystack for cue in _STUB_SAFETY_CUES)
+    return {
+        "name": name,
+        "description": description,
+        "subject_id": payload.get("subject_id"),
+        "available_difficulty_min": payload.get("available_difficulty_min", 1),
+        "available_difficulty_max": payload.get("available_difficulty_max", 10),
+        "estimated_minutes": payload.get("estimated_minutes"),
+        "safety_relevant": safety,
+        "rationale": (
+            "Stubbed proposal: surfaces a catalogue gap for admin "
+            "review. Safety self-classification is keyword-cue based "
+            "until a real provider key is configured."
+        ),
+    }
+
+
+def _stub_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic two-question stub set — keeps per_testee
+    ``start_attempt`` working when no Anthropic key is configured
+    (dev/local fail-safe).
+
+    Seeded by ``payload["attempt_id"]`` so the same attempt always
+    generates the same set on re-fetch / resume — preserves the
+    determinism contract carried over from P4's ``_stub_generate``.
+    """
+    import random as _random
+    import uuid as _uuid
+
+    raw_attempt_id = payload.get("attempt_id") or "0"
+    try:
+        seed_uuid = _uuid.UUID(str(raw_attempt_id))
+        seed = int.from_bytes(seed_uuid.bytes[-8:], "big", signed=False)
+    except (ValueError, AttributeError):
+        seed = abs(hash(str(raw_attempt_id))) & 0xFFFFFFFFFFFFFFFF
+    rng = _random.Random(seed)
+    difficulty = int(payload.get("target_difficulty") or 5)
+    a = rng.randint(1, 9)
+    b = rng.randint(1, 9)
+    return {
+        "questions": [
+            {
+                "type": "multiple_choice",
+                "assigned_difficulty": difficulty,
+                "config": {
+                    "prompt": f"What is {a} + {b}?",
+                    "options": [str(a + b - 1), str(a + b), str(a + b + 1)],
+                    "correct": 1,
+                },
+            },
+            {
+                "type": "true_false",
+                "assigned_difficulty": difficulty,
+                "config": {
+                    "prompt": f"{a} is greater than {b}.",
+                    "correct": a > b,
+                },
+            },
+        ]
+    }
+
+
+def _stub_result(content: dict[str, Any]) -> AIResult:
+    """Build an :class:`AIResult` carrying the stub's fixed metadata.
+    Cost is 0.0 and tokens are 0 — the stub never makes a network call
+    so no spend is incurred (AC-CD15)."""
+    return AIResult(
+        content=content,
+        provider="stub",
+        model="stub-1",
+        prompt_version="0.0.0-stub",
+        prompt_tokens=0,
+        completion_tokens=0,
+        cost_usd=0.0,
+    )
+
+
 class Operation(str, enum.Enum):
     """The seven AI operations of AC-CD8 v1.6 plus ``embed`` for Drive RAG.
 
@@ -151,57 +235,40 @@ class StubAIProvider:
 
     async def generate(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
         if operation == Operation.pill_proposal:
-            name = str(payload.get("name", "")).strip()
-            description = str(payload.get("description", "")).strip()
-            haystack = f"{name} {description}".lower()
-            safety = any(cue in haystack for cue in _STUB_SAFETY_CUES)
-            content: dict[str, Any] = {
-                "name": name,
-                "description": description,
-                "subject_id": payload.get("subject_id"),
-                "available_difficulty_min": payload.get("available_difficulty_min", 1),
-                "available_difficulty_max": payload.get("available_difficulty_max", 10),
-                "estimated_minutes": payload.get("estimated_minutes"),
-                "safety_relevant": safety,
-                "rationale": (
-                    "Stubbed proposal: surfaces a catalogue gap for admin "
-                    "review. Safety self-classification is keyword-cue "
-                    "based until a real provider key is configured."
-                ),
+            content = _stub_pill_proposal_content(payload)
+        elif operation == Operation.generation:
+            content = _stub_generation_content(payload)
+        elif operation == Operation.weakness:
+            content = {"weak_pills": []}
+        elif operation == Operation.learning_material:
+            content = {
+                "explainer": (
+                    "Stubbed explainer: a real Anthropic provider key is "
+                    "required to generate targeted learning material."
+                )
             }
         else:
             content = {"operation": operation.value, "stubbed": True}
-        return AIResult(
-            content=content,
-            provider="stub",
-            model="stub-1",
-            prompt_version="0.0.0-stub",
-            prompt_tokens=0,
-            completion_tokens=0,
-            cost_usd=0.0,
-        )
+        return _stub_result(content)
 
     async def grade(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
-        return AIResult(
-            content={"score": 0.0, "verdict": "none", "reasoning": "stub"},
-            provider="stub",
-            model="stub-1",
-            prompt_version="0.0.0-stub",
-            prompt_tokens=0,
-            completion_tokens=0,
-            cost_usd=0.0,
+        # Deterministic "didn't grade" — score 0, verdict none. The
+        # explicit "stubbed" string in ``reasoning`` is the signal that
+        # no real grader ran; downstream code that wants to skip
+        # stub-grade rows can match on ``ai_provider == 'stub'``.
+        return _stub_result(
+            {
+                "score": 0.0,
+                "verdict": "none",
+                "reasoning": (
+                    "Stubbed grade: a real Anthropic provider key is "
+                    "required to grade short_answer / scenario responses."
+                ),
+            }
         )
 
     async def review(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
-        return AIResult(
-            content={"verdict": "confirmed", "reasoning": "stub"},
-            provider="stub",
-            model="stub-1",
-            prompt_version="0.0.0-stub",
-            prompt_tokens=0,
-            completion_tokens=0,
-            cost_usd=0.0,
-        )
+        return _stub_result({"verdict": "confirmed", "reasoning": "stub"})
 
     async def embed(self, operation: Operation, text: str) -> EmbedResult:
         return EmbedResult(

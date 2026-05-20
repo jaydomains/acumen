@@ -43,6 +43,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.cost import record_provenance, record_provenance_share
+from app.ai.provider import Operation, resolve_provider
 from app.domain.catalogue import record_audit
 from app.models import (
     SEED_TENANT_ID,
@@ -104,6 +106,14 @@ P4_BENCHMARK_STEP_CAP = 5
 _DEFAULT_RATE_PER_HOUR = 5
 _DEFAULT_RATE_PER_DAY = 20
 _DEFAULT_MAX_PAUSE_MINUTES = 30
+
+# Per_testee generation question count — a sensible default until the
+# Test model carries an explicit ``question_count`` column. P5 hardcodes
+# this so the AI generation call has a target; the stub provider always
+# returns its fixed 2-question deterministic set regardless of the
+# requested count (dev/local parity with P4 behaviour). Future phases
+# add the Test column and read from it instead.
+_GENERATION_DEFAULT_QUESTION_COUNT = 5
 
 # Bounded retry on the ``(test_id, testee_id, sequence_number)`` unique
 # constraint (AC-D3 v1.5). Protects against pathological concurrent
@@ -449,6 +459,13 @@ async def start_attempt(
     if origin not in _RATE_EXEMPT_ORIGINS:
         await _enforce_rate_limit(db, testee_id)
 
+    # Settings drive per-operation provider/model overrides at the AI
+    # call sites below (per_testee generation). Fetched once per
+    # start_attempt; ``_enforce_rate_limit`` does its own fetch for the
+    # rate-limit fields (cheap; the harness is in-memory and prod hits
+    # an indexed single-row tenant lookup).
+    settings = await _system_settings(db)
+
     prior_attempts = await _attempts_for(db, test.id, testee_id)
     prior_sorted = sorted(prior_attempts, key=lambda a: (a.created_at, str(a.id)))
     parent_id = prior_sorted[-1].id if prior_sorted else None
@@ -477,18 +494,39 @@ async def start_attempt(
         src = sorted(result.scalars().all(), key=lambda q: (q.created_at, str(q.id)))
         attempt.question_snapshot = {"questions": _snapshot_from_questions(src)}
     elif test.mode == TestMode.per_testee:
-        generated = _stub_generate(test, attempt.id)
+        # P5 Slice 2 — replaces P4's ``_stub_generate`` deterministic
+        # placeholder with the resolved Anthropic provider call. Per AI
+        # call produces N Question rows (one per generated question);
+        # ``record_provenance_share`` divides cost + tokens evenly
+        # across the N rows so the cost dashboard's per-attempt
+        # aggregation sums to the call total (AC-D18). Provider, model,
+        # and prompt_version are full per-call values replicated on
+        # every row. RAG context (AC-D22 / P9) and anchor exemplars
+        # (AC-D20 / P8) extend the payload in their respective phases.
+        provider = resolve_provider(Operation.generation, system_settings=settings)
+        gen_result = await provider.generate(
+            Operation.generation,
+            {
+                "test_name": test.name,
+                "target_difficulty": test.target_difficulty or 5,
+                "question_count": _GENERATION_DEFAULT_QUESTION_COUNT,
+                "attempt_id": str(attempt.id),
+            },
+        )
+        generated = gen_result.content.get("questions", [])
         for spec in generated:
-            db.add(
-                Question(
-                    tenant_id=SEED_TENANT_ID,
-                    attempt_id=attempt.id,
-                    type=spec["type"],
-                    config=spec["config"],
-                    assigned_difficulty=spec["assigned_difficulty"],
-                    realism_flag_count=0,
-                )
+            question = Question(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                type=QuestionType(spec["type"]),
+                config=spec["config"],
+                assigned_difficulty=spec["assigned_difficulty"],
+                realism_flag_count=0,
             )
+            record_provenance_share(
+                question, gen_result, share_count=max(1, len(generated))
+            )
+            db.add(question)
         await db.flush()
         attempt.question_snapshot = {
             "questions": _snapshot_from_questions(
@@ -542,33 +580,6 @@ async def _enforce_rate_limit(db: AsyncSession, testee_id: uuid.UUID) -> None:
             "Active learning loop follow-ups and admin assignments "
             "will continue to be available.",
         )
-
-
-def _stub_generate(test: Test, attempt_id: uuid.UUID) -> list[dict[str, Any]]:
-    """Deterministic P4 placeholder for per-Testee generation. Real
-    Anthropic generation is P5 (swap at ``resolve_provider``); JIT
-    streaming is P10. Output is a fixed, attempt-seeded deterministic
-    set so grading (Slice 3) is exercised end-to-end."""
-    difficulty = test.target_difficulty or 5
-    rng = random.Random(seed_for(attempt_id))
-    a = rng.randint(1, 9)
-    b = rng.randint(1, 9)
-    return [
-        {
-            "type": QuestionType.multiple_choice,
-            "assigned_difficulty": difficulty,
-            "config": {
-                "prompt": f"What is {a} + {b}?",
-                "options": [str(a + b - 1), str(a + b), str(a + b + 1)],
-                "correct": 1,
-            },
-        },
-        {
-            "type": QuestionType.true_false,
-            "assigned_difficulty": difficulty,
-            "config": {"prompt": f"{a} is greater than {b}.", "correct": a > b},
-        },
-    ]
 
 
 def _is_timed_out(attempt: Attempt, test: Test) -> bool:
@@ -721,11 +732,15 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     if _is_timed_out(attempt, test) and test.timeout_behaviour == TimeoutBehaviour.expire:
         attempt.outcome = "expired"
     # Deterministic auto-grading runs immediately (AC-D5 / AC-D19).
-    # AI-graded types (short_answer / scenario) flow through P5/P6 —
-    # no grade or grade_review row in P4. The result endpoint gates
-    # the display on the absence of any AI-graded item per the F14
-    # mixed-test rule.
+    # P5 Slice 2 — AI grading for short_answer / scenario types runs
+    # immediately too: a Grade row is written with the AI's verdict +
+    # reasoning + provenance. The F14 result-display gate is unchanged
+    # — :func:`result_view` still returns ``status='review_pending'``
+    # for any attempt containing AI-graded items because no
+    # ``grade_review`` row exists yet (P6 creates it, then widens the
+    # gate to "all grade_review confirmed").
     await _auto_grade_deterministic(db, attempt, test)
+    await _ai_grade_responses(db, attempt)
     await db.flush()
     await record_audit(
         db,
@@ -860,6 +875,83 @@ async def _auto_grade_deterministic(
         overall = sum(graded_scores) / len(graded_scores)
         attempt.overall_score = overall
         attempt.outcome = _outcome_for(overall, test)
+
+
+# --- AI grading (P5 Slice 2 — AC-D19 / AC-CD8 v1.6) -----------------
+
+
+async def _ai_grade_responses(db: AsyncSession, attempt: Attempt) -> None:
+    """Grade short_answer / scenario responses via the resolved
+    Anthropic provider, one AI call per response. Writes a ``Grade``
+    row with ``source=ai`` carrying the AI's verdict + reasoning +
+    full per-call provenance (provider, model, prompt_version, tokens,
+    cost) per AC-CD8 v1.6 / F7.
+
+    Does NOT fold AI grades into ``attempt.overall_score`` in P5 — the
+    F14 result-display gate withholds the Testee-facing result page
+    for any mixed attempt until P6 cross-family review confirms each
+    AI grade. Computing the overall_score before review would leak a
+    preliminary value into the audit-log detail and into any admin
+    read of the row. P6 closes the gate and recomputes overall_score
+    over deterministic + confirmed-AI grades.
+    """
+    settings = await _system_settings(db)
+    provider = resolve_provider(Operation.grading, system_settings=settings)
+    responses = {r.question_id: r for r in await _responses(db, attempt.id)}
+    specs = await _gradable_question_specs(db, attempt)
+    for spec in specs:
+        qid = uuid.UUID(str(spec["question_id"]))
+        qtype = QuestionType(spec["type"])
+        if qtype not in AI_GRADED_TYPES:
+            continue
+        response = responses.get(qid)
+        # An unanswered AI-graded question gets a Response row with
+        # null answer_payload so grading still produces a row (consistent
+        # with the deterministic path's handling of missing answers).
+        if response is None:
+            response = Response(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                question_id=qid,
+                answer_payload=None,
+                response_score=None,
+            )
+            db.add(response)
+            await db.flush()
+            await db.refresh(response)
+        config = spec["config"]
+        candidate_text = ""
+        if isinstance(response.answer_payload, dict):
+            candidate_text = str(response.answer_payload.get("text", ""))
+        grade_result = await provider.grade(
+            Operation.grading,
+            {
+                "question": str(config.get("prompt", "")),
+                "rubric": str(config.get("rubric", "")),
+                "model_answer": str(config.get("model_answer", "")),
+                "candidate_response": candidate_text,
+            },
+        )
+        score = float(grade_result.content.get("score", 0.0))
+        verdict_raw = str(grade_result.content.get("verdict", "none"))
+        try:
+            verdict = GradeVerdict(verdict_raw)
+        except ValueError:
+            # Defensive: a model that returns a non-enum verdict surfaces
+            # as ``none`` rather than crashing the submit path. The audit
+            # trail captures the verbatim reasoning string for review.
+            verdict = GradeVerdict.none
+        grade = Grade(
+            tenant_id=SEED_TENANT_ID,
+            response_id=response.id,
+            score=score,
+            verdict=verdict,
+            source=GradeSource.ai,
+            ai_reasoning=str(grade_result.content.get("reasoning", "")),
+        )
+        record_provenance(grade, grade_result)
+        response.response_score = score
+        db.add(grade)
 
 
 def _outcome_for(score: float, test: Test) -> str:

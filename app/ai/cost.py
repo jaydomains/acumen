@@ -60,6 +60,11 @@ def record_provenance(entity: Any, result: AIResult | EmbedResult) -> None:
     :class:`AIResult` (Anthropic / OpenAI message ops) and
     :class:`EmbedResult` (OpenAI embeddings).
 
+    Use when one AI call produces one entity (grading → Grade,
+    weakness → WeaknessReport, learning_material → LearningMaterial,
+    pill_proposal → ProcessingTask). For 1:N calls (generation → N
+    Question rows) use :func:`record_provenance_share`.
+
     The entity is mutated in place — the caller still has to add it to
     the session and flush. The prompt_version is read from the result
     for message ops; embed results have no prompt_version (no template),
@@ -77,6 +82,36 @@ def record_provenance(entity: Any, result: AIResult | EmbedResult) -> None:
         # EmbedResult — no prompt template, no completion tokens.
         entity.ai_prompt_version = None
         entity.ai_completion_tokens = 0
+
+
+def record_provenance_share(entity: Any, result: AIResult, *, share_count: int) -> None:
+    """Stamp the per-entity SHARE of a multi-entity AI call (the 1:N
+    case where one call produces ``share_count`` entities, e.g.
+    generation produces N Question rows from a single Messages-API
+    response).
+
+    Cost + tokens are divided evenly so summing across the produced
+    rows reconstructs the call's total — the cost dashboard's
+    per-attempt aggregation stays correct without de-duplicating
+    same-call entities. Provider, model, and prompt_version are the
+    full per-call values and replicated on every row (they describe
+    the call, not the share).
+
+    Token counts use floor division because :class:`AIProvenanceMixin`
+    columns are int-typed; the rounding remainder (< ``share_count``
+    tokens out of thousands) is operationally insignificant. Cost is
+    float and divides exactly.
+    """
+    if share_count < 1:
+        raise ValueError(
+            f"record_provenance_share requires share_count >= 1, got " f"{share_count!r}."
+        )
+    entity.ai_provider = result.provider
+    entity.ai_model = result.model
+    entity.ai_prompt_version = result.prompt_version
+    entity.ai_prompt_tokens = result.prompt_tokens // share_count
+    entity.ai_completion_tokens = result.completion_tokens // share_count
+    entity.ai_cost_usd = result.cost_usd / share_count
 
 
 # --- Op routing reminder for callers ----------------------------------
