@@ -520,3 +520,15 @@ class EngagementWidgetResponse(_Base):
 class SweepResult(_Base):
     reminders_sent: int
     escalations_sent: int
+
+
+class GradeReviewReconcileResult(_Base):
+    """Counts returned by one pass of the §8.9 grade-review reconcile
+    sweep (AC-D19 v1.6 / AC-CD11 v1.7). Exposed via the admin trigger
+    endpoint and the Celery task wrapper."""
+
+    attempts_processed: int
+    rows_confirmed: int
+    rows_flagged: int
+    rows_auto_flagged: int
+    rows_still_pending: int

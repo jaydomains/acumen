@@ -48,6 +48,7 @@ import json
 import logging
 import time
 import uuid
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -62,12 +63,14 @@ from app.models import (
     Grade,
     GradeReview,
     GradeSource,
+    Question,
     QuestionType,
     Response,
     ReviewStatus,
     SystemSettings,
     Test,
 )
+from app.permissions import now_utc
 
 _log = logging.getLogger(__name__)
 
@@ -83,6 +86,18 @@ GRADE_REVIEW_SUBMIT_CEILING_SECONDS: float = 60.0
 # visible ≈50-minute "stuck pending → auto-flag" SLA.
 GRADE_REVIEW_RECONCILE_INTERVAL_MINUTES: int = 5
 GRADE_REVIEW_MAX_RETRY_ATTEMPTS: int = 10
+
+# Off-submit-path internal timeout the reconcile sweep wraps around
+# each batched ``provider.review()`` call. More generous than the 60-s
+# submit ceiling because the Testee is not waiting — the reconcile
+# runs out-of-band — but bounded so a single stuck call cannot hang
+# the sweep indefinitely.
+GRADE_REVIEW_RECONCILE_INTERNAL_TIMEOUT_SECONDS: float = 90.0
+
+# Reason string stamped on auto-flagged rows past the SLA. Matches
+# the operator-visible string from AC-D19 v1.6 / PR-017 verbatim so
+# the admin queue display + audit-log search stay searchable.
+_AUTO_FLAG_REASON = "auto_flagged_stuck_pending"
 
 # Question types the primary grader handles via AI (Anthropic per
 # AC-D12) and therefore the only types that produce a ``grade_review``
@@ -126,6 +141,85 @@ async def _review_for_grade(db: AsyncSession, grade_id: uuid.UUID) -> GradeRevie
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _pending_reviews(db: AsyncSession) -> list[GradeReview]:
+    """All GradeReviews with status=pending across the tenant. The
+    reconcile sweep iterates this list in :func:`reconcile_pending_grade_reviews`.
+    """
+    result = await db.execute(
+        select(GradeReview).where(
+            GradeReview.status == ReviewStatus.pending,
+            GradeReview.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _grade_by_id(db: AsyncSession, grade_id: uuid.UUID) -> Grade | None:
+    result = await db.execute(
+        select(Grade).where(Grade.id == grade_id, Grade.tenant_id == SEED_TENANT_ID)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _response_by_id(db: AsyncSession, response_id: uuid.UUID) -> Response | None:
+    result = await db.execute(
+        select(Response).where(
+            Response.id == response_id, Response.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _question_by_id(db: AsyncSession, question_id: uuid.UUID) -> Question | None:
+    result = await db.execute(
+        select(Question).where(
+            Question.id == question_id, Question.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _attempt_by_id(db: AsyncSession, attempt_id: uuid.UUID) -> Attempt | None:
+    result = await db.execute(
+        select(Attempt).where(
+            Attempt.id == attempt_id, Attempt.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _test_by_id(db: AsyncSession, test_id: uuid.UUID) -> Test | None:
+    result = await db.execute(
+        select(Test).where(Test.id == test_id, Test.tenant_id == SEED_TENANT_ID)
+    )
+    return result.scalar_one_or_none()
+
+
+def _response_text(response: Response) -> str:
+    """Pull the candidate-response text from an AI-graded Response. The
+    canonical encoding is ``answer_payload.text`` (a string)."""
+    if isinstance(response.answer_payload, dict):
+        return str(response.answer_payload.get("text", ""))
+    return ""
+
+
+def _payload_item(grade: Grade, question: Question, response: Response) -> dict[str, Any]:
+    """Build one item of the batched review payload. Same shape as the
+    submit-path :func:`_review_ai_grades` builds — keeping them in sync
+    means the prompt sees identical structure regardless of which path
+    drove the call."""
+    config = question.config or {}
+    return {
+        "grade_id": str(grade.id),
+        "question": str(config.get("prompt", "")),
+        "rubric": str(config.get("rubric", "")),
+        "response": _response_text(response),
+        "ai_grade": float(grade.score),
+        "ai_verdict": grade.verdict.value,
+        "ai_reasoning": str(grade.ai_reasoning or ""),
+    }
 
 
 async def _review_ai_grades(
@@ -396,3 +490,204 @@ def _emit_telemetry(
             "tenant_id": str(attempt.tenant_id),
         },
     )
+
+
+# --- Reconcile sweep (Slice 3 — §8.9 cron callable) -------------------
+
+
+async def reconcile_pending_grade_reviews(db: AsyncSession) -> dict[str, int]:
+    """Sweep pending ``grade_review`` rows once. For each pending row:
+
+    * If the underlying Grade has been admin-overridden
+      (``Grade.overridden_at IS NOT NULL``) — skip; admin has resolved
+      it via the AC-D2 override mechanism.
+    * If the row's ``created_at`` is older than
+      ``MAX_RETRY × INTERVAL`` minutes — auto-flag in place with reason
+      ``auto_flagged_stuck_pending`` and surface in the admin queue
+      (AC-D19 v1.6 — at the v1.7 defaults this is ≈50-minute
+      wall-clock).
+    * Otherwise — group with the attempt's other still-active pending
+      rows and re-run the batched ``provider.review()`` call against
+      that subset.
+
+    Returns a counts dict for the admin trigger endpoint and the
+    Celery task wrapper.
+
+    Off the submit path. Fail-soft on every off-contract branch (timeout,
+    provider error, malformed response, unknown grade_id, unknown
+    verdict) — affected rows stay pending so the next sweep retries.
+    Skipped GradeReviews whose Grade is overridden count toward
+    ``rows_still_pending`` semantically (they're not transitioning); the
+    caller can subtract overridden-skips if it cares to distinguish.
+
+    The retry-counter approach is wall-clock against ``created_at``,
+    NOT a per-row counter column on ``grade_review``. This matches the
+    operator-visible ≈50-minute SLA from PR-017 / AC-CD11 v1.7 verbatim
+    and avoids a v1.6→v1.7 schema migration.
+    """
+    counts = {
+        "attempts_processed": 0,
+        "rows_confirmed": 0,
+        "rows_flagged": 0,
+        "rows_auto_flagged": 0,
+        "rows_still_pending": 0,
+    }
+    pending = await _pending_reviews(db)
+    if not pending:
+        return counts
+
+    now = now_utc()
+    sla = timedelta(
+        minutes=GRADE_REVIEW_MAX_RETRY_ATTEMPTS * GRADE_REVIEW_RECONCILE_INTERVAL_MINUTES
+    )
+
+    # Phase 1: group reviewable rows by attempt; auto-flag past-SLA
+    # rows in place. We collect 4-tuples (grade, gr_row, response,
+    # question) so the per-attempt batch can build the payload without
+    # re-querying.
+    attempts_pending: dict[
+        uuid.UUID, list[tuple[Grade, GradeReview, Response, Question]]
+    ] = {}
+    attempts_with_changes: set[uuid.UUID] = set()
+    for gr_row in pending:
+        grade = await _grade_by_id(db, gr_row.grade_id)
+        if grade is None or grade.overridden_at is not None:
+            counts["rows_still_pending"] += 1
+            continue
+        response = await _response_by_id(db, grade.response_id)
+        if response is None:
+            counts["rows_still_pending"] += 1
+            continue
+        age = now - gr_row.created_at
+        if age > sla:
+            gr_row.status = ReviewStatus.flagged
+            gr_row.review_reasoning = _AUTO_FLAG_REASON
+            counts["rows_auto_flagged"] += 1
+            attempts_with_changes.add(response.attempt_id)
+            _log.info(
+                "grade_review.auto_flagged_stuck_pending",
+                extra={
+                    "grade_review_id": str(gr_row.id),
+                    "attempt_id": str(response.attempt_id),
+                    "age_minutes": age.total_seconds() / 60.0,
+                },
+            )
+            continue
+        question = await _question_by_id(db, response.question_id)
+        if question is None:
+            counts["rows_still_pending"] += 1
+            continue
+        attempts_pending.setdefault(response.attempt_id, []).append(
+            (grade, gr_row, response, question)
+        )
+
+    # Phase 2: per-attempt batched review against the pending subset.
+    if attempts_pending:
+        settings = await _system_settings(db)
+        provider = resolve_provider(Operation.grade_review, system_settings=settings)
+        for attempt_id, quads in attempts_pending.items():
+            attempt = await _attempt_by_id(db, attempt_id)
+            test = await _test_by_id(db, attempt.test_id) if attempt is not None else None
+            if attempt is None or test is None:
+                # Orphaned pending — attempt or test row was deleted.
+                # Leave the rows pending so an operator can investigate.
+                counts["rows_still_pending"] += len(quads)
+                continue
+            counts["attempts_processed"] += 1
+            items_payload = [_payload_item(g, q, r) for g, _, r, q in quads]
+            payload = {
+                "items": items_payload,
+                "items_json": json.dumps(items_payload),
+            }
+            batched_size = len(items_payload)
+            started = time.perf_counter()
+            ai_result = None
+            ceiling_breached = False
+            try:
+                ai_result = await asyncio.wait_for(
+                    provider.review(Operation.grade_review, payload),
+                    timeout=GRADE_REVIEW_RECONCILE_INTERNAL_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                ceiling_breached = True
+                _log.warning(
+                    "grade_review.reconcile_batch_timeout",
+                    extra={
+                        "attempt_id": str(attempt_id),
+                        "batched_payload_size": batched_size,
+                    },
+                )
+            except Exception:
+                _log.warning(
+                    "grade_review.reconcile_batch_failed",
+                    extra={
+                        "attempt_id": str(attempt_id),
+                        "batched_payload_size": batched_size,
+                    },
+                    exc_info=True,
+                )
+            _emit_telemetry(
+                attempt=attempt,
+                latency_ms=(time.perf_counter() - started) * 1000.0,
+                success=ai_result is not None,
+                batched_payload_size=batched_size,
+                ceiling_breached=ceiling_breached,
+            )
+            if ai_result is None:
+                counts["rows_still_pending"] += len(quads)
+                continue
+
+            content = ai_result.content if isinstance(ai_result.content, dict) else None
+            items_out = content.get("items") if content is not None else None
+            if not isinstance(items_out, list):
+                counts["rows_still_pending"] += len(quads)
+                continue
+
+            pairs_by_grade_id: dict[str, tuple[Grade, GradeReview]] = {
+                str(g.id): (g, gr) for g, gr, _, _ in quads
+            }
+            attempt_changed = False
+            for entry in items_out:
+                if not isinstance(entry, dict):
+                    continue
+                gid_raw = entry.get("grade_id")
+                gid = str(gid_raw) if gid_raw is not None else None
+                if gid is None or gid not in pairs_by_grade_id:
+                    continue
+                verdict_raw = entry.get("verdict")
+                try:
+                    verdict = ReviewStatus(str(verdict_raw))
+                except ValueError:
+                    continue
+                if verdict not in (ReviewStatus.confirmed, ReviewStatus.flagged):
+                    continue
+                _grade, gr_row = pairs_by_grade_id.pop(gid)
+                gr_row.status = verdict
+                reasoning = entry.get("reasoning")
+                if isinstance(reasoning, str):
+                    gr_row.review_reasoning = reasoning
+                record_provenance_share(gr_row, ai_result, share_count=batched_size)
+                if verdict == ReviewStatus.confirmed:
+                    counts["rows_confirmed"] += 1
+                else:
+                    counts["rows_flagged"] += 1
+                attempt_changed = True
+
+            # Anything left in pairs_by_grade_id was not addressed by the
+            # response (missing entry / off-contract) — stays pending.
+            counts["rows_still_pending"] += len(pairs_by_grade_id)
+            if attempt_changed:
+                attempts_with_changes.add(attempt_id)
+
+    # Phase 3: recompute overall_score for attempts whose grade_review
+    # set changed (auto-flag OR successful confirm/flag from provider).
+    for attempt_id in attempts_with_changes:
+        attempt = await _attempt_by_id(db, attempt_id)
+        if attempt is None:
+            continue
+        test = await _test_by_id(db, attempt.test_id)
+        if test is None:
+            continue
+        await _recompute_overall_score(db, attempt, test)
+
+    return counts
