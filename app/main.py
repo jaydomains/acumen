@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.permissions import register_exception_handlers
 from app.routers import (
     assignments,
+    attempts,
     auth,
     catalogue,
     groups,
@@ -64,10 +65,12 @@ def create_app() -> FastAPI:
     app.include_router(paths.router)
     app.include_router(groups.router)
 
-    # P4 Slice 1 — Tests + Assignments (CODE_SPEC §3). Attempt lifecycle,
-    # deterministic grading + engagement land in Slices 2/3.
+    # P4 Slice 1 — Tests + Assignments (CODE_SPEC §3). Slice 2 brings
+    # the attempt lifecycle (start / autosave / pause / resume / next /
+    # submit); Slice 3 brings deterministic grading + engagement.
     app.include_router(tests.router)
     app.include_router(assignments.router)
+    app.include_router(attempts.router)
 
     return app
 

@@ -511,14 +511,27 @@ class AnchorQuestion(Base, TimestampMixin, AIProvenanceMixin):
 
 
 class Attempt(Base, TimestampMixin):
-    """A Testee's run at a test (AC-D3/D4/D11/D17/D18/D20/D24).
+    """A Testee's run at a test (AC-D3/D4/D11/D17/D18/D20/D24/D26).
 
     ``question_snapshot`` is populated for frozen/hand-authored attempts
     only (AC-D17). ``shuffle_seed`` derives from the attempt id at start
     (AC-D24). Pause/focus events and anchor draws are join tables
-    (Slice 2)."""
+    (Slice 2). ``assignment_id`` (AC-D26, v1.4) is the explicit FK that
+    pins the attempt to the Assignment it satisfies — nullable for
+    self-initiated origin, populated at ``start_attempt`` for
+    assignment-driven and loop-driven origins. The unique constraint on
+    ``(test_id, testee_id, sequence_number)`` (AC-D3, v1.5) makes the
+    retake counter the canonical scope key per Testee per Test."""
 
     __tablename__ = "attempt"
+    __table_args__ = (
+        UniqueConstraint(
+            "test_id",
+            "testee_id",
+            "sequence_number",
+            name="uq_attempt_test_testee_sequence",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
@@ -536,6 +549,12 @@ class Attempt(Base, TimestampMixin):
     )
     origin: Mapped[AttemptOrigin] = mapped_column(
         _enum(AttemptOrigin, "attempt_origin"), nullable=False
+    )
+    assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.assignment.id"),
+        nullable=True,
+        index=True,
     )
     sequence_number: Mapped[int] = mapped_column(nullable=False, server_default=text("1"))
     parent_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
