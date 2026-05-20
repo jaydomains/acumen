@@ -20,6 +20,7 @@ from app.routers import (
     attempts,
     auth,
     catalogue,
+    cost,
     groups,
     paths,
     tests,
@@ -74,6 +75,9 @@ def create_app() -> FastAPI:
     app.include_router(assignments.router)
     app.include_router(attempts.router)
     app.include_router(admin.router)
+
+    # P5 Slice 3 — admin AI cost dashboard (AC-D18).
+    app.include_router(cost.router)
 
     return app
 

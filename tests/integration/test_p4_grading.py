@@ -340,12 +340,22 @@ def test_result_endpoint_mixed_test_returns_review_pending(
     assert body.get("questions") is None
 
 
-def test_no_grade_row_for_ai_graded_types(
+def test_stub_grades_ai_types_when_no_anthropic_key_configured(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:
-    """AC-D19 v1.6: deterministic items get a Grade row; AI-graded
-    items (short_answer / scenario) do NOT get one in P4. The absence
-    of a row is the canonical "not yet graded" signal."""
+    """P5 Slice 2 inverts the P4 "no Grade row for AI-graded types"
+    rule: AI grading now runs on submit and writes a ``Grade`` row per
+    AI-graded response with full provenance. This test exercises the
+    dev/local fallback path — no Anthropic key is configured, so
+    :func:`app.ai.provider.resolve_provider` returns
+    :class:`StubAIProvider`, which returns a deterministic "didn't
+    grade" stub response. Production with a real key returns real
+    verdicts via the recorded-provider tests in ``test_p5_grading``.
+
+    The F14 result-display gate still returns ``review_pending`` for
+    any mixed attempt because no ``grade_review`` row exists yet
+    (P6 creates it, then widens the gate to "all review confirmed").
+    """
     seed_system_settings(cat_session)
     t = _testee(cat_session)
     test = _frozen_test(cat_session)
@@ -355,13 +365,13 @@ def test_no_grade_row_for_ai_graded_types(
         QuestionType.multiple_choice,
         {"prompt": "p", "options": ["a", "b"], "correct": 0},
     )
-    _q(
+    short_answer = _q(
         cat_session,
         test.id,
         QuestionType.short_answer,
         {"prompt": "explain", "rubric": "good", "model_answer": "x"},
     )
-    _q(
+    scenario = _q(
         cat_session,
         test.id,
         QuestionType.scenario,
@@ -370,14 +380,27 @@ def test_no_grade_row_for_ai_graded_types(
     started = _start(cat_client, t, test.id)
     _autosave(cat_client, t, started["id"], str(mcq.id), {"choice": 0})
     cat_client.post(f"/v1/attempts/{started['id']}/submit", headers=bearer(t))
+
+    # One Grade row per question now: deterministic (MCQ) plus AI
+    # (short_answer + scenario).
     grades = cat_session.store.get(Grade, [])
-    # Only the MCQ has a Grade row.
-    assert len(grades) == 1
-    # short_answer / scenario have NO response row either (autosave
-    # was never called for them).
+    assert len(grades) == 3
+    # AI-graded rows carry source=ai and the stub provenance.
+    ai_grades = [g for g in grades if g.source == GradeSource.ai]
+    assert len(ai_grades) == 2
+    for grade in ai_grades:
+        assert grade.ai_provider == "stub"
+        assert grade.ai_prompt_version == "0.0.0-stub"
+        assert grade.ai_cost_usd == 0.0  # stub never charges
+
+    # A Response row is created for AI-graded questions even if the
+    # testee never autosaved an answer (consistent with the
+    # deterministic path's null-answer handling).
     responses = cat_session.store.get(Response, [])
     response_qids = {r.question_id for r in responses}
     assert mcq.id in response_qids
+    assert short_answer.id in response_qids
+    assert scenario.id in response_qids
 
 
 def test_result_endpoint_rejects_unsubmitted_attempt(

@@ -263,3 +263,165 @@ def cat_client(cat_session: CatalogueFakeSession) -> Iterator[TestClient]:
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+# --- P5 AI provider harness ------------------------------------------
+# ``RecordingProvider`` substitutes the module-level Anthropic + OpenAI
+# singletons in ``app.ai.provider`` via monkeypatch. One instance persists
+# across every AI call in a test (Slice 3 budget-alert tests depend on
+# this state-preservation contract, called out in the Slice 1 plan-
+# review). Tests opt in via the ``recording_provider`` fixture; tests
+# that don't opt in fall through to the dev/local :class:`StubAIProvider`
+# fallback (the production fail-safe path).
+
+
+class RecordingProvider:
+    """In-memory AIProvider stand-in (AC-CD15). Records every call and
+    returns canned content per-operation; defaults to a generic
+    ``AIResult`` shape when no canned response is registered for the op."""
+
+    name = "recording"
+
+    def __init__(
+        self,
+        responses: dict[Any, dict[str, Any]] | None = None,
+        *,
+        provider_label: str = "anthropic",
+        model_label: str = "claude-sonnet-4-6",
+        prompt_tokens: int = 100,
+        completion_tokens: int = 50,
+        cost_usd: float = 0.001,
+    ) -> None:
+        # Imported here so test collection doesn't pay the AnthropicSDK
+        # import on conftest load.
+        from app.ai.provider import AIResult as _AIResult
+
+        self._AIResult = _AIResult
+        self.responses: dict[Any, dict[str, Any]] = dict(responses or {})
+        self.provider_label = provider_label
+        self.model_label = model_label
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.cost_usd = cost_usd
+        self.calls: list[tuple[str, Any, dict[str, Any]]] = []
+
+    def set_response(self, operation: Any, content: dict[str, Any]) -> None:
+        """Register / replace the canned content for an operation."""
+        self.responses[operation] = content
+
+    def calls_for(self, operation: Any) -> list[tuple[str, Any, dict[str, Any]]]:
+        """All recorded calls for a given operation enum value."""
+        return [c for c in self.calls if c[1] == operation]
+
+    def _result(self, content: dict[str, Any]) -> Any:
+        return self._AIResult(
+            content=content,
+            provider=self.provider_label,
+            model=self.model_label,
+            prompt_version="1.0.0-recording",
+            prompt_tokens=self.prompt_tokens,
+            completion_tokens=self.completion_tokens,
+            cost_usd=self.cost_usd,
+        )
+
+    async def generate(self, operation: Any, payload: dict[str, Any]) -> Any:
+        self.calls.append(("generate", operation, dict(payload)))
+        return self._result(self.responses.get(operation, {}))
+
+    async def grade(self, operation: Any, payload: dict[str, Any]) -> Any:
+        self.calls.append(("grade", operation, dict(payload)))
+        # Sensible default if the test didn't register a grading response.
+        default = {"score": 1.0, "verdict": "full", "reasoning": "recording-default"}
+        return self._result(self.responses.get(operation, default))
+
+    async def review(self, operation: Any, payload: dict[str, Any]) -> Any:
+        self.calls.append(("review", operation, dict(payload)))
+        default = {"verdict": "confirmed", "reasoning": "recording-default"}
+        return self._result(self.responses.get(operation, default))
+
+    async def embed(self, operation: Any, text: str) -> Any:
+        from app.ai.provider import EmbedResult as _EmbedResult
+
+        self.calls.append(("embed", operation, {"text": text}))
+        return _EmbedResult(
+            embedding=[0.0] * 1536,
+            provider=self.provider_label,
+            model="text-embedding-3-small",
+            prompt_tokens=self.prompt_tokens,
+            cost_usd=self.cost_usd,
+        )
+
+
+def _default_recording_responses() -> dict[Any, dict[str, Any]]:
+    """Sensible canned responses per operation — tests that need
+    different content call ``recording_provider.set_response`` to
+    override. Imported lazily to avoid pulling the AI module at
+    conftest load time."""
+    from app.ai.provider import Operation
+
+    return {
+        Operation.generation: {
+            "questions": [
+                {
+                    "type": "multiple_choice",
+                    "assigned_difficulty": 5,
+                    "config": {
+                        "prompt": "What is 2 + 2?",
+                        "options": ["3", "4", "5"],
+                        "correct": 1,
+                    },
+                },
+                {
+                    "type": "short_answer",
+                    "assigned_difficulty": 5,
+                    "config": {
+                        "prompt": "Explain Ohm's Law.",
+                        "rubric": "Mentions V = I * R; explains relationship.",
+                        "model_answer": "Voltage equals current times resistance.",
+                    },
+                },
+            ]
+        },
+        Operation.grading: {
+            "score": 0.8,
+            "verdict": "partial",
+            "reasoning": "Partial credit per the rubric.",
+        },
+        Operation.weakness: {"weak_pills": []},
+        Operation.learning_material: {
+            "explainer": (
+                "Recorded explainer content used by Slice 2 integration "
+                "tests; substantive enough to be a meaningful served_text "
+                "snapshot for the F18 n-gram overlap path."
+            )
+        },
+        Operation.pill_proposal: {
+            "name": "Test Pill",
+            "description": "Recorded proposal description.",
+            "subject_id": None,
+            "available_difficulty_min": 1,
+            "available_difficulty_max": 10,
+            "estimated_minutes": 30,
+            "safety_relevant": False,
+            "rationale": "Recorded rationale.",
+        },
+    }
+
+
+@pytest.fixture
+def recording_provider(monkeypatch: pytest.MonkeyPatch) -> RecordingProvider:
+    """Substitute a single :class:`RecordingProvider` for both the
+    Anthropic and the OpenAI module-level singletons, AND force both
+    API keys non-empty so the resolver returns the substituted instance
+    instead of the dev/local ``StubAIProvider`` fallback (which would
+    bypass the recorder)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-anthropic-key")
+    monkeypatch.setattr(settings, "openai_api_key", "test-openai-key")
+
+    provider = RecordingProvider(responses=_default_recording_responses())
+    monkeypatch.setattr("app.ai.provider._ANTHROPIC", provider)
+    monkeypatch.setattr("app.ai.provider._OPENAI", provider)
+    return provider
