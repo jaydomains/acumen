@@ -36,3 +36,11 @@ files = ["app"]
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+# Suppress pytest's collection warnings for SPEC §5 entities whose
+# class names start with ``Test`` (Test, TestMode, TestStatus,
+# TestVisibility) — they are SQLAlchemy models / enums, not test
+# classes. ``__init__`` makes pytest skip them anyway; this just
+# silences the noise.
+filterwarnings = [
+    "ignore:cannot collect test class 'Test:pytest.PytestCollectionWarning",
+]

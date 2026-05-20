@@ -171,6 +171,13 @@ class CatalogueFakeSession:
     async def refresh(self, obj: Any) -> None:
         return None
 
+    async def rollback(self) -> None:
+        # The P4 attempt-start path catches ``IntegrityError`` on the
+        # ``(test_id, testee_id, sequence_number)`` unique constraint
+        # and rolls back before retrying. The fake is a noop because
+        # the retry test inserts/removes the failing row explicitly.
+        return None
+
     async def delete(self, obj: Any) -> None:
         bucket = self.store.get(type(obj), [])
         if obj in bucket:
