@@ -488,3 +488,35 @@ class BenchmarkNextResponse(_Base):
     step: int | None = None
     asked: int | None = None
     question: dict | None = None
+
+
+# --- P4 Slice 3 results + engagement ----------------------------------
+# F14 mixed-test display gate: a deterministic result page surfaces
+# scores immediately; an attempt containing any AI-graded question
+# returns ``status = "review_pending"`` until P6 review completes.
+
+
+class AttemptResultResponse(_Base):
+    attempt_id: uuid.UUID
+    submitted_at: datetime
+    status: str  # "ready" | "review_pending"
+    overall_score: float | None = None
+    outcome: str | None = None
+    questions: list[dict] | None = None
+
+
+class EngagementWidgetItem(_Base):
+    assignment_id: uuid.UUID
+    testee_id: uuid.UUID
+    created_at: datetime
+    deadline: datetime | None
+    is_mandatory: bool
+
+
+class EngagementWidgetResponse(_Base):
+    data: list[EngagementWidgetItem]
+
+
+class SweepResult(_Base):
+    reminders_sent: int
+    escalations_sent: int

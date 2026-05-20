@@ -50,6 +50,9 @@ from app.models import (
     Attempt,
     AttemptOrigin,
     AttemptPauseEvent,
+    Grade,
+    GradeSource,
+    GradeVerdict,
     Question,
     QuestionType,
     Response,
@@ -64,6 +67,8 @@ from app.permissions import APIError, now_utc
 
 __all__ = [
     "P4_BENCHMARK_STEP_CAP",
+    "DETERMINISTIC_TYPES",
+    "AI_GRADED_TYPES",
     "seed_for",
     "presented_questions",
     "option_permutation",
@@ -75,7 +80,18 @@ __all__ = [
     "resume_attempt",
     "submit_attempt",
     "next_question",
+    "result_view",
 ]
+
+# Deterministic types grade locally in P4 (Slice 3). AI-graded types
+# (short_answer / scenario) flow through P5 grading + P6 cross-family
+# review; in P4 they produce no grade / grade_review row, and the
+# result-display gate (F14) withholds the result page until those
+# downstream phases land.
+DETERMINISTIC_TYPES = frozenset(
+    {QuestionType.multiple_choice, QuestionType.true_false, QuestionType.matching}
+)
+AI_GRADED_TYPES = frozenset({QuestionType.short_answer, QuestionType.scenario})
 
 # P4 caps the benchmark sequential stub at a fixed, named step count so
 # the path is exercised and tests are repeatable. P5/P10 lift/extend
@@ -704,6 +720,12 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     attempt.submitted_at = now_utc()
     if _is_timed_out(attempt, test) and test.timeout_behaviour == TimeoutBehaviour.expire:
         attempt.outcome = "expired"
+    # Deterministic auto-grading runs immediately (AC-D5 / AC-D19).
+    # AI-graded types (short_answer / scenario) flow through P5/P6 —
+    # no grade or grade_review row in P4. The result endpoint gates
+    # the display on the absence of any AI-graded item per the F14
+    # mixed-test rule.
+    await _auto_grade_deterministic(db, attempt, test)
     await db.flush()
     await record_audit(
         db,
@@ -711,9 +733,199 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
         action="attempt.submit",
         target_entity="attempt",
         target_id=attempt.id,
-        detail={"outcome": attempt.outcome},
+        detail={"outcome": attempt.outcome, "overall_score": attempt.overall_score},
     )
     return attempt
+
+
+# --- deterministic grading (AC-D5 / AC-D17 / AC-D19) -----------------
+
+
+def _grade_mcq(answer: dict[str, Any] | None, config: dict[str, Any]) -> float:
+    """1.0 on exact match against ``config.correct``; else 0.0. Missing
+    or malformed answers score 0.0 (didn't answer)."""
+    if not isinstance(answer, dict):
+        return 0.0
+    choice = answer.get("choice")
+    return 1.0 if choice == config.get("correct") else 0.0
+
+
+def _grade_true_false(answer: dict[str, Any] | None, config: dict[str, Any]) -> float:
+    if not isinstance(answer, dict):
+        return 0.0
+    return 1.0 if answer.get("answer") == config.get("correct") else 0.0
+
+
+def _grade_matching(answer: dict[str, Any] | None, config: dict[str, Any]) -> float:
+    """Score = fraction of correctly matched pairs. The canonical
+    encoding: ``answer.matches`` is a list of right indices, one per
+    left position (identity is the correct mapping in the snapshot)."""
+    pairs = config.get("pairs") or []
+    if not pairs:
+        return 0.0
+    if not isinstance(answer, dict):
+        return 0.0
+    matches = answer.get("matches")
+    if not isinstance(matches, list):
+        return 0.0
+    correct = sum(1 for i, m in enumerate(matches) if i < len(pairs) and m == i)
+    return correct / len(pairs)
+
+
+def _verdict_for(score: float) -> GradeVerdict:
+    if score >= 1.0:
+        return GradeVerdict.full
+    if score <= 0.0:
+        return GradeVerdict.none
+    return GradeVerdict.partial
+
+
+def _grade_response_score(
+    qtype: QuestionType, config: dict, answer: dict | None
+) -> float:
+    if qtype == QuestionType.multiple_choice:
+        return _grade_mcq(answer, config)
+    if qtype == QuestionType.true_false:
+        return _grade_true_false(answer, config)
+    if qtype == QuestionType.matching:
+        return _grade_matching(answer, config)
+    # AI-graded types fall through; the caller never invokes this for them.
+    raise APIError(500, "ungradable_type", f"Type {qtype.value} is not auto-graded.")
+
+
+async def _gradable_question_specs(
+    db: AsyncSession, attempt: Attempt
+) -> list[dict[str, Any]]:
+    """Return ``{question_id, type, config}`` per question on the
+    attempt. The snapshot is the source of truth for frozen / hand-
+    authored / per_testee (start_attempt populates it). Benchmark
+    attempts have an empty snapshot — questions live on Question rows
+    keyed by ``attempt_id`` — so we hydrate from there."""
+    snap_qs: list[dict[str, Any]] = list(
+        (attempt.question_snapshot or {}).get("questions") or []
+    )
+    if snap_qs:
+        return snap_qs
+    rows = await _attempt_questions(db, attempt.id)
+    return [
+        {"question_id": str(q.id), "type": q.type.value, "config": q.config} for q in rows
+    ]
+
+
+async def _auto_grade_deterministic(
+    db: AsyncSession, attempt: Attempt, test: Test
+) -> None:
+    """Grade MCQ / true_false / matching responses, write a ``Grade``
+    row per graded response, fold the average into ``overall_score``,
+    and set ``outcome`` against ``test.pass_threshold``. AI-graded
+    types are skipped — no grade or grade_review row in P4 (F14)."""
+    responses = {r.question_id: r for r in await _responses(db, attempt.id)}
+    specs = await _gradable_question_specs(db, attempt)
+    graded_scores: list[float] = []
+    for spec in specs:
+        qid = uuid.UUID(str(spec["question_id"]))
+        qtype = QuestionType(spec["type"])
+        if qtype in AI_GRADED_TYPES:
+            continue
+        if qtype not in DETERMINISTIC_TYPES:
+            continue
+        response = responses.get(qid)
+        answer = response.answer_payload if response is not None else None
+        score = _grade_response_score(qtype, spec["config"], answer)
+        if response is None:
+            response = Response(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                question_id=qid,
+                answer_payload=None,
+                response_score=score,
+            )
+            db.add(response)
+            await db.flush()
+            await db.refresh(response)
+        else:
+            response.response_score = score
+        db.add(
+            Grade(
+                tenant_id=SEED_TENANT_ID,
+                response_id=response.id,
+                score=score,
+                verdict=_verdict_for(score),
+                source=GradeSource.auto,
+            )
+        )
+        graded_scores.append(score)
+    # Don't overwrite a timeout-driven outcome ("expired").
+    if attempt.outcome is None and graded_scores:
+        overall = sum(graded_scores) / len(graded_scores)
+        attempt.overall_score = overall
+        attempt.outcome = _outcome_for(overall, test)
+
+
+def _outcome_for(score: float, test: Test) -> str:
+    if test.pass_threshold is None:
+        return "pass"
+    return "pass" if score >= test.pass_threshold else "fail"
+
+
+# --- result view (F14 mixed-test display gate) ----------------------
+
+
+async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[str, Any]:
+    """Return the Testee-facing result for a submitted attempt, gated
+    on whether the attempt contains any AI-graded item (F14). A fully-
+    deterministic attempt displays its grades and overall score
+    immediately; an attempt containing any short_answer / scenario
+    withholds the page with ``status = "review_pending"`` until the
+    P6 cross-family review path lands."""
+    if attempt.submitted_at is None:
+        raise APIError(409, "attempt_not_submitted", "Attempt has not been submitted.")
+    specs = await _gradable_question_specs(db, attempt)
+    has_ai_graded = any(QuestionType(spec["type"]) in AI_GRADED_TYPES for spec in specs)
+    base: dict[str, Any] = {
+        "attempt_id": attempt.id,
+        "submitted_at": attempt.submitted_at,
+    }
+    if has_ai_graded:
+        # F14: review-pending until P6 closes the gate. No scores leak.
+        base["status"] = "review_pending"
+        return base
+    # Fully deterministic — surface the grades and overall outcome.
+    responses = {r.question_id: r for r in await _responses(db, attempt.id)}
+    response_ids = [r.id for r in responses.values()]
+    grades_by_response: dict[uuid.UUID, Grade] = {}
+    for resp_id in response_ids:
+        result = await db.execute(
+            select(Grade).where(
+                Grade.response_id == resp_id, Grade.tenant_id == SEED_TENANT_ID
+            )
+        )
+        grade = result.scalar_one_or_none()
+        if grade is not None:
+            grades_by_response[resp_id] = grade
+    per_question: list[dict[str, Any]] = []
+    for spec in specs:
+        qid = uuid.UUID(str(spec["question_id"]))
+        response = responses.get(qid)
+        grade = grades_by_response.get(response.id) if response is not None else None
+        per_question.append(
+            {
+                "question_id": str(qid),
+                "type": spec["type"],
+                "score": grade.score if grade is not None else None,
+                "verdict": grade.verdict.value if grade is not None else None,
+                "source": grade.source.value if grade is not None else None,
+            }
+        )
+    base.update(
+        {
+            "status": "ready",
+            "overall_score": attempt.overall_score,
+            "outcome": attempt.outcome,
+            "questions": per_question,
+        }
+    )
+    return base
 
 
 async def next_question(db: AsyncSession, attempt: Attempt, test: Test) -> dict[str, Any]:

@@ -25,6 +25,7 @@ from app.permissions import (
     get_privacy_acked_user,
 )
 from app.schemas import (
+    AttemptResultResponse,
     AttemptStartRequest,
     AttemptView,
     AutosaveRequest,
@@ -148,3 +149,18 @@ async def submit_attempt(
     await db.commit()
     view = await attempt_domain.view_attempt(db, attempt, test)
     return AttemptView(**view)
+
+
+@router.get("/{attempt_id}/result")
+async def attempt_result(
+    attempt_id: uuid.UUID,
+    user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+) -> AttemptResultResponse:
+    """F14 result-display gate. A fully-deterministic attempt returns
+    the grades + overall outcome immediately; any AI-graded item flips
+    the response to ``status = "review_pending"`` until P6 review
+    closes the gate."""
+    attempt, test = await _load(db, user, attempt_id)
+    result = await attempt_domain.result_view(db, attempt, test)
+    return AttemptResultResponse(**result)
