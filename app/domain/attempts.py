@@ -50,6 +50,7 @@ from app.ai.cost import (
 )
 from app.ai.provider import Operation, resolve_provider
 from app.domain.catalogue import record_audit
+from app.domain.grade_review import _review_ai_grades
 from app.models import (
     SEED_TENANT_ID,
     AssignmentAssignee,
@@ -57,11 +58,13 @@ from app.models import (
     AttemptOrigin,
     AttemptPauseEvent,
     Grade,
+    GradeReview,
     GradeSource,
     GradeVerdict,
     Question,
     QuestionType,
     Response,
+    ReviewStatus,
     SystemSettings,
     Test,
     TestMode,
@@ -750,15 +753,24 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     if _is_timed_out(attempt, test) and test.timeout_behaviour == TimeoutBehaviour.expire:
         attempt.outcome = "expired"
     # Deterministic auto-grading runs immediately (AC-D5 / AC-D19).
-    # P5 Slice 2 — AI grading for short_answer / scenario types runs
-    # immediately too: a Grade row is written with the AI's verdict +
-    # reasoning + provenance. The F14 result-display gate is unchanged
-    # — :func:`result_view` still returns ``status='review_pending'``
-    # for any attempt containing AI-graded items because no
-    # ``grade_review`` row exists yet (P6 creates it, then widens the
-    # gate to "all grade_review confirmed").
+    # AI grading for short_answer / scenario types runs immediately too
+    # (P5 Slice 2) — a Grade row is written per AI response.
+    # Cross-family review (P6 Slice 2 — AC-D19 v1.7 / AC-CD11 v1.7):
+    # one batched OpenAI call covers every AI-graded response in the
+    # attempt under a 60-s ceiling; ``_review_ai_grades`` writes a
+    # paired GradeReview per AI Grade (pending → confirmed/flagged) and
+    # recomputes ``attempt.overall_score`` over deterministic +
+    # confirmed-AI grades. Fail-soft: on timeout / provider error / off-
+    # contract response the affected rows stay ``pending``; the §8.9
+    # reconcile cron picks them up.
     await _auto_grade_deterministic(db, attempt, test)
     await _ai_grade_responses(db, attempt)
+    await db.flush()
+    # The review pass needs the snapshot's per-question rubric + model
+    # answer + prompt to build the batched payload — compute it once
+    # here and pass it through so neither side re-loads the snapshot.
+    specs = await _gradable_question_specs(db, attempt)
+    await _review_ai_grades(db, attempt, test, specs=specs)
     await db.flush()
     await record_audit(
         db,
@@ -992,11 +1004,21 @@ def _outcome_for(score: float, test: Test) -> str:
 
 async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[str, Any]:
     """Return the Testee-facing result for a submitted attempt, gated
-    on whether the attempt contains any AI-graded item (F14). A fully-
-    deterministic attempt displays its grades and overall score
-    immediately; an attempt containing any short_answer / scenario
-    withholds the page with ``status = "review_pending"`` until the
-    P6 cross-family review path lands."""
+    on cross-family review completion (F14 v1.7 / AC-D19 v1.7).
+
+    Gate states:
+
+    * **No AI-graded items** → ``status="ready"`` immediately
+      (fully-deterministic path; unchanged from P5).
+    * **Any GradeReview still pending** → ``status="review_pending"``
+      (no scores leak; the §8.9 reconcile cron is the second chance).
+    * **All GradeReviews confirmed / flagged** → ``status="ready"``.
+      Confirmed AI grades render normally; flagged AI grades whose
+      underlying Grade has not been admin-overridden render as
+      ``status="under_admin_review"`` with no score / verdict leak
+      ("only confirmed grades display synchronously" — AC-D19 v1.6 /
+      v1.7).
+    """
     if attempt.submitted_at is None:
         raise APIError(409, "attempt_not_submitted", "Attempt has not been submitted.")
     specs = await _gradable_question_specs(db, attempt)
@@ -1005,28 +1027,74 @@ async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[st
         "attempt_id": attempt.id,
         "submitted_at": attempt.submitted_at,
     }
-    if has_ai_graded:
-        # F14: review-pending until P6 closes the gate. No scores leak.
-        base["status"] = "review_pending"
-        return base
-    # Fully deterministic — surface the grades and overall outcome.
+
+    # Load grades + paired grade_reviews for the attempt's responses
+    # using the in-memory-session-compatible equality WHERE pattern
+    # (AC-CD15). Joins would be cleaner but the test fake supports
+    # single-model equality only.
     responses = {r.question_id: r for r in await _responses(db, attempt.id)}
-    response_ids = [r.id for r in responses.values()]
     grades_by_response: dict[uuid.UUID, Grade] = {}
-    for resp_id in response_ids:
+    grade_reviews_by_grade: dict[uuid.UUID, GradeReview] = {}
+    for resp_id in [r.id for r in responses.values()]:
         result = await db.execute(
             select(Grade).where(
                 Grade.response_id == resp_id, Grade.tenant_id == SEED_TENANT_ID
             )
         )
         grade = result.scalar_one_or_none()
-        if grade is not None:
-            grades_by_response[resp_id] = grade
+        if grade is None:
+            continue
+        grades_by_response[resp_id] = grade
+        if grade.source == GradeSource.ai:
+            gr_result = await db.execute(
+                select(GradeReview).where(
+                    GradeReview.grade_id == grade.id,
+                    GradeReview.tenant_id == SEED_TENANT_ID,
+                )
+            )
+            gr = gr_result.scalar_one_or_none()
+            if gr is not None:
+                grade_reviews_by_grade[grade.id] = gr
+
+    if has_ai_graded:
+        # Pending AI grade (no GradeReview row yet, or GradeReview.status
+        # == pending) → withhold the result page. The §8.9 reconcile cron
+        # is the next pass.
+        ai_grades = [g for g in grades_by_response.values() if g.source == GradeSource.ai]
+        if any(
+            grade_reviews_by_grade.get(g.id) is None
+            or grade_reviews_by_grade[g.id].status == ReviewStatus.pending
+            for g in ai_grades
+        ):
+            base["status"] = "review_pending"
+            return base
+
     per_question: list[dict[str, Any]] = []
     for spec in specs:
         qid = uuid.UUID(str(spec["question_id"]))
         response = responses.get(qid)
         grade = grades_by_response.get(response.id) if response is not None else None
+        if (
+            grade is not None
+            and grade.source == GradeSource.ai
+            and grade.overridden_at is None
+        ):
+            gr = grade_reviews_by_grade.get(grade.id)
+            if gr is not None and gr.status == ReviewStatus.flagged:
+                # AC-D19 v1.6 / v1.7 — flagged + not-yet-admin-resolved
+                # surfaces a provisional "under admin review" state with
+                # no AI grade leaked.
+                per_question.append(
+                    {
+                        "question_id": str(qid),
+                        "type": spec["type"],
+                        "status": "under_admin_review",
+                        "source": "ai",
+                        "score": None,
+                        "verdict": None,
+                    }
+                )
+                continue
         per_question.append(
             {
                 "question_id": str(qid),
