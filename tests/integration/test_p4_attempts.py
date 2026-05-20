@@ -479,6 +479,33 @@ def test_assignment_driven_exempt_from_rate_limit(
     assert r.status_code == 201, r.text
 
 
+def test_explicit_zero_rate_limit_is_honoured_not_silently_defaulted(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """An admin-configured ``0`` is preserved by the explicit
+    ``is None`` check in ``_enforce_rate_limit`` (Gitar PR-#15) — the
+    old ``or _DEFAULT`` pattern silently fell back to 5/20 because
+    ``0`` is falsy. With ``per_hour=0``, ``last_hour >= 0`` is true
+    even with zero prior attempts, so the very first start trips the
+    limit; that demonstrates the configured ``0`` is read, not
+    overwritten by the default."""
+    from app.models import SystemSettings
+
+    cat_session.add(
+        SystemSettings(
+            tenant_id=SEED_TENANT_ID,
+            self_initiated_rate_limit_per_hour=0,
+            self_initiated_rate_limit_per_day=20,
+        )
+    )
+    t = _testee(cat_session)
+    test = _new_test(cat_session)
+    _frozen_question(cat_session, test.id)
+    r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
+    assert r.status_code == 429
+    assert r.json()["error"]["code"] == "rate_limited"
+
+
 def test_loop_driven_is_in_the_rate_limit_exempt_set() -> None:
     """The exempt set is a named ``frozenset``; loop_driven is in it
     so P7 plugs in with no rate-limit change."""

@@ -318,7 +318,13 @@ async def _settle_pause(
     current = _open_pause(events)
     if current is None:
         return None
-    max_minutes = test.max_pause_duration_minutes or _DEFAULT_MAX_PAUSE_MINUTES
+    # Explicit ``is None`` so an admin-configured ``0`` (immediate
+    # auto-resume) is honoured, not silently coerced to the default.
+    max_minutes = (
+        test.max_pause_duration_minutes
+        if test.max_pause_duration_minutes is not None
+        else _DEFAULT_MAX_PAUSE_MINUTES
+    )
     elapsed = (now_utc() - current.started_at).total_seconds()
     if elapsed >= max_minutes * 60:
         current.ended_at = now_utc()
@@ -493,15 +499,21 @@ async def start_attempt(
 
 
 async def _enforce_rate_limit(db: AsyncSession, testee_id: uuid.UUID) -> None:
+    # Explicit ``is None`` (not ``or``) so an admin's intentional ``0``
+    # — "disable the limit" — is preserved instead of silently falling
+    # back to the default (Gitar PR-#15 finding). The SystemSettings
+    # columns are non-nullable in production but ``None`` is the test
+    # seam's no-row signal, so the unset path still defaults cleanly.
     settings = await _system_settings(db)
-    per_hour = (
-        getattr(settings, "self_initiated_rate_limit_per_hour", None)
-        or _DEFAULT_RATE_PER_HOUR
-    )
-    per_day = (
-        getattr(settings, "self_initiated_rate_limit_per_day", None)
-        or _DEFAULT_RATE_PER_DAY
-    )
+    per_hour = _DEFAULT_RATE_PER_HOUR
+    per_day = _DEFAULT_RATE_PER_DAY
+    if settings is not None:
+        configured_hour = getattr(settings, "self_initiated_rate_limit_per_hour", None)
+        configured_day = getattr(settings, "self_initiated_rate_limit_per_day", None)
+        if configured_hour is not None:
+            per_hour = configured_hour
+        if configured_day is not None:
+            per_day = configured_day
     now = now_utc()
     recent = await _self_initiated_recent(db, testee_id)
     last_hour = sum(1 for a in recent if (now - a.created_at) <= timedelta(hours=1))
@@ -571,7 +583,13 @@ async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[s
         "pause_allowance": test.pause_allowance or 0,
     }
     if paused is not None:
-        max_minutes = test.max_pause_duration_minutes or _DEFAULT_MAX_PAUSE_MINUTES
+        # Explicit ``is None`` so an admin-configured ``0`` (immediate
+        # auto-resume) is honoured, not silently coerced to the default.
+        max_minutes = (
+            test.max_pause_duration_minutes
+            if test.max_pause_duration_minutes is not None
+            else _DEFAULT_MAX_PAUSE_MINUTES
+        )
         remaining = max_minutes * 60 - int(
             (now_utc() - paused.started_at).total_seconds()
         )
