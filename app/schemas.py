@@ -599,3 +599,45 @@ class GradeReviewResolveResult(_Base):
     grade_verdict: str
     attempt_overall_score: float | None
     attempt_outcome: str | None
+
+
+# --- P7 adaptive loop admin queue (AC-D6 admin_reviewed mode) ----------
+
+
+class LoopQueueItem(_Base):
+    """A single WeaknessReport awaiting admin review (AC-D6
+    admin_reviewed loop_mode). The admin sees the parent attempt + pill
+    + AI-identified weak pills + overall score, then approves (creates
+    the follow-up) or rejects (clears the routed_to_admin flag without
+    further action)."""
+
+    weakness_report_id: uuid.UUID
+    attempt_id: uuid.UUID
+    testee_id: uuid.UUID
+    pill_id: uuid.UUID
+    pill_name: str
+    overall_score: float | None
+    weak_pill_ids: list[uuid.UUID]
+    created_at: datetime
+
+
+class LoopQueueListResponse(_Base):
+    data: list[LoopQueueItem]
+
+
+class LoopApproveResult(_Base):
+    """Response shape after a successful admin approval. Returns the
+    number of follow-up Attempts created — one per weak pill in the
+    report — so the admin UI can render a summary without a second
+    round-trip."""
+
+    weakness_report_id: uuid.UUID
+    follow_up_count: int
+
+
+class LoopRejectResult(_Base):
+    """Response shape after a successful admin rejection. Compact
+    payload — the flag is cleared and no follow-up created. Audit-
+    logged at ``loop.queue.reject`` for operator traceability."""
+
+    weakness_report_id: uuid.UUID

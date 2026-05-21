@@ -34,6 +34,7 @@ with Python-side work so the AC-CD15 zero-DB harness holds.
 
 from __future__ import annotations
 
+import logging
 import random
 import uuid
 from datetime import timedelta
@@ -51,7 +52,9 @@ from app.ai.cost import (
 from app.ai.provider import Operation, resolve_provider
 from app.domain._scoring import outcome_for as _outcome_for
 from app.domain.catalogue import record_audit
+from app.domain.competence import apply_competence_update
 from app.domain.grade_review import _review_ai_grades
+from app.domain.loop import apply_overlap_check, run_loop_after_submit
 from app.models import (
     SEED_TENANT_ID,
     AssignmentAssignee,
@@ -74,6 +77,8 @@ from app.models import (
     TimeoutBehaviour,
 )
 from app.permissions import APIError, now_utc
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "P4_BENCHMARK_STEP_CAP",
@@ -767,12 +772,47 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     await _auto_grade_deterministic(db, attempt, test)
     await _ai_grade_responses(db, attempt)
     await db.flush()
+    # P7 — n-gram trigram overlap pass against the last
+    # ``LearningMaterial.served_text`` for (testee, pill). Sets
+    # ``Grade.overlap_pct`` + ``Grade.overlap_flagged`` on AI-graded
+    # rows. Runs BEFORE review so the review payload can include the
+    # overlap signal if the prompt template wants it; today it doesn't,
+    # but the ordering preserves the option without a re-flush. Failure-
+    # isolated — an overlap fault is logged and the submit continues.
+    try:
+        await apply_overlap_check(db, attempt)
+    except Exception:
+        # No reconcile sweep for overlap in P7 — the flag is advisory,
+        # not blocking; admin grade review (P6) still surfaces the row.
+        # ``logger.exception`` emits at ERROR with the full traceback so
+        # production failures are observable (PR-019 Gitar review).
+        _log.exception("P7 overlap check failed for attempt %s", attempt.id)
     # The review pass needs the snapshot's per-question rubric + model
     # answer + prompt to build the batched payload — compute it once
     # here and pass it through so neither side re-loads the snapshot.
     specs = await _gradable_question_specs(db, attempt)
     await _review_ai_grades(db, attempt, test, specs=specs)
     await db.flush()
+    # P7 — competence_estimate refresh + autonomous loop driver. Both
+    # are scope-guarded to single-pill assignment-backed attempts
+    # (assignment_driven / loop_driven with pill_id set). Failure-
+    # isolated independently so a competence fault doesn't kill the
+    # loop and vice versa.
+    try:
+        await apply_competence_update(db, attempt)
+    except Exception:
+        _log.exception("P7 competence update failed for attempt %s", attempt.id)
+    try:
+        await run_loop_after_submit(db, attempt, test)
+    except Exception:
+        # Note: run_loop_after_submit creates Test/Assignment/Assignee
+        # rows before invoking start_attempt for the follow-up Attempt.
+        # A mid-flow failure can leave partial rows; the Slice 3 admin
+        # queue surfaces the WeaknessReport (which writes first) so an
+        # admin can manually reconcile. Future P11 work: a reconcile
+        # sweep that detects orphaned Test/Assignment without a started
+        # follow-up Attempt and either completes or rolls them back.
+        _log.exception("P7 loop driver failed for attempt %s", attempt.id)
     await record_audit(
         db,
         actor_id=attempt.testee_id,
