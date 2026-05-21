@@ -707,6 +707,118 @@ def test_drive_index_status_requires_admin(
     assert r.status_code == 403
 
 
+# --- N+1 regression guard (Gitar PR-#21 Slice 4 finding #1) ---------
+
+
+def test_aggregate_uses_single_query_for_all_anchor_serve_counts(
+    cat_client: TestClient,
+    cat_session: CatalogueFakeSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard: ``aggregate_realism_flags`` must batch-load
+    AttemptAnchor serve counts in one query, not per-anchor. A future
+    refactor that re-introduces the N+1 pattern would call
+    ``CatalogueFakeSession.execute`` more times than necessary; we
+    count execute() invocations for the AttemptAnchor model and pin
+    the expected count to "exactly one for the serve-count fold,
+    regardless of how many anchors are flagged."
+
+    The exact invariant: with 3 flagged anchor questions, only ONE
+    serve-count query runs against AttemptAnchor (the
+    :func:`_serve_counts_by_anchor` batched fetch). The previous
+    N+1 implementation would have run 3 such queries (one per
+    anchor)."""
+    seed_system_settings(cat_session)
+    admin = _admin(cat_session)
+    testee = _testee(cat_session)
+    pill = _pill(cat_session)
+
+    # Seed 3 anchor questions and flag each.
+    flagged_anchor_ids = []
+    for i in range(3):
+        anchor_id = uuid.uuid4()
+        cat_session.add(
+            Question(
+                id=anchor_id,
+                tenant_id=SEED_TENANT_ID,
+                pill_id=pill.id,
+                type=QuestionType.multiple_choice,
+                config={"prompt": f"q{i}", "options": ["a"], "correct": 0},
+                assigned_difficulty=5,
+                realism_flag_count=0,
+            )
+        )
+        cat_session.add(
+            AnchorQuestion(
+                id=anchor_id,
+                tenant_id=SEED_TENANT_ID,
+                pill_id=pill.id,
+                band=5,
+                type=QuestionType.multiple_choice,
+                config={"prompt": f"q{i}", "options": ["a"], "correct": 0},
+                assigned_difficulty=5,
+                total_attempts=1,
+                regeneration_attempts=0,
+                excluded=False,
+                needs_admin_attention=False,
+            )
+        )
+        # Build an attempt that served this anchor so the ownership
+        # check passes and there's at least one serve to count.
+        attempt = Attempt(
+            tenant_id=SEED_TENANT_ID,
+            test_id=uuid.uuid4(),
+            testee_id=testee.id,
+            origin=AttemptOrigin.assignment_driven,
+            sequence_number=i + 1,
+            question_snapshot={"questions": [{"id": str(anchor_id)}]},
+        )
+        cat_session.add(attempt)
+        cat_session.add(
+            AttemptAnchor(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                anchor_question_id=anchor_id,
+                score=0.5,
+            )
+        )
+        flagged_anchor_ids.append((attempt.id, anchor_id))
+
+    for attempt_id, anchor_id in flagged_anchor_ids:
+        _flag(cat_client, testee, attempt_id=attempt_id, question_id=anchor_id)
+
+    # Count execute() calls per model. The pattern under test: the
+    # aggregation should fire exactly ONE select against AttemptAnchor
+    # (the batched _serve_counts_by_anchor call) even though there
+    # are 3 flagged anchors. A re-introduction of the N+1 would
+    # produce 3 (one per anchor).
+    original_execute = cat_session.execute
+    seen_models: list[Any] = []
+
+    async def _counting_execute(stmt: Any) -> Any:
+        try:
+            model = stmt.column_descriptions[0]["entity"]
+        except Exception:
+            model = None
+        seen_models.append(model)
+        return await original_execute(stmt)
+
+    monkeypatch.setattr(cat_session, "execute", _counting_execute)
+
+    r = cat_client.post("/v1/admin/realism/aggregate", headers=bearer(admin))
+    assert r.status_code == 201, r.text
+
+    # Exactly one AttemptAnchor select happened across the sweep —
+    # the batched _serve_counts_by_anchor call.
+    attempt_anchor_selects = [m for m in seen_models if m is AttemptAnchor]
+    assert len(attempt_anchor_selects) == 1, (
+        f"Expected one batched AttemptAnchor select for the serve-count "
+        f"fold; got {len(attempt_anchor_selects)} — re-check that the "
+        f"aggregation loop reads from the pre-built serves_by_anchor "
+        f"dict rather than firing a per-anchor query."
+    )
+
+
 # silence pyflakes "unused"
 _ = pytest
 _ = SystemSettings

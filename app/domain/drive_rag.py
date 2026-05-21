@@ -934,20 +934,31 @@ async def _testee_overall_scores(
     return [a.overall_score for a in result.scalars().all() if a.submitted_at is not None]
 
 
-async def _attempts_for_anchor_serve_count(
-    db: AsyncSession, anchor_question_id: uuid.UUID
-) -> int:
-    """Count of :class:`AttemptAnchor` rows for ``anchor_question_id``
-    — the denominator for the realism-flag ratio per AC-D22 ("high
-    flag count relative to its attempt count"). Tenant-scoped
-    equality WHERE only."""
+async def _serve_counts_by_anchor(
+    db: AsyncSession,
+) -> dict[uuid.UUID, int]:
+    """Pre-build a per-anchor serve-count map in ONE query — the
+    batch lookup the aggregation loop reads from. Replaces the
+    earlier per-anchor :func:`_attempts_for_anchor_serve_count`
+    helper, which created an N+1 query pattern inside
+    :func:`aggregate_realism_flags`: one query per flagged anchor
+    × N anchors = N round-trips, each loading the anchor's serves
+    fully (Gitar PR-#21 Slice 4 finding #1).
+
+    Tenant-scoped equality WHERE only per AC-CD15 — the fake
+    harness handles single-column equality directly, so this
+    keeps the zero-DB test harness compatible while collapsing
+    the N+1 to O(1) round-trips. The data load is the same
+    (all tenant AttemptAnchor rows), but the round-trip count
+    drops from N to 1, which is the real bottleneck against
+    the production Postgres path."""
     result = await db.execute(
-        select(AttemptAnchor).where(
-            AttemptAnchor.anchor_question_id == anchor_question_id,
-            AttemptAnchor.tenant_id == SEED_TENANT_ID,
-        )
+        select(AttemptAnchor).where(AttemptAnchor.tenant_id == SEED_TENANT_ID)
     )
-    return len(list(result.scalars().all()))
+    counts: dict[uuid.UUID, int] = {}
+    for serve in result.scalars().all():
+        counts[serve.anchor_question_id] = counts.get(serve.anchor_question_id, 0) + 1
+    return counts
 
 
 async def aggregate_realism_flags(db: AsyncSession) -> dict[str, Any]:
@@ -1006,6 +1017,12 @@ async def aggregate_realism_flags(db: AsyncSession) -> dict[str, Any]:
     anchors_excluded = 0
     anchor_questions_seen = 0
 
+    # Batch-load the per-anchor serve counts ONCE before entering the
+    # loop — fixes the N+1 pattern flagged by Gitar PR-#21 Slice 4
+    # finding #1. The per-question fold below reads from this dict
+    # via O(1) lookup rather than firing a query per flagged anchor.
+    serves_by_anchor = await _serve_counts_by_anchor(db)
+
     for question_id, testee_ids in flaggers_by_question.items():
         try:
             weight_sum = 0.0
@@ -1044,7 +1061,7 @@ async def aggregate_realism_flags(db: AsyncSession) -> dict[str, Any]:
                 anchor = anchor_result.scalar_one_or_none()
                 if anchor is None or anchor.excluded:
                     continue
-                serves = await _attempts_for_anchor_serve_count(db, question_id)
+                serves = serves_by_anchor.get(question_id, 0)
                 ratio = aggregate_flag_ratio(weight_sum, serves)
                 if ratio >= _FLAG_RATIO_EXCLUSION_THRESHOLD:
                     anchor.excluded = True
@@ -1145,7 +1162,19 @@ async def drive_index_status(db: AsyncSession) -> dict[str, Any]:
     """Read-only dashboard surface: chunk count + distinct file count
     + ``max(indexed_at)``. The cron schedule lands at P11; until
     then the operator inspects the index through this endpoint to
-    verify AC-D23 step 4 actually completed."""
+    verify AC-D23 step 4 actually completed.
+
+    Iterates the chunk rows in Python rather than emitting
+    ``SELECT COUNT(*)`` / ``MAX(indexed_at)`` SQL aggregates per
+    Gitar PR-#21 Slice 4 finding #2 — same trade-off
+    :func:`app.ai.cost._spend_for_table` documents and defers: the
+    FakeSession harness handles only single-entity equality WHEREs
+    (AC-CD15), not aggregate selects. At v1 pilot scale (~hundreds
+    of chunks) the row-load cost is negligible against the admin
+    dashboard's refresh cadence. P11 either extends the test harness
+    or moves the cost / index aggregations to a real Postgres
+    fixture; this function is a candidate for the same SQL-aggregate
+    sweep at that point."""
     result = await db.execute(
         select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
     )
