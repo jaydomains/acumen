@@ -736,3 +736,67 @@ class LoopRejectResult(_Base):
     logged at ``loop.queue.reject`` for operator traceability."""
 
     weakness_report_id: uuid.UUID
+
+
+class DriveIngestResult(_Base):
+    """Telemetry returned by one Drive ingest sweep (AC-D22 / P9).
+
+    Surfaced by ``POST /v1/admin/drive/ingest``; the body matches what
+    the P11 Celery beat task will emit on every 24-hour scheduled run
+    so dashboards stay aligned. The nine counters describe one sweep:
+
+    * ``files_seen`` — total files returned by Drive's ``files.list``
+    * ``files_unchanged`` — hash matched the existing index → no embed
+    * ``files_added`` / ``files_changed`` / ``files_deleted`` — the
+      three diff-action sets per AC-D22
+    * ``files_failed`` — per-file fetch failures isolated by the
+      per-file try/except (PR-019 Slice 2 isolation pattern)
+    * ``chunks_added`` / ``chunks_deleted`` — chunk-level row deltas
+    * ``embed_calls`` — equal to ``chunks_added`` (one embed per
+      chunk persisted); useful for cost-trend dashboards alongside
+      :func:`app.ai.cost.current_month_spend`'s OpenAI bucket."""
+
+    files_seen: int
+    files_unchanged: int
+    files_added: int
+    files_changed: int
+    files_deleted: int
+    files_failed: int
+    chunks_added: int
+    chunks_deleted: int
+    embed_calls: int
+
+
+class RealismFlagResult(_Base):
+    """Response shape after a successful testee realism-flag click
+    (AC-D22 / P9 Slice 4). ``created`` is ``False`` on the
+    idempotent double-flag case (the testee clicked the button twice
+    on the same question — the unique constraint short-circuits the
+    second call and returns the existing row)."""
+
+    realism_flag_id: uuid.UUID
+    question_id: uuid.UUID
+    testee_id: uuid.UUID
+    created: bool
+
+
+class RealismAggregationResult(_Base):
+    """Telemetry returned by one realism-aggregation sweep (AC-D22 /
+    P9 Slice 4). Same body shape the P11 beat task will emit per
+    nightly run."""
+
+    flags_processed: int
+    questions_updated: int
+    anchors_excluded: int
+    anchor_questions_seen: int
+
+
+class DriveIndexStatus(_Base):
+    """Read-only dashboard surface for the Drive RAG index (AC-D22 /
+    P9 Slice 4). Operators inspect this to verify AC-D23 step 4
+    (initial folder bootstrap) actually completed and the daily cron
+    is keeping the index fresh once P11 wires the schedule."""
+
+    chunks: int
+    files: int
+    last_indexed_at: datetime | None

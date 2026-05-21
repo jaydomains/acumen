@@ -57,6 +57,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
+from app.domain.drive_rag import (
+    list_low_realism_questions_for_pill,
+    render_low_realism_examples,
+    render_rag_context,
+    retrieve_for_generation,
+)
 from app.models import (
     SEED_TENANT_ID,
     AnchorQuestion,
@@ -517,9 +523,30 @@ async def generate_anchor_pool_for_pill(
     total_self_review_calls = 0
     per_band: list[dict[str, int]] = []
 
+    # P9 Slice 3 — Drive RAG context per AC-D22, cached per band so
+    # the embed cost is one call per band rather than one per slot
+    # (cost amplification fix flagged in the Slice 3 plan: a
+    # ``anchor_pool_size_per_band=20`` × ``len(bands)=3`` bootstrap
+    # would otherwise emit 60 query-side embed calls — the cache
+    # collapses that to 3, one per band). The retrieve helper is
+    # fail-soft so an embed failure surfaces as ``[]`` and the loop
+    # proceeds with empty RAG context.
+    rag_hits_by_band: dict[int, list[dict[str, Any]]] = {}
+    for band in bands:
+        rag_hits_by_band[band] = await retrieve_for_generation(
+            db, pill=pill, target_difficulty=band
+        )
+
+    # P9 Slice 4 — low-realism negative examples cached once per pill
+    # (the pool is pill-scoped, not band-scoped; same examples flow
+    # into every band's generation calls).
+    low_realism = await list_low_realism_questions_for_pill(db, pill_id=pill_id)
+    low_realism_rendered = render_low_realism_examples(low_realism)
+
     for band in bands:
         band_generated = 0
         band_excluded = 0
+        rag_context = render_rag_context(rag_hits_by_band[band])
         for _slot in range(pool_size):
             anchor_id = uuid.uuid4()
             last_gen_result: Any | None = None
@@ -534,6 +561,8 @@ async def generate_anchor_pool_for_pill(
                     "target_difficulty": band,
                     "question_count": 1,
                     "attempt_id": str(anchor_id),
+                    "rag_context": rag_context,
+                    "low_realism_negative_examples": low_realism_rendered,
                 }
                 last_gen_result = await provider.generate(
                     Operation.generation, gen_payload

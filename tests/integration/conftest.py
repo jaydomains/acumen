@@ -363,8 +363,14 @@ class RecordingProvider:
         from app.ai.provider import EmbedResult as _EmbedResult
 
         self.calls.append(("embed", operation, {"text": text}))
+        # Non-zero vector so the Slice 3 cosine ranking actually
+        # produces hits in tests — a zero-vector query would
+        # short-circuit ``cosine_top_k`` (defensive guard against
+        # NaN scores) and tests asserting non-empty rag_context
+        # would fail spuriously. ``0.1`` is arbitrary; the only
+        # constraint is non-zero so the norm is finite.
         return _EmbedResult(
-            embedding=[0.0] * 1536,
+            embedding=[0.1] * 1536,
             provider=self.provider_label,
             model="text-embedding-3-small",
             prompt_tokens=self.prompt_tokens,
@@ -445,3 +451,91 @@ def recording_provider(monkeypatch: pytest.MonkeyPatch) -> RecordingProvider:
     monkeypatch.setattr("app.ai.provider._ANTHROPIC", provider)
     monkeypatch.setattr("app.ai.provider._OPENAI", provider)
     return provider
+
+
+# --- P9 Drive RAG harness ---------------------------------------------
+# ``_FakeDrive`` substitutes the module-level
+# :func:`app.domain.drive_source.get_drive_source` singleton via
+# monkeypatch. Tests opt in via the ``fake_drive`` fixture; the
+# production seam (``GoogleDriveSource``) is never reached and the
+# Drive credentials env var stays unset (AC-CD15 — no network in
+# tests). Files are an in-memory ``{file_id: (name, mime_type, text)}``
+# dict; tests drive the diff via ``set_file`` / ``delete_file``.
+
+
+class _FakeDrive:
+    """In-memory :class:`~app.domain.drive_source.DriveSource` stand-in.
+
+    Tests register files via ``set_file(file_id, text, ...)`` and
+    remove them via ``delete_file(file_id)``; the ingest sweep sees
+    exactly the current dict on each ``list_files`` call. ``fail_on``
+    lets a test simulate a transient Drive failure for one specific
+    file — the ingest sweep's per-file fail-soft path counts that
+    file under ``files_failed`` and continues the sweep."""
+
+    def __init__(self) -> None:
+        from app.domain.drive_source import DriveFile as _DriveFile
+
+        self._DriveFile = _DriveFile
+        # file_id → (name, mime_type, text, modified_time)
+        self._files: dict[str, tuple[str, str, str, str]] = {}
+        self._fail_on: set[str] = set()
+        self.list_calls: int = 0
+        self.fetch_calls: list[str] = []
+
+    def set_file(
+        self,
+        file_id: str,
+        *,
+        text: str,
+        name: str = "doc.txt",
+        mime_type: str = "text/plain",
+        modified_time: str = "2026-05-21T00:00:00Z",
+    ) -> None:
+        """Add or replace a file in the fake Drive folder."""
+        self._files[file_id] = (name, mime_type, text, modified_time)
+
+    def delete_file(self, file_id: str) -> None:
+        """Remove a file from the fake Drive folder — drives the
+        deletion arm of :func:`diff_files`."""
+        self._files.pop(file_id, None)
+
+    def fail_fetch_for(self, file_id: str) -> None:
+        """Configure the fake to raise on ``fetch_text`` for ``file_id``
+        — exercises the per-file fail-soft branch in
+        :func:`ingest_drive_folder`."""
+        self._fail_on.add(file_id)
+
+    async def list_files(self, *, folder_id: str) -> list[Any]:
+        self.list_calls += 1
+        return [
+            self._DriveFile(
+                id=fid,
+                name=name,
+                mime_type=mime_type,
+                modified_time=mtime,
+            )
+            for fid, (name, mime_type, _text, mtime) in self._files.items()
+        ]
+
+    async def fetch_text(self, *, file_id: str, mime_type: str) -> str:
+        self.fetch_calls.append(file_id)
+        if file_id in self._fail_on:
+            raise RuntimeError(f"_FakeDrive: simulated fetch failure for {file_id}")
+        entry = self._files.get(file_id)
+        if entry is None:
+            return ""
+        return entry[2]
+
+
+@pytest.fixture
+def fake_drive(monkeypatch: pytest.MonkeyPatch) -> _FakeDrive:
+    """Substitute the :class:`_FakeDrive` for the module-level
+    :func:`app.domain.drive_source.get_drive_source` singleton. Tests
+    that drive Drive ingest end-to-end opt in via this fixture; tests
+    that don't would fall through to ``GoogleDriveSource`` which would
+    crash on the empty credentials env var (AC-CD15 fail-safe — no
+    network from test paths)."""
+    fake = _FakeDrive()
+    monkeypatch.setattr("app.domain.drive_source._GOOGLE_DRIVE", fake)
+    return fake

@@ -133,11 +133,15 @@ async def test_grade_always_raises_not_implemented() -> None:
         await provider.grade(Operation.grading, {})
 
 
-async def test_embed_always_raises_with_p9_pointer() -> None:
-    """``embed()`` lands with P9 (Drive RAG / AC-D22)."""
+async def test_embed_rejects_non_embed_operation_with_routing_message() -> None:
+    """P9 wires :meth:`OpenAIProvider.embed` so the NotImplementedError
+    is gone. The routing guard now mirrors the ``review()`` shape: any
+    non-``embed`` op surfaces a :class:`ValueError` pointing operators
+    at the correct method. Full happy-path coverage lives in
+    :mod:`tests.unit.test_p9_openai_embed`."""
     provider = OpenAIProvider()
-    with pytest.raises(NotImplementedError, match="P9"):
-        await provider.embed(Operation.embed, "any text")
+    with pytest.raises(ValueError, match="grade_review"):
+        await provider.embed(Operation.grade_review, "any text")
 
 
 # --- Contextual-error paths -------------------------------------------

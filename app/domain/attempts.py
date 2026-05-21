@@ -54,10 +54,17 @@ from app.domain._scoring import outcome_for as _outcome_for
 from app.domain.calibration import draw_anchors_for_attempt
 from app.domain.catalogue import record_audit
 from app.domain.competence import apply_competence_update
+from app.domain.drive_rag import (
+    list_low_realism_questions_for_pill,
+    render_low_realism_examples,
+    render_rag_context,
+    retrieve_for_generation,
+)
 from app.domain.grade_review import _review_ai_grades
 from app.domain.loop import apply_overlap_check, run_loop_after_submit
 from app.models import (
     SEED_TENANT_ID,
+    Assignment,
     AssignmentAssignee,
     Attempt,
     AttemptAnchor,
@@ -67,6 +74,7 @@ from app.models import (
     GradeReview,
     GradeSource,
     GradeVerdict,
+    Pill,
     Question,
     QuestionType,
     Response,
@@ -284,6 +292,48 @@ async def _is_assignee(
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+async def _load_pill_for_assignment(
+    db: AsyncSession, assignment_id: uuid.UUID | None
+) -> Pill | None:
+    """Resolve the :class:`Pill` row scoped by an :class:`Assignment`
+    for the Drive RAG retrieval query (P9 Slice 3 / AC-D22).
+
+    Returns ``None`` when:
+
+    * ``assignment_id is None`` — a self-initiated attempt with no
+      assignment scope; no pill to query for, no RAG context.
+    * The assignment exists but has ``pill_id is None`` — a
+      learning-path assignment (multiple pills); per AC-D22 the
+      retrieval query is single-pill-scoped, so multi-pill assignments
+      get no RAG context.
+    * The assignment is missing or the pill is missing — defensive
+      fallthrough (the assignee gate at start_attempt rejects
+      missing assignments before we get here, but the lookup stays
+      tolerant).
+
+    The RAG retrieval helper :func:`retrieve_for_generation` returns
+    ``[]`` for a ``None`` pill, so a non-pill assignment proceeds
+    with empty RAG context rather than crashing — matches SPEC §6.1
+    fail-soft semantics."""
+    if assignment_id is None:
+        return None
+    assignment_result = await db.execute(
+        select(Assignment).where(
+            Assignment.id == assignment_id,
+            Assignment.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    assignment = assignment_result.scalar_one_or_none()
+    if assignment is None or assignment.pill_id is None:
+        return None
+    pill_result = await db.execute(
+        select(Pill).where(
+            Pill.id == assignment.pill_id, Pill.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return pill_result.scalar_one_or_none()
 
 
 # --- deterministic shuffle (AC-D24; pure, unit-tested) ----------------
@@ -553,8 +603,30 @@ async def start_attempt(
         # across the N rows so the cost dashboard's per-attempt
         # aggregation sums to the call total (AC-D18). Provider, model,
         # and prompt_version are full per-call values replicated on
-        # every row. RAG context (AC-D22 / P9) and anchor exemplars
-        # (AC-D20 / P8) extend the payload in their respective phases.
+        # every row.
+        #
+        # P9 Slice 3 — folds Drive RAG context into the payload per
+        # AC-D22. When the assignment has a single pill scope, the
+        # retrieve helper embeds a query (pill name + description +
+        # difficulty band) and returns top-k chunks; the prompt's
+        # ``rag_context`` placeholder receives the rendered block.
+        # Learning-path assignments (no single pill) and self-initiated
+        # attempts get an empty rag_context so the prompt template
+        # renders cleanly with the "(none)" sentinel.
+        target_difficulty = int(round(test.target_difficulty or 5))
+        rag_pill = await _load_pill_for_assignment(db, assignment_id)
+        rag_hits = await retrieve_for_generation(
+            db, pill=rag_pill, target_difficulty=target_difficulty
+        )
+        # P9 Slice 4 — low-realism negative-examples per AC-D22. The
+        # pool is per-pill, so a learning-path assignment (rag_pill is
+        # None) sees ``(none)``; same fallthrough as the rag_context
+        # block above.
+        low_realism = (
+            await list_low_realism_questions_for_pill(db, pill_id=rag_pill.id)
+            if rag_pill is not None
+            else []
+        )
         provider = resolve_provider(Operation.generation, system_settings=settings)
         gen_result = await provider.generate(
             Operation.generation,
@@ -563,6 +635,8 @@ async def start_attempt(
                 "target_difficulty": test.target_difficulty or 5,
                 "question_count": _GENERATION_DEFAULT_QUESTION_COUNT,
                 "attempt_id": str(attempt.id),
+                "rag_context": render_rag_context(rag_hits),
+                "low_realism_negative_examples": render_low_realism_examples(low_realism),
             },
         )
         generated = gen_result.content.get("questions") or []

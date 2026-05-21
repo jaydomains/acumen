@@ -24,6 +24,7 @@ from app.routers import (
     cost,
     groups,
     paths,
+    rag,
     tests,
     users,
 )
@@ -80,6 +81,10 @@ def create_app() -> FastAPI:
     # P5 Slice 3 — admin AI cost dashboard (AC-D18).
     app.include_router(cost.router)
     app.include_router(calibration.router)
+
+    # P9 — Drive RAG admin surface (Slice 2) + realism feedback
+    # endpoints (Slice 4). AC-D22.
+    app.include_router(rag.router)
 
     return app
 

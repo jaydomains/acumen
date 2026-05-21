@@ -1,5 +1,6 @@
 """OpenAI provider — cross-family grade review (P6, AC-D19 / AC-CD11
-v1.7) and embeddings (P9, AC-D22). CODE_SPEC §7.
+v1.7), anchor self-review (P8, AC-D23), and embeddings (P9, AC-D22).
+CODE_SPEC §7.
 
 P6 wires :meth:`OpenAIProvider.review` for the ``grade_review`` op via
 the Chat Completions API with ``response_format={"type": "json_object"}``.
@@ -13,9 +14,17 @@ cost capture as ``grade_review``. The two review operations share
 ``_call``; only the ``_REVIEW_OPS`` whitelist and the per-op
 ``_MAX_OUTPUT_TOKENS`` ceiling differ.
 
-``embed`` continues to raise :class:`NotImplementedError` (P9).
-``generate`` / ``grade`` continue to raise — the 5 Anthropic ops never
-route to OpenAI by default (AC-D12 v1.6).
+P9 wires :meth:`OpenAIProvider.embed` against the OpenAI embeddings
+endpoint with ``text-embedding-3-small`` (AC-D22 / AC-CD9; the model
+ID is env-overridable via ``openai_embedding_model``). Embeddings
+return a single 1536-dim vector and prompt-token usage only — no
+completion tokens, no prompt template (and therefore no
+``prompt_version``). The call shares ``_RETRYABLE_EXC`` and the
+tenacity policy with the chat path; the SDK seam is ``_invoke_embed``
+(sibling to ``_invoke`` so existing test monkeypatches on the chat
+path stay untouched — Gitar PR-#20 plan-time risk #2). ``generate`` /
+``grade`` continue to raise — the 5 Anthropic ops never route to
+OpenAI by default (AC-D12 v1.6).
 
 Calls are wrapped with :mod:`tenacity` exponential backoff for the
 documented transient errors (rate limit, connection drops, timeout,
@@ -31,6 +40,7 @@ import json
 from typing import Any
 
 import openai
+from openai.types import CreateEmbeddingResponse
 from openai.types.chat import ChatCompletion
 from tenacity import (
     retry,
@@ -50,6 +60,10 @@ from app.config import get_settings
 _REVIEW_OPS: frozenset[Operation] = frozenset(
     {Operation.grade_review, Operation.anchor_self_review}
 )
+
+# OpenAI handles embeddings on the ``embed()`` method per AC-CD8 v1.6
+# routing. The only valid op is ``embed`` (Drive RAG / AC-D22 / P9).
+_EMBED_OPS: frozenset[Operation] = frozenset({Operation.embed})
 
 
 # Conservative cap on the structured JSON each review pass returns. A
@@ -76,7 +90,8 @@ _RETRYABLE_EXC = (
 class OpenAIProvider:
     """Async OpenAI client wired to the
     :class:`~app.ai.provider.AIProvider` protocol. P6 implements
-    :meth:`review` for ``grade_review``; :meth:`embed` lands with P9.
+    :meth:`review` for ``grade_review``; P8 widens it to
+    ``anchor_self_review``; P9 implements :meth:`embed` for Drive RAG.
     :meth:`generate` / :meth:`grade` stay unimplemented because the 5
     Anthropic ops never route here under any supported configuration."""
 
@@ -121,8 +136,44 @@ class OpenAIProvider:
         return await self._call(operation, payload)
 
     async def embed(self, operation: Operation, text: str) -> EmbedResult:
-        raise NotImplementedError(
-            "OpenAI embedding wiring lands in P9 (Drive RAG / AC-D22)."
+        if operation not in _EMBED_OPS:
+            raise ValueError(
+                f"OpenAIProvider.embed() handles only the embed op (P9 "
+                f"Drive RAG / AC-D22); got {operation.value!r}. Per "
+                "AC-CD8 v1.6 routing, generation/weakness/learning_material"
+                "/pill_proposal→generate(), grading→grade(), grade_review/"
+                "anchor_self_review→review()."
+            )
+        model = resolve_model(operation)
+        response = await _invoke_embed(
+            self._get_client(),
+            model=model,
+            text=text,
+        )
+        # OpenAI's embeddings endpoint returns ``data[0].embedding`` for
+        # a single-string input and ``usage.prompt_tokens`` for the
+        # token count. Embeddings have no completion side, so
+        # ``completion_tokens=0`` flows through ``compute_cost`` against
+        # the (0.02, 0.0) PRICE_TABLE entry — cost is pure input-side.
+        # The API contract guarantees one embedding per single-string
+        # input, but a defensive guard surfaces a clear error if a
+        # future SDK change or mocked-in-test response leaves ``data``
+        # empty (the raw ``IndexError`` would otherwise lose the
+        # provider + model context — Gitar PR-#21 Slice 1 finding #2).
+        if not response.data:
+            raise ValueError(
+                f"OpenAI embeddings API returned empty data for "
+                f"model={model!r} (provider={self.name})."
+            )
+        embedding = list(response.data[0].embedding)
+        prompt_tokens = response.usage.prompt_tokens if response.usage is not None else 0
+        cost = compute_cost(self.name, model, prompt_tokens, 0)
+        return EmbedResult(
+            embedding=embedding,
+            provider=self.name,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            cost_usd=cost,
         )
 
     # --- private --------------------------------------------------------
@@ -198,6 +249,31 @@ async def _invoke(
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
+
+
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type(_RETRYABLE_EXC),
+)
+async def _invoke_embed(
+    client: openai.AsyncOpenAI,
+    *,
+    model: str,
+    text: str,
+) -> CreateEmbeddingResponse:
+    """One Embeddings call with bounded exponential backoff on the same
+    transient classes as :func:`_invoke` (rate limit, connection,
+    timeout, 5xx). 4xx errors propagate after the first attempt.
+
+    Kept as a separate module-level seam so the chat-completion
+    monkeypatches in :mod:`tests.unit.test_p6_openai_review` /
+    :mod:`tests.unit.test_p8_openai_anchor_review` stay isolated from
+    the embed path (the embeddings-API call shape — ``input=text`` vs
+    ``messages=[...]`` — is incompatible with the chat seam, so a
+    shared ``_invoke`` would have required signature gymnastics)."""
+    return await client.embeddings.create(model=model, input=text)
 
 
 def _raw_text(response: ChatCompletion) -> str:
