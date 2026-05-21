@@ -51,6 +51,17 @@ import logging
 import math
 import re
 import uuid
+from dataclasses import dataclass
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.cost import maybe_fire_budget_alert, record_provenance
+from app.ai.provider import Operation, resolve_provider
+from app.domain.drive_source import DriveFile, DriveSource, get_drive_source
+from app.models import SEED_TENANT_ID, DriveChunk, SystemSettings
+from app.permissions import APIError, now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -268,3 +279,273 @@ def aggregate_flag_ratio(flag_weight_sum: float, total_serves: int) -> float:
         return 0.0
     ratio = flag_weight_sum / total_serves
     return max(0.0, min(1.0, ratio))
+
+
+# --- Slice 2: Drive ingest pipeline (diff-based) ---------------------
+
+
+@dataclass(frozen=True)
+class DiffSets:
+    """Result of comparing the current Drive folder snapshot against
+    the existing :class:`DriveChunk` index. Per AC-D22 "hash each Drive
+    file, re-embed only changed/new files, drop chunks for deleted
+    files" — the four sets cover every transition.
+
+    Sets carry the Drive file id (not the chunk row id) because the
+    diff operates per-file; the chunk-level operations
+    (delete-by-source_doc_ref / re-embed) cascade from the file id."""
+
+    added: list[DriveFile]
+    changed: list[DriveFile]
+    unchanged: list[DriveFile]
+    deleted: list[str]
+
+
+def diff_files(
+    drive: list[tuple[DriveFile, str]],
+    existing_hashes_by_source: dict[str, str],
+) -> DiffSets:
+    """Split the current Drive snapshot into four buckets relative to
+    the existing :class:`DriveChunk` index.
+
+    ``drive`` is a list of ``(DriveFile, content_hash)`` tuples — the
+    caller fetches each file's text once and hashes it via
+    :func:`content_hash` so the diff and the ingest path see the same
+    hash (a future bug where the hash drifted between the diff and the
+    persist call would otherwise re-embed unchanged files silently).
+
+    ``existing_hashes_by_source`` maps ``source_doc_ref`` (i.e. the
+    Drive file id) to its current chunk-level content hash. Computed
+    once at the top of :func:`ingest_drive_folder` from the existing
+    :class:`DriveChunk` rows (any chunk for the file id carries the
+    same file-level hash by construction; the diff uses one
+    representative chunk's hash per file).
+
+    Deleted files: ids present in the existing index but not in
+    ``drive``. The caller will delete every chunk row with that
+    ``source_doc_ref``.
+    """
+    drive_by_id = {df.id: (df, h) for df, h in drive}
+    added: list[DriveFile] = []
+    changed: list[DriveFile] = []
+    unchanged: list[DriveFile] = []
+    for file_id, (df, h) in drive_by_id.items():
+        prev = existing_hashes_by_source.get(file_id)
+        if prev is None:
+            added.append(df)
+        elif prev != h:
+            changed.append(df)
+        else:
+            unchanged.append(df)
+    deleted = [
+        file_id for file_id in existing_hashes_by_source if file_id not in drive_by_id
+    ]
+    return DiffSets(added=added, changed=changed, unchanged=unchanged, deleted=deleted)
+
+
+async def _existing_hashes_by_source(db: AsyncSession) -> dict[str, str]:
+    """One :class:`DriveChunk` per ``source_doc_ref`` is enough to
+    fingerprint the file (every chunk for the same file carries the
+    file-level hash by construction in :func:`ingest_drive_folder`).
+    Tenant-scoped, equality-only WHERE per AC-CD15."""
+    result = await db.execute(
+        select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
+    )
+    by_source: dict[str, str] = {}
+    for chunk in result.scalars().all():
+        # First-seen wins — the per-file hash is invariant across the
+        # chunks we wrote for that file.
+        by_source.setdefault(chunk.source_doc_ref, chunk.content_hash)
+    return by_source
+
+
+async def _delete_chunks_for_source(db: AsyncSession, source_doc_ref: str) -> int:
+    """Delete every :class:`DriveChunk` row for ``source_doc_ref``.
+    Equality-only WHERE per AC-CD15; the rows are pulled into memory
+    and removed one by one (the fake-harness ``delete`` removes by
+    object identity)."""
+    result = await db.execute(
+        select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
+    )
+    deleted = 0
+    for chunk in result.scalars().all():
+        if chunk.source_doc_ref == source_doc_ref:
+            await db.delete(chunk)
+            deleted += 1
+    return deleted
+
+
+async def _persist_chunks_for_file(
+    db: AsyncSession,
+    *,
+    file_id: str,
+    text: str,
+    file_hash: str,
+) -> int:
+    """Chunk ``text``, embed each chunk via the resolved OpenAI provider,
+    and write one :class:`DriveChunk` row per chunk with full
+    :class:`AIProvenanceMixin` provenance. Returns the count of chunks
+    added.
+
+    Every chunk row carries the same file-level ``content_hash`` so
+    the diff can read it back from any chunk. The embedding call goes
+    through :func:`app.ai.provider.resolve_provider` — production
+    routes to OpenAI by coded default per AC-CD8 v1.6; tests via
+    ``RecordingProvider`` see the same call shape with a deterministic
+    1536-dim zero vector.
+    """
+    chunks = chunk_document(text)
+    if not chunks:
+        return 0
+    provider = resolve_provider(Operation.embed)
+    added = 0
+    for idx, chunk_text in enumerate(chunks):
+        embed_result = await provider.embed(Operation.embed, chunk_text)
+        row = DriveChunk(
+            tenant_id=SEED_TENANT_ID,
+            source_doc_ref=file_id,
+            chunk_index=idx,
+            chunk_text=chunk_text,
+            content_hash=file_hash,
+            embedding=embed_result.embedding,
+            indexed_at=now_utc(),
+        )
+        record_provenance(row, embed_result)
+        db.add(row)
+        added += 1
+    return added
+
+
+async def ingest_drive_folder(
+    db: AsyncSession,
+    *,
+    drive_source: DriveSource | None = None,
+) -> dict[str, Any]:
+    """Daily diff ingest (AC-D22). Admin-triggered at P9; beat-scheduled
+    at P11.
+
+    Algorithm (CODE_SPEC §9 verbatim):
+
+    1. Pull the current folder snapshot from Drive
+       (:meth:`DriveSource.list_files`).
+    2. For each file, fetch its text and hash it once
+       (``content_hash``). Per-file failures are isolated — one
+       unreadable file logs at WARNING and bumps the
+       ``files_failed`` counter without aborting the sweep
+       (PR-019 Slice 2 isolation pattern).
+    3. Compare against the existing index via :func:`diff_files`.
+    4. For each ``added`` / ``changed`` file: chunk → embed each chunk
+       → persist with provenance. ``changed`` first deletes the
+       previous chunk rows so the diff stays consistent.
+    5. For each ``deleted`` file: drop every chunk row with that
+       ``source_doc_ref``.
+    6. Post-sweep: invoke :func:`maybe_fire_budget_alert` — the embed
+       spend may have crossed a threshold (AC-D18 v1.1 alerts at
+       50/80/100 %).
+
+    Returns telemetry: ``files_seen``, ``files_unchanged``,
+    ``files_added``, ``files_changed``, ``files_deleted``,
+    ``files_failed``, ``chunks_added``, ``chunks_deleted``,
+    ``embed_calls``.
+
+    Raises :class:`APIError` (409 ``drive_folder_unconfigured``) if no
+    Drive folder id has been configured in ``system_settings`` — an
+    admin operator visibility cue that the deployment hasn't completed
+    AC-D23 step 4 (initial folder bootstrap).
+
+    **HTTP timeout warning** mirroring PR-020 Slice 2 finding #2: a
+    folder with hundreds of files emits hundreds of sequential
+    embed calls. The admin endpoint trigger is for dev / manual
+    operator action; production at fleet scale runs through the
+    P11 Celery beat task (same callable, wrapped). Workaround
+    until P11: trim the folder, or bump the reverse-proxy timeout
+    temporarily.
+    """
+    settings_row = (
+        await db.execute(
+            select(SystemSettings).where(SystemSettings.tenant_id == SEED_TENANT_ID)
+        )
+    ).scalar_one_or_none()
+    folder_id = settings_row.drive_folder_id if settings_row is not None else None
+    if not folder_id:
+        raise APIError(
+            409,
+            "drive_folder_unconfigured",
+            "System settings have no `drive_folder_id`; set it before "
+            "running Drive ingest (AC-D22 / AC-D23 step 4).",
+        )
+
+    source = drive_source if drive_source is not None else get_drive_source()
+    files = await source.list_files(folder_id=folder_id)
+
+    # Phase 1: fetch + hash every file once. Per-file failures are
+    # isolated so one bad file (revoked permission, Drive transient
+    # 404, mid-flight rename) doesn't poison the whole sweep.
+    drive_pairs: list[tuple[DriveFile, str]] = []
+    files_failed = 0
+    file_texts: dict[str, str] = {}
+    for df in files:
+        try:
+            text = await source.fetch_text(file_id=df.id, mime_type=df.mime_type)
+        except Exception:  # pragma: no cover - exercised in tests via fake
+            logger.exception(
+                "Drive ingest: failed to fetch text for file %s (%s); "
+                "skipping but continuing the sweep",
+                df.id,
+                df.name,
+            )
+            files_failed += 1
+            continue
+        file_hash = content_hash(text)
+        drive_pairs.append((df, file_hash))
+        file_texts[df.id] = text
+
+    existing = await _existing_hashes_by_source(db)
+    diff = diff_files(drive_pairs, existing)
+
+    chunks_added = 0
+    chunks_deleted = 0
+
+    # Phase 2: persist changed files (delete then re-embed) + added
+    # files (embed). The order matters: changed files must drop their
+    # previous chunks BEFORE the new chunks land so a partial failure
+    # doesn't leave a mixed-version chunk set.
+    for df in diff.changed:
+        chunks_deleted += await _delete_chunks_for_source(db, df.id)
+        chunks_added += await _persist_chunks_for_file(
+            db,
+            file_id=df.id,
+            text=file_texts[df.id],
+            file_hash=next(h for f, h in drive_pairs if f.id == df.id),
+        )
+    for df in diff.added:
+        chunks_added += await _persist_chunks_for_file(
+            db,
+            file_id=df.id,
+            text=file_texts[df.id],
+            file_hash=next(h for f, h in drive_pairs if f.id == df.id),
+        )
+
+    # Phase 3: drop chunks for files that vanished from the folder.
+    for file_id in diff.deleted:
+        chunks_deleted += await _delete_chunks_for_source(db, file_id)
+
+    await db.flush()
+
+    # AC-D18 v1.1: a large embed spend may have crossed the budget
+    # threshold this sweep — post-call alert check, fail-soft.
+    await maybe_fire_budget_alert(db, tenant_id=SEED_TENANT_ID)
+
+    return {
+        "files_seen": len(files),
+        "files_unchanged": len(diff.unchanged),
+        "files_added": len(diff.added),
+        "files_changed": len(diff.changed),
+        "files_deleted": len(diff.deleted),
+        "files_failed": files_failed,
+        "chunks_added": chunks_added,
+        "chunks_deleted": chunks_deleted,
+        # One embed call per chunk added; the unchanged path issues
+        # zero embed calls (the diff skips them).
+        "embed_calls": chunks_added,
+    }

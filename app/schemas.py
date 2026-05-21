@@ -736,3 +736,32 @@ class LoopRejectResult(_Base):
     logged at ``loop.queue.reject`` for operator traceability."""
 
     weakness_report_id: uuid.UUID
+
+
+class DriveIngestResult(_Base):
+    """Telemetry returned by one Drive ingest sweep (AC-D22 / P9).
+
+    Surfaced by ``POST /v1/admin/drive/ingest``; the body matches what
+    the P11 Celery beat task will emit on every 24-hour scheduled run
+    so dashboards stay aligned. The nine counters describe one sweep:
+
+    * ``files_seen`` — total files returned by Drive's ``files.list``
+    * ``files_unchanged`` — hash matched the existing index → no embed
+    * ``files_added`` / ``files_changed`` / ``files_deleted`` — the
+      three diff-action sets per AC-D22
+    * ``files_failed`` — per-file fetch failures isolated by the
+      per-file try/except (PR-019 Slice 2 isolation pattern)
+    * ``chunks_added`` / ``chunks_deleted`` — chunk-level row deltas
+    * ``embed_calls`` — equal to ``chunks_added`` (one embed per
+      chunk persisted); useful for cost-trend dashboards alongside
+      :func:`app.ai.cost.current_month_spend`'s OpenAI bucket."""
+
+    files_seen: int
+    files_unchanged: int
+    files_added: int
+    files_changed: int
+    files_deleted: int
+    files_failed: int
+    chunks_added: int
+    chunks_deleted: int
+    embed_calls: int
