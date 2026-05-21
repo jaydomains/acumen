@@ -562,3 +562,242 @@ async def run_loop_after_submit(
         )
 
     return report
+
+
+# --- admin-reviewed mode endpoints (Slice 3 — AC-D6) ------------------
+#
+# When ``Assignment.loop_mode == admin_reviewed`` a failed attempt's
+# WeaknessReport is written with ``routed_to_admin = True`` but the
+# autonomous follow-up creation is gated on admin approval. These three
+# helpers back the admin queue surface:
+#
+#   * ``list_admin_queue``     — GET /v1/admin/loop/queue
+#   * ``approve_admin_queue``  — POST /v1/admin/loop/queue/{id}/approve
+#   * ``reject_admin_queue``   — POST /v1/admin/loop/queue/{id}/reject
+#
+# Approval flips ``routed_to_admin`` to False AND creates the follow-up
+# (material + per_testee Test + Assignment + Assignee + loop_driven
+# Attempt) — the same flow the autonomous mode runs inline at submit.
+# Rejection flips the flag without creating any follow-up; the Testee
+# never sees a remediation pass for this attempt.
+
+
+async def _attempt_by_id(db: AsyncSession, attempt_id: uuid.UUID) -> Attempt | None:
+    result = await db.execute(select(Attempt).where(Attempt.id == attempt_id))
+    return result.scalar_one_or_none()
+
+
+async def _test_by_id(db: AsyncSession, test_id: uuid.UUID) -> Test | None:
+    result = await db.execute(select(Test).where(Test.id == test_id))
+    return result.scalar_one_or_none()
+
+
+async def _weakness_report_by_id(
+    db: AsyncSession, weakness_report_id: uuid.UUID
+) -> WeaknessReport | None:
+    result = await db.execute(
+        select(WeaknessReport).where(WeaknessReport.id == weakness_report_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_admin_queue(db: AsyncSession) -> list[dict[str, Any]]:
+    """List :class:`WeaknessReport` rows with ``routed_to_admin = True``
+    (admin-reviewed loop queue per AC-D6). Oldest-first so the longest-
+    waiting row surfaces at the top — matches the P6 grade-review queue
+    convention (``list_flagged_reviews``).
+
+    Each row carries enough context for the admin to make an
+    approve/reject decision without a follow-up DB round-trip:
+    parent attempt id + Testee + pill name + the weak-pill ids the AI
+    identified + the parent attempt's overall_score.
+
+    Returns a list of dicts shaped for ``LoopQueueItem``. The caller
+    (router) converts to Pydantic.
+
+    Equality-only walk — :func:`WeaknessReport.routed_to_admin` is a
+    boolean column and the harness only supports single-column
+    equality wheres, so we load and filter in Python (same pattern as
+    :func:`app.domain.competence._prior_attempts_on_pill`). At v1 scale
+    the admin queue is short — most reports route to autonomous mode —
+    so the cost is negligible.
+    """
+    result = await db.execute(
+        select(WeaknessReport).where(WeaknessReport.tenant_id == SEED_TENANT_ID)
+    )
+    out: list[dict[str, Any]] = []
+    for report in result.scalars().all():
+        if not report.routed_to_admin:
+            continue
+        attempt = await _attempt_by_id(db, report.attempt_id)
+        if attempt is None or attempt.assignment_id is None:
+            continue
+        assignment = await _assignment(db, attempt.assignment_id)
+        if assignment is None or assignment.pill_id is None:
+            continue
+        pill = await _pill(db, assignment.pill_id)
+        if pill is None:
+            continue
+        pill_rows = await _weakness_report_pills(db, report.id)
+        out.append(
+            {
+                "weakness_report_id": report.id,
+                "attempt_id": attempt.id,
+                "testee_id": attempt.testee_id,
+                "pill_id": pill.id,
+                "pill_name": pill.name,
+                "overall_score": attempt.overall_score,
+                "weak_pill_ids": [row.pill_id for row in pill_rows],
+                "created_at": report.created_at,
+            }
+        )
+    out.sort(key=lambda r: r["created_at"])
+    return out
+
+
+async def _resolve_queue_row(
+    db: AsyncSession, weakness_report_id: uuid.UUID
+) -> tuple[WeaknessReport, Attempt, Assignment, Test]:
+    """Shared validation for approve/reject — load the WeaknessReport
+    and its parent attempt / assignment / test, raising APIError per
+    the queue contract:
+
+      * 404 — WeaknessReport doesn't exist (already-deleted or wrong id)
+      * 409 — WeaknessReport.routed_to_admin is False (already resolved
+        or autonomous mode — admin can't re-route)
+      * 409 — parent attempt or assignment row is missing (data
+        corruption — fail loudly so the admin sees a clear error rather
+        than silently approving against missing context)
+    """
+    # Local import — APIError is the routers' status-code seam and
+    # only needed here.
+    from app.permissions import APIError
+
+    report = await _weakness_report_by_id(db, weakness_report_id)
+    if report is None:
+        raise APIError(404, "not_found", "Weakness report not found.")
+    if not report.routed_to_admin:
+        raise APIError(
+            409,
+            "not_in_queue",
+            "This weakness report is not awaiting admin review.",
+        )
+    attempt = await _attempt_by_id(db, report.attempt_id)
+    if attempt is None or attempt.assignment_id is None:
+        raise APIError(
+            409,
+            "orphan_report",
+            "Parent attempt for this report is missing or has no assignment.",
+        )
+    assignment = await _assignment(db, attempt.assignment_id)
+    if assignment is None or assignment.pill_id is None:
+        raise APIError(
+            409,
+            "orphan_report",
+            "Parent assignment for this report is missing or has no pill.",
+        )
+    test = await _test_by_id(db, attempt.test_id)
+    if test is None:
+        raise APIError(
+            409,
+            "orphan_report",
+            "Parent test for this report is missing.",
+        )
+    return report, attempt, assignment, test
+
+
+async def approve_admin_queue(
+    db: AsyncSession,
+    weakness_report_id: uuid.UUID,
+    admin_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Approve a queued :class:`WeaknessReport`: clear
+    ``routed_to_admin`` AND create the follow-up (material + per_testee
+    Test + Assignment + Assignee + loop_driven Attempt) — the same flow
+    the autonomous mode runs inline at submit.
+
+    Returns a dict shaped for ``LoopApproveResult``. The
+    ``follow_up_count`` is the number of follow-up Attempts created
+    (one per weak pill in the report), which mirrors the
+    ``run_loop_after_submit`` per-pill loop.
+    """
+    report, attempt, assignment, test = await _resolve_queue_row(db, weakness_report_id)
+    pill_rows = await _weakness_report_pills(db, report.id)
+    wrong_prompts = await _wrong_question_prompts(db, attempt)
+
+    follow_up_count = 0
+    for weak in pill_rows:
+        pill = await _pill(db, weak.pill_id)
+        if pill is None:
+            # Same defensive skip as run_loop_after_submit — the AI may
+            # emit a pill_id that doesn't exist in the catalogue.
+            continue
+        if not pill.safety_relevant:
+            await generate_for_weakness(
+                db,
+                weakness_report=report,
+                pill_id=pill.id,
+                testee_id=attempt.testee_id,
+                wrong_questions=wrong_prompts,
+            )
+        await _create_followup(
+            db,
+            parent_attempt=attempt,
+            parent_test=test,
+            parent_assignment=assignment,
+            pill=pill,
+        )
+        follow_up_count += 1
+
+    report.routed_to_admin = False
+    await db.flush()
+
+    # Audit-log import — local to keep loop.py free of the catalogue
+    # dependency at module load (avoids a circular import via
+    # weakness → loop → catalogue chains).
+    from app.domain.catalogue import record_audit
+
+    await record_audit(
+        db,
+        actor_id=admin_id,
+        action="loop.queue.approve",
+        target_entity="weakness_report",
+        target_id=report.id,
+        detail={"follow_up_count": follow_up_count, "attempt_id": str(attempt.id)},
+    )
+    return {
+        "weakness_report_id": report.id,
+        "follow_up_count": follow_up_count,
+    }
+
+
+async def reject_admin_queue(
+    db: AsyncSession,
+    weakness_report_id: uuid.UUID,
+    admin_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Reject a queued :class:`WeaknessReport`: clear ``routed_to_admin``
+    without creating any follow-up. The Testee never sees a remediation
+    pass for this attempt. Audit-logged so the rejection is traceable
+    (operator review of admin action history).
+
+    Idempotency: the queue-resolve guard in ``_resolve_queue_row``
+    raises 409 if ``routed_to_admin`` is already False, so a double-
+    reject (or reject-after-approve) is rejected at the same gate as
+    an approve-after-approve.
+    """
+    report, attempt, _assignment, _test = await _resolve_queue_row(db, weakness_report_id)
+    report.routed_to_admin = False
+    await db.flush()
+
+    from app.domain.catalogue import record_audit
+
+    await record_audit(
+        db,
+        actor_id=admin_id,
+        action="loop.queue.reject",
+        target_entity="weakness_report",
+        target_id=report.id,
+        detail={"attempt_id": str(attempt.id)},
+    )
+    return {"weakness_report_id": report.id}

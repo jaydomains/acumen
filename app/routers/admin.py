@@ -22,6 +22,11 @@ from app.domain.grade_review import (
     reconcile_pending_grade_reviews,
     resolve_flagged_review,
 )
+from app.domain.loop import (
+    approve_admin_queue,
+    list_admin_queue,
+    reject_admin_queue,
+)
 from app.models import AppUser, get_db
 from app.permissions import ROLE_ADMINISTRATOR, require_role
 from app.schemas import (
@@ -32,6 +37,10 @@ from app.schemas import (
     GradeReviewReconcileResult,
     GradeReviewResolveRequest,
     GradeReviewResolveResult,
+    LoopApproveResult,
+    LoopQueueItem,
+    LoopQueueListResponse,
+    LoopRejectResult,
     SweepResult,
 )
 
@@ -113,3 +122,50 @@ async def grade_review_resolve(
     )
     await db.commit()
     return GradeReviewResolveResult(**result)
+
+
+# --- P7 adaptive loop admin queue (AC-D6 admin_reviewed mode) ---------
+
+
+@router.get("/loop/queue")
+async def loop_queue(
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> LoopQueueListResponse:
+    """List WeaknessReport rows in the admin-reviewed loop queue
+    (AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose
+    ``routed_to_admin`` flag has been cleared by a prior approve/reject
+    drop off the queue."""
+    rows = await list_admin_queue(db)
+    return LoopQueueListResponse(data=[LoopQueueItem(**row) for row in rows])
+
+
+@router.post("/loop/queue/{weakness_report_id}/approve", status_code=201)
+async def loop_queue_approve(
+    weakness_report_id: uuid.UUID,
+    admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> LoopApproveResult:
+    """Approve a queued WeaknessReport: clears ``routed_to_admin`` AND
+    creates the follow-up (material per non-safety weak pill +
+    per_testee Test + Assignment + Assignee + loop_driven Attempt) —
+    same flow the autonomous mode runs inline at submit. 201 Created
+    matches the AC-CD16 admin-write convention used by
+    grade_review_resolve."""
+    result = await approve_admin_queue(db, weakness_report_id, admin.id)
+    await db.commit()
+    return LoopApproveResult(**result)
+
+
+@router.post("/loop/queue/{weakness_report_id}/reject", status_code=201)
+async def loop_queue_reject(
+    weakness_report_id: uuid.UUID,
+    admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> LoopRejectResult:
+    """Reject a queued WeaknessReport: clears ``routed_to_admin``
+    without creating a follow-up. The Testee never sees a remediation
+    pass for this attempt. Audit-logged at ``loop.queue.reject``."""
+    result = await reject_admin_queue(db, weakness_report_id, admin.id)
+    await db.commit()
+    return LoopRejectResult(**result)

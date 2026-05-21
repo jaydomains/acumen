@@ -92,10 +92,10 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Weakness -> material -> retest loop | P7 | AC-D6 | `app/routers/loop.py` | missing | |
-| `competence_estimate` IRT + decay | P7 | AC-D9; AC-CD13 | `app/domain/competence.py` | missing | |
-| Null competence -> "no data yet" | P7 | AC-D9 | `app/domain/competence.py` | missing | |
-| N-gram overlap flag | P7 | AC-D4 #5; AC-CD14 | `app/domain/ngram.py` | missing | |
+| Weakness -> material -> retest loop | P7 | AC-D6 | `app/domain/loop.py`, `app/routers/admin.py` | built | `tests/integration/test_p7_loop.py::test_failed_assignment_attempt_triggers_autonomous_loop`; `tests/integration/test_p7_loop_admin.py::test_approve_creates_followup_and_clears_flag` |
+| `competence_estimate` IRT + decay | P7 | AC-D9; AC-CD13 | `app/domain/competence.py` | built | `tests/unit/test_p7_competence.py` (38 worked-fixture tests from AC-D9 v1.2); `tests/integration/test_p7_loop.py::test_failed_attempt_writes_competence_estimate` |
+| Null competence -> "no data yet" | P7 | AC-D9 | `app/domain/competence.py` | built | `tests/unit/test_p7_competence.py::TestComputeCompetenceEstimate::test_empty_returns_none`; `apply_competence_update` propagates None per AC-D9 null-handling |
+| N-gram overlap flag | P7 | AC-D4 #5; AC-CD14 | `app/domain/ngram.py`, `app/domain/loop.py` | built | `tests/unit/test_p7_ngram.py` (27 trigram + Jaccard tests); `tests/integration/test_p7_loop.py::test_overlap_check_flags_near_verbatim_copy` |
 
 ## P8 — Anchor calibration
 
