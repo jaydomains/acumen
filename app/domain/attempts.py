@@ -168,6 +168,48 @@ PAUSE_REASON_GENERATION_FAILED = "generation_failed"
 _Q1_POSITION = 1
 
 
+async def pause_attempt_from_streaming(
+    session_factory: Any, attempt_id: uuid.UUID, reason: str
+) -> None:
+    """Production AC-D11 system-pause invocation for the SSE handler's
+    ``stream_attempt_questions`` orchestrator (P10 / AC-D25 v1.8 /
+    AC-CD10 v1.8). Opens a fresh short-lived session, loads the
+    Attempt + Test, calls ``pause_attempt(..., system=True,
+    reason=reason)``. The session is short-lived so the pause commits
+    independently of the SSE request session (which closes when the
+    handler returns); the pause survives so the Testee sees the
+    "retry / abandon" UI on resume.
+
+    Signature matches ``app.domain.streaming.PauseFn``
+    (``Callable[[uuid.UUID, str], Awaitable[None]]``) once
+    ``session_factory`` is partial-applied — the SSE handler wires
+    this in.
+    """
+    async with session_factory() as sess:
+        attempt = await get_attempt(sess, attempt_id)
+        if attempt is None:
+            _log.warning(
+                "streaming pause: attempt %s no longer exists; skipping",
+                attempt_id,
+            )
+            return
+        # Defer the import to avoid a circular import between
+        # ``app.domain.attempts`` and ``app.domain.tests`` (tests
+        # imports the catalogue layer which transitively imports
+        # this module).
+        from app.domain.tests import get_test
+
+        test = await get_test(sess, attempt.test_id)
+        if test is None:
+            _log.warning(
+                "streaming pause: attempt %s's test no longer exists; skipping",
+                attempt_id,
+            )
+            return
+        await pause_attempt(sess, attempt, test, system=True, reason=reason)
+        await sess.commit()
+
+
 async def _generate_q1_sync(
     provider: Any, *, attempt: Attempt, payload: dict[str, Any]
 ) -> Question:

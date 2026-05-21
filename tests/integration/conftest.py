@@ -256,10 +256,29 @@ def cat_session() -> CatalogueFakeSession:
 
 @pytest.fixture
 def cat_client(cat_session: CatalogueFakeSession) -> Iterator[TestClient]:
+    from contextlib import asynccontextmanager
+
+    from app.routers.attempts import get_jit_session_factory
+
     async def _override() -> AsyncIterator[CatalogueFakeSession]:
         yield cat_session
 
+    # P10 Slice 4: the SSE handler's per-task session factory is a
+    # FastAPI dependency so tests can hand it a CatalogueFakeSession-
+    # backed factory (no real Postgres). The factory is callable
+    # returning an async context manager — production yields a fresh
+    # ``async_sessionmaker`` session; tests yield the shared
+    # ``cat_session`` so per-task persistence shows up in the same
+    # in-memory store the assertions read.
+    def _jit_factory_override() -> object:
+        @asynccontextmanager
+        async def _ctx() -> AsyncIterator[CatalogueFakeSession]:
+            yield cat_session
+
+        return _ctx
+
     app.dependency_overrides[get_db] = _override
+    app.dependency_overrides[get_jit_session_factory] = _jit_factory_override
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
