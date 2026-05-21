@@ -260,9 +260,18 @@ async def _existing_anchors(
     bug only surfaces under real SQLAlchemy strict-mode; keep the
     ``.limit(1)`` defensively even if a future test pattern would
     otherwise pass without it.
+
+    Tenant-scoped to match the rest of the file's query pattern
+    (Gitar PR-#20 Slice 3 finding #1 — consistency guard for any
+    future multi-tenant flip).
     """
     result = await db.execute(
-        select(AnchorQuestion).where(AnchorQuestion.pill_id == pill_id).limit(1)
+        select(AnchorQuestion)
+        .where(
+            AnchorQuestion.pill_id == pill_id,
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+        )
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -711,8 +720,15 @@ async def draw_anchors_for_attempt(
 
     target_band = int(round(test.target_difficulty or 5))
 
+    # Tenant-scoped to match every other AnchorQuestion query in this
+    # file (Gitar PR-#20 Slice 3 finding #1 — the consistency guard
+    # protects against a future multi-tenant flip even though v1 ships
+    # single-tenant under SEED_TENANT_ID).
     pool_result = await db.execute(
-        select(AnchorQuestion).where(AnchorQuestion.pill_id == assignment.pill_id)
+        select(AnchorQuestion).where(
+            AnchorQuestion.pill_id == assignment.pill_id,
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+        )
     )
     pool_all = list(pool_result.scalars().all())
     live = [a for a in pool_all if not a.excluded and a.band == target_band]
