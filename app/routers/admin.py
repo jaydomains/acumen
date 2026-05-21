@@ -17,7 +17,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import engagement as engagement_domain
-from app.domain.calibration import generate_anchor_pool_for_pill
+from app.domain.calibration import (
+    generate_anchor_pool_for_pill,
+    list_flagged_anchors,
+    resolve_flagged_anchor,
+    run_calibration_sweep,
+)
 from app.domain.catalogue import record_audit
 from app.domain.grade_review import (
     list_flagged_reviews,
@@ -34,8 +39,13 @@ from app.permissions import ROLE_ADMINISTRATOR, require_role
 from app.schemas import (
     AnchorBandSummary,
     AnchorBootstrapResult,
+    AnchorResolveRequest,
+    AnchorResolveResult,
+    CalibrationSweepResult,
     EngagementWidgetItem,
     EngagementWidgetResponse,
+    FlaggedAnchorItem,
+    FlaggedAnchorListResponse,
     FlaggedGradeReviewItem,
     FlaggedGradeReviewListResponse,
     GradeReviewReconcileResult,
@@ -226,3 +236,60 @@ async def loop_queue_reject(
     result = await reject_admin_queue(db, weakness_report_id, admin.id)
     await db.commit()
     return LoopRejectResult(**result)
+
+
+# --- P8 Slice 4 — calibration sweep + anchor flag queue (AC-D23 / AC-D27)
+
+
+@router.post("/calibration/run", status_code=201)
+async def calibration_run(
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> CalibrationSweepResult:
+    """Run one pass of the §12 anchor calibration sweep synchronously
+    and return the counts (AC-D27). Identical body to the P11 Celery
+    beat task; the admin trigger gives operators a manual lever for
+    on-demand recompute (mirrors the P6 grade-review reconcile + P4
+    engagement sweep precedent)."""
+    counts = await run_calibration_sweep(db)
+    await db.commit()
+    return CalibrationSweepResult(**counts)
+
+
+@router.get("/anchors/flagged")
+async def anchors_flagged(
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> FlaggedAnchorListResponse:
+    """List :class:`AnchorQuestion` rows pending admin resolution
+    (AC-D23 — anchors that failed 3 generate+review cycles in
+    bootstrap, plus any ``keep``-only ack pendings). Oldest-first
+    by ``created_at``; rows resolved via ``reject`` keep
+    ``excluded=True`` but clear ``needs_admin_attention`` so they
+    fall off the queue."""
+    rows = await list_flagged_anchors(db)
+    return FlaggedAnchorListResponse(data=[FlaggedAnchorItem(**row) for row in rows])
+
+
+@router.post("/anchors/{anchor_id}/resolve", status_code=201)
+async def anchors_resolve(
+    anchor_id: uuid.UUID,
+    body: AnchorResolveRequest,
+    admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AnchorResolveResult:
+    """Resolve one flagged anchor (AC-D23). Three actions:
+    ``keep`` (accept AI wording), ``substitute_wording`` (replace
+    ``config`` from ``new_config`` — admin is the authoritative
+    reviewer of their own substitution, so this does NOT auto-rerun
+    self-review), ``reject`` (acknowledge the excluded slot stays
+    excluded). Audit-logged at ``anchors.resolve``."""
+    result = await resolve_flagged_anchor(
+        db,
+        anchor_id,
+        admin,
+        action=body.action,
+        new_config=body.new_config,
+    )
+    await db.commit()
+    return AnchorResolveResult(**result)

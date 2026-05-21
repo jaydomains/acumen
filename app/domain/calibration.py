@@ -766,3 +766,346 @@ async def draw_anchors_for_attempt(
         )
         rendered.append(question)
     return rendered
+
+
+# --- Slice 4 — Calibration sweep (AC-D20 / AC-D27 / CODE_SPEC §12) ----
+#
+# Daily Bayesian-shrinkage recompute of every live anchor's
+# ``effective_difficulty`` from the per-Testee scores
+# (``AttemptAnchor.score``) accumulated since the last sweep. Admin-
+# triggered now (mirrors the P6 grade-review reconcile + P4
+# engagement sweep precedent); the P11 Celery beat task will invoke
+# the same callable on a 24-hour schedule per AC-D20 / AC-D27.
+#
+# Per-anchor failure isolation: a single bad anchor (corrupt
+# ``assigned_difficulty``, divide-by-zero in the math) cannot poison
+# the sweep — the per-row try/except logs the exception and continues
+# (same pattern PR-019 Slice 2 added to the submit-path hooks per
+# the Gitar observability finding).
+
+_DEFAULT_PRIOR_WEIGHT = 20
+_DEFAULT_SENSITIVITY = 2.0
+_DEFAULT_CONFIDENCE_THRESHOLD = 20
+
+
+async def _all_live_anchors(db: AsyncSession) -> list[AnchorQuestion]:
+    """Every non-excluded :class:`AnchorQuestion` for the tenant. The
+    sweep walks live rows only — excluded rows have already failed
+    self-review and are awaiting admin resolution; recomputing their
+    effective_difficulty would be misleading once admin decides their
+    fate.
+
+    The ``excluded`` filter is applied in Python after the tenant-
+    scoped fetch (the same equality-only-walk pattern used by the
+    Slice 2 / Slice 3 pool queries — keeps every WHERE single-column
+    equality per AC-CD15 so the zero-DB test harness can run the
+    code unchanged)."""
+    result = await db.execute(
+        select(AnchorQuestion).where(AnchorQuestion.tenant_id == SEED_TENANT_ID)
+    )
+    return [row for row in result.scalars().all() if not row.excluded]
+
+
+async def _scored_observations_for_anchor(
+    db: AsyncSession, anchor_id: uuid.UUID
+) -> list[float]:
+    """Per-anchor ``AttemptAnchor.score`` values, filtering out NULLs.
+    The score column is denormalised by ``submit_attempt`` from
+    ``Response.response_score`` (Slice 3); a NULL means no Testee has
+    answered this anchor yet, so the AC-D27 estimator should treat it
+    as a missing observation rather than a zero."""
+    result = await db.execute(
+        select(AttemptAnchor).where(
+            AttemptAnchor.tenant_id == SEED_TENANT_ID,
+            AttemptAnchor.anchor_question_id == anchor_id,
+        )
+    )
+    rows = list(result.scalars().all())
+    return [row.score for row in rows if row.score is not None]
+
+
+def _settings_with_defaults(settings: SystemSettings | None) -> tuple[int, float, int]:
+    """Pull the three knobs the sweep needs from settings, falling back
+    to the spec defaults when a knob is unset (the zero-DB harness
+    doesn't apply server defaults; same defensive pattern competence.py
+    uses for sensitivity / halflife per the PR-#15 Gitar precedent).
+
+    Returns ``(prior_weight, sensitivity, confidence_threshold)``.
+    """
+    prior_weight = _DEFAULT_PRIOR_WEIGHT
+    sensitivity = _DEFAULT_SENSITIVITY
+    confidence_threshold = _DEFAULT_CONFIDENCE_THRESHOLD
+    if settings is not None:
+        cfg_prior = getattr(settings, "anchor_calibration_prior_weight", None)
+        cfg_sens = getattr(settings, "competence_sensitivity", None)
+        cfg_conf = getattr(settings, "anchor_calibration_confidence_threshold", None)
+        if cfg_prior is not None:
+            prior_weight = int(cfg_prior)
+        if cfg_sens is not None:
+            sensitivity = float(cfg_sens)
+        if cfg_conf is not None:
+            confidence_threshold = int(cfg_conf)
+    return prior_weight, sensitivity, confidence_threshold
+
+
+async def run_calibration_sweep(db: AsyncSession) -> dict[str, Any]:
+    """Walk every live :class:`AnchorQuestion`, recompute
+    ``effective_difficulty`` from accumulated
+    :attr:`AttemptAnchor.score` observations, and update
+    ``total_attempts`` + ``pass_rate``.
+
+    Returns telemetry the admin endpoint surfaces verbatim::
+
+        {
+          "anchors_processed":              <int>,  # live anchors walked
+          "anchors_updated":                <int>,  # at least 1 observation
+          "anchors_skipped_no_observations":<int>,  # n=0
+          "mean_n":                         <float>,  # mean observations
+          "mean_effective_difficulty":      <float>,  # mean updated value
+        }
+
+    Failure-isolated per anchor — a single bad row logs and continues."""
+    settings = await _load_settings(db)
+    prior_weight, sensitivity, _confidence_threshold = _settings_with_defaults(settings)
+
+    anchors_processed = 0
+    anchors_updated = 0
+    anchors_skipped = 0
+    sum_n = 0
+    sum_effective = 0.0
+
+    for anchor in await _all_live_anchors(db):
+        anchors_processed += 1
+        try:
+            scores = await _scored_observations_for_anchor(db, anchor.id)
+            if not scores:
+                anchors_skipped += 1
+                continue
+            new_effective = compute_effective_difficulty(
+                float(anchor.assigned_difficulty),
+                scores,
+                prior_weight=prior_weight,
+                sensitivity=sensitivity,
+            )
+            anchor.effective_difficulty = new_effective
+            anchor.total_attempts = len(scores)
+            anchor.pass_rate = sum(1 for s in scores if s >= 0.5) / len(scores)
+            anchors_updated += 1
+            sum_n += len(scores)
+            sum_effective += new_effective
+        except Exception:
+            _log.exception(
+                "Calibration sweep failed for anchor %s; continuing", anchor.id
+            )
+
+    mean_n = (sum_n / anchors_updated) if anchors_updated else 0.0
+    mean_effective = (sum_effective / anchors_updated) if anchors_updated else 0.0
+    return {
+        "anchors_processed": anchors_processed,
+        "anchors_updated": anchors_updated,
+        "anchors_skipped_no_observations": anchors_skipped,
+        "mean_n": mean_n,
+        "mean_effective_difficulty": mean_effective,
+    }
+
+
+# --- Slice 4 — Anchor flag queue + per-row resolution (AC-D23) --------
+
+
+async def _anchor_by_id(db: AsyncSession, anchor_id: uuid.UUID) -> AnchorQuestion | None:
+    result = await db.execute(
+        select(AnchorQuestion).where(
+            AnchorQuestion.id == anchor_id,
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _question_by_id(db: AsyncSession, question_id: uuid.UUID) -> Question | None:
+    """Look up the shared-PK :class:`Question` row for an
+    :class:`AnchorQuestion`. ``substitute_wording`` keeps both rows in
+    sync (the Question row is what the snapshot + grading paths
+    actually render)."""
+    result = await db.execute(
+        select(Question).where(
+            Question.id == question_id, Question.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_flagged_anchors(db: AsyncSession) -> list[dict[str, Any]]:
+    """Anchors flagged for admin attention — ``needs_admin_attention=True``
+    only (rows resolved via ``reject`` keep ``excluded=True`` but
+    clear ``needs_admin_attention``, so they fall off the queue).
+    Oldest-first by ``created_at`` so the admin works through the
+    backlog in arrival order — mirrors
+    :func:`app.domain.grade_review.list_flagged_reviews` and
+    :func:`app.domain.loop.list_admin_queue`."""
+    result = await db.execute(
+        select(AnchorQuestion).where(AnchorQuestion.tenant_id == SEED_TENANT_ID)
+    )
+    # Boolean filter in Python keeps every WHERE single-column equality
+    # per AC-CD15 — the fake harness can't compile ``== True`` clauses
+    # (SQLAlchemy's ``True_`` element has no ``.value``).
+    rows = [row for row in result.scalars().all() if row.needs_admin_attention]
+    rows.sort(key=lambda a: a.created_at)
+    return [
+        {
+            "anchor_question_id": row.id,
+            "pill_id": row.pill_id,
+            "band": row.band,
+            "type": row.type.value,
+            "config": row.config,
+            "assigned_difficulty": row.assigned_difficulty,
+            "regeneration_attempts": row.regeneration_attempts,
+            "excluded": row.excluded,
+            "excluded_reason": row.excluded_reason,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+
+async def resolve_flagged_anchor(
+    db: AsyncSession,
+    anchor_id: uuid.UUID,
+    admin: Any,
+    *,
+    action: str,
+    new_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Per-row admin resolution of a flagged anchor (AC-D23).
+
+    Three actions:
+
+    - ``keep`` — accept the AI-generated anchor as-is. Clears the
+      ``excluded`` + ``needs_admin_attention`` flags so the anchor
+      enters the live pool.
+    - ``substitute_wording`` — admin replaces ``config`` (and the
+      shared-PK :class:`Question` row's config so the snapshot
+      renders the substituted text). Clears flags, resets
+      ``regeneration_attempts`` to 0. **Does NOT auto-rerun
+      self-review** — admin is the authoritative reviewer of their
+      own substitution; running an AI cross-check on admin authorship
+      would invert the trust hierarchy (decision recorded in
+      handover under "What was decided").
+    - ``reject`` — acknowledge the excluded slot stays excluded.
+      Keeps ``excluded=True``, clears ``needs_admin_attention``.
+
+    Raises 404 if anchor missing, 409 if anchor is not flagged or
+    the action+state combo is nonsensical (e.g. ``substitute_wording``
+    without ``new_config``)."""
+    if action not in ("keep", "substitute_wording", "reject"):
+        raise APIError(
+            422,
+            "invalid_action",
+            f"action must be keep / substitute_wording / reject; got {action!r}",
+        )
+    anchor = await _anchor_by_id(db, anchor_id)
+    if anchor is None:
+        raise APIError(404, "anchor_not_found", "anchor not found")
+    if not anchor.needs_admin_attention:
+        raise APIError(
+            409,
+            "anchor_not_flagged",
+            "anchor is not flagged for admin attention; nothing to resolve",
+        )
+
+    if action == "keep":
+        anchor.excluded = False
+        anchor.excluded_reason = None
+        anchor.needs_admin_attention = False
+    elif action == "substitute_wording":
+        if not isinstance(new_config, dict):
+            raise APIError(
+                409,
+                "missing_new_config",
+                "substitute_wording requires a new_config dict",
+            )
+        anchor.config = new_config
+        anchor.excluded = False
+        anchor.excluded_reason = None
+        anchor.needs_admin_attention = False
+        anchor.regeneration_attempts = 0
+        # Keep the shared-PK Question row in sync so the snapshot +
+        # autosave + grade paths render the substituted wording.
+        question = await _question_by_id(db, anchor_id)
+        if question is not None:
+            question.config = new_config
+    else:  # action == "reject"
+        anchor.needs_admin_attention = False
+        # excluded stays True — admin has acknowledged the slot will
+        # remain excluded from the live pool.
+
+    from app.domain.catalogue import record_audit
+
+    await record_audit(
+        db,
+        actor_id=admin.id,
+        action="anchors.resolve",
+        target_entity="anchor_question",
+        target_id=anchor.id,
+        detail={
+            "action": action,
+            "pill_id": str(anchor.pill_id),
+            "band": anchor.band,
+            "excluded_after": anchor.excluded,
+        },
+    )
+    return {
+        "anchor_question_id": anchor.id,
+        "action": action,
+        "excluded": anchor.excluded,
+        "needs_admin_attention": anchor.needs_admin_attention,
+        "regeneration_attempts": anchor.regeneration_attempts,
+    }
+
+
+# --- Slice 4 — Band calibration state (preliminary / confident) -------
+
+
+async def band_calibration_state(
+    db: AsyncSession, pill_id: uuid.UUID, band: int
+) -> dict[str, Any]:
+    """``preliminary -> confident`` display state for one (pill, band)
+    (AC-D27 #3 / AC-D20). ``n`` is the aggregate ``total_attempts``
+    across every live anchor in the pool; the flip is inclusive
+    (``n >= confidence_threshold``) per the AC-D27 wording —
+    see :func:`is_confident`.
+
+    Returns::
+
+        {
+          "pill_id":           <uuid>,
+          "band":              <int>,
+          "n":                 <int>,          # aggregate observations
+          "state":             "preliminary" | "confident",
+          "anchors_in_pool":   <int>,          # live anchors at this band
+          "anchors_excluded":  <int>,          # excluded anchors at this band
+        }
+    """
+    result = await db.execute(
+        select(AnchorQuestion).where(
+            AnchorQuestion.pill_id == pill_id,
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    rows = [r for r in result.scalars().all() if r.band == band]
+    live = [r for r in rows if not r.excluded]
+    excluded = [r for r in rows if r.excluded]
+    n = sum(int(r.total_attempts or 0) for r in live)
+
+    settings = await _load_settings(db)
+    _prior, _sens, threshold = _settings_with_defaults(settings)
+    confident = is_confident(n, confidence_threshold=threshold)
+    state = "confident" if confident else "preliminary"
+    return {
+        "pill_id": pill_id,
+        "band": band,
+        "n": n,
+        "state": state,
+        "anchors_in_pool": len(live),
+        "anchors_excluded": len(excluded),
+    }

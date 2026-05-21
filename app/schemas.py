@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
@@ -529,6 +529,75 @@ class AnchorBandSummary(_Base):
     band: int
     generated: int
     excluded: int
+
+
+class CalibrationSweepResult(_Base):
+    """Counts returned by one pass of the §12 anchor calibration sweep
+    (AC-D27). Same body the P11 Celery beat task will emit on a 24-h
+    schedule; the admin trigger gives operators a manual lever."""
+
+    anchors_processed: int
+    anchors_updated: int
+    anchors_skipped_no_observations: int
+    mean_n: float
+    mean_effective_difficulty: float
+
+
+class BandCalibrationState(_Base):
+    """preliminary -> confident display state for a (pill, band)
+    (AC-D27 #3 / AC-D20). ``state`` flips to ``confident`` once the
+    aggregate observation count crosses
+    ``system_settings.anchor_calibration_confidence_threshold``
+    (default 20; inclusive boundary)."""
+
+    pill_id: uuid.UUID
+    band: int
+    n: int
+    state: Literal["preliminary", "confident"]
+    anchors_in_pool: int
+    anchors_excluded: int
+
+
+class FlaggedAnchorItem(_Base):
+    """One :class:`AnchorQuestion` flagged for admin resolution
+    (AC-D23). Surfaced by ``GET /v1/admin/anchors/flagged``; the admin
+    resolves via ``POST /v1/admin/anchors/{id}/resolve``."""
+
+    anchor_question_id: uuid.UUID
+    pill_id: uuid.UUID
+    band: int
+    type: str
+    config: dict[str, Any]
+    assigned_difficulty: int
+    regeneration_attempts: int
+    excluded: bool
+    excluded_reason: str | None
+    created_at: datetime
+
+
+class FlaggedAnchorListResponse(_Base):
+    data: list[FlaggedAnchorItem]
+
+
+class AnchorResolveRequest(_Base):
+    """Admin resolution action for one flagged anchor (AC-D23).
+
+    - ``keep`` — accept the AI-generated wording as-is.
+    - ``substitute_wording`` — replace ``config`` with ``new_config``
+      (required for this action); does NOT auto-rerun self-review.
+    - ``reject`` — acknowledge the excluded slot stays excluded.
+    """
+
+    action: Literal["keep", "substitute_wording", "reject"]
+    new_config: dict[str, Any] | None = None
+
+
+class AnchorResolveResult(_Base):
+    anchor_question_id: uuid.UUID
+    action: str
+    excluded: bool
+    needs_admin_attention: bool
+    regeneration_attempts: int
 
 
 class AnchorBootstrapResult(_Base):

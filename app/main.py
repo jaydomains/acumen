@@ -19,6 +19,7 @@ from app.routers import (
     assignments,
     attempts,
     auth,
+    calibration,
     catalogue,
     cost,
     groups,
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
 
     # P5 Slice 3 — admin AI cost dashboard (AC-D18).
     app.include_router(cost.router)
+    app.include_router(calibration.router)
 
     return app
 
