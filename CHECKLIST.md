@@ -145,11 +145,23 @@
 Open, unresolved items the build must close. Resolved spec/implementation
 divergences are recorded in per-PR handovers, not here.
 
-*None.* AC-CD11 — the only drift question opened during v1.0 spec
-authoring — was **closed at v1.7** (cross-family review locked as
-batched per attempt, 60-s hard ceiling, over-ceiling routes to the v1.6
-grade-review reconcile cron). See `handovers/PR-017-v1.7-ac-cd11-gate-closure.md`,
-`CODE_SPEC.md` §18 AC-CD11, `DECISIONS.md` AC-D19.
+*None.* Two historical drift questions, both closed:
+
+- **AC-CD11** — opened during v1.0 spec authoring (cross-family
+  review pipeline & latency budget); **closed at v1.7** (cross-family
+  review locked as batched per attempt, 60-s hard ceiling, over-
+  ceiling routes to the v1.6 grade-review reconcile cron). See
+  `handovers/PR-017-v1.7-ac-cd11-gate-closure.md`, `CODE_SPEC.md`
+  §18 AC-CD11, `DECISIONS.md` AC-D19.
+- **AC-CD10** — surfaced at the P10 plan-mode gate as a residual
+  §10 prose-body ambiguity (the "parallel Celery tasks" wording
+  alongside the SSE response shape, with no schema anchor for
+  streamed-arrival order and no explicit single-failure policy);
+  **closed at v1.8** (in-process `asyncio.gather` +
+  `asyncio.Semaphore`, `question.attempt_position` ordering column,
+  single-Q-N-retry then AC-D11 pause). See
+  `handovers/PR-022-v1.8-ac-cd10-gate-closure.md`, `CODE_SPEC.md`
+  §10 / §18 AC-CD10, `DECISIONS.md` AC-D25 v1.8.
 
 > Note: the v1.2 benchmark/JIT prose divergence (SPEC §4.3/§4.7/§4.12/
 > §6.1, DECISIONS AC-D13 vs amended AC-D25) was **resolved inline** in

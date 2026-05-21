@@ -153,17 +153,36 @@ cron, not request-path.
 
 ## P10 — JIT streaming generation (per-Testee)
 
-**Deliverables:** SSE stream endpoint; Q1 synchronous; Q2…N parallel
-Celery tasks; configurable buffer (3/max 5); autosave/resume
-snapshot-replay. **Benchmark stays sequential** (`POST .../next`), per
+**Gate closed at v1.8** (AC-CD10 — see `CODE_SPEC.md` §10 / §18):
+execution model = in-process `asyncio.gather` + `asyncio.Semaphore`
+(size = `jit_buffer_size`, env-default 3; ceiling = `jit_buffer_max`,
+env-default 5; not Celery on the user-facing path); streamed-arrival
+order anchored by `question.attempt_position` (unique
+`(attempt_id, attempt_position)`, additive migration is a P10 build
+deliverable); single-Q-N-generation-failure retries once at the
+orchestration layer then pauses via the existing AC-D11 mechanism.
+AC-D25 Implications realigned in the same change. Build against the
+locked contract; no further user gate.
+**Deliverables:** SSE stream endpoint; Q1 synchronous; Q2…N concurrent
+in-process `asyncio` tasks under a bounded `Semaphore` per AC-CD10
+v1.8; additive migration adding `question.attempt_position` + unique
+`(attempt_id, attempt_position)`; per-question generation call
+pattern (question_count=1, shared RAG context computed once per
+attempt — SPEC §6.1 v1.8); configurable buffer (3 / max 5);
+autosave/resume snapshot-replay ordered by `attempt_position` with
+`Last-Event-ID`; orchestration-layer single-retry-then-AC-D11-pause
+on Q-N failure. **Benchmark stays sequential** (`POST .../next`), per
 amended AC-D25.
 **Done-when:** Q1 renders < ~3s; the buffer is maintained ahead of
 position; a mid-stream failure pauses with retry/abandon; resume replays
 the snapshot with stable order and no regeneration; the benchmark path
 is verified sequential.
-**Anchors:** AC-D25, AC-D13; AC-CD10.
+**Anchors:** AC-D25, AC-D13; AC-CD10 (execution model + ordering
+column + single-failure policy locked at v1.8).
 **Risks:** async concurrency on the user path — explicit buffer state
-machine; E2E buffer tests.
+machine; E2E buffer tests. Worker-death-mid-attempt mitigated by the
+DB-backed `attempt_position` + `Last-Event-ID` resume semantics (see
+CODE_SPEC §17 risk #2 v1.8).
 
 ## P11 — Bootstrap, safety links, crons, cost, comms
 
@@ -187,7 +206,9 @@ emails send per AC-D26.
 
 Every AC-D1–AC-D27 and every AC-CD1–AC-CD18 is referenced by at least one
 phase above and one CHECKLIST row. AC-CD11's pre-build gate at P6 was
-**closed at v1.7**; no anchor now carries an unresolved pre-build gate.
+**closed at v1.7**; AC-CD10's residual §10 ambiguity surfaced at the
+P10 plan-mode gate and was **closed at v1.8**; no anchor now carries
+an unresolved pre-build gate.
 
 *End of Acumen ROADMAP. Paired with `CODE_SPEC.md`, `SPEC.md` v1.2,
 `DECISIONS.md` v1.2.*
