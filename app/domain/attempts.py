@@ -51,6 +51,7 @@ from app.ai.cost import (
 )
 from app.ai.provider import Operation, resolve_provider
 from app.domain._scoring import outcome_for as _outcome_for
+from app.domain.calibration import draw_anchors_for_attempt
 from app.domain.catalogue import record_audit
 from app.domain.competence import apply_competence_update
 from app.domain.grade_review import _review_ai_grades
@@ -59,6 +60,7 @@ from app.models import (
     SEED_TENANT_ID,
     AssignmentAssignee,
     Attempt,
+    AttemptAnchor,
     AttemptOrigin,
     AttemptPauseEvent,
     Grade,
@@ -198,6 +200,43 @@ async def _responses(db: AsyncSession, attempt_id: uuid.UUID) -> list[Response]:
         )
     )
     return list(result.scalars().all())
+
+
+async def _attempt_anchors(
+    db: AsyncSession, attempt_id: uuid.UUID
+) -> list[AttemptAnchor]:
+    result = await db.execute(
+        select(AttemptAnchor).where(
+            AttemptAnchor.attempt_id == attempt_id,
+            AttemptAnchor.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def _denormalise_attempt_anchor_scores(db: AsyncSession, attempt: Attempt) -> None:
+    """Copy each :class:`Response.response_score` for an anchor-drawn
+    question into the matching :class:`AttemptAnchor.score` column
+    (P8 Slice 3 / refinement #3).
+
+    Shared-PK convention makes the join cheap: an anchor's
+    ``Question.id`` and its ``AnchorQuestion.id`` are the same UUID, so
+    looking up ``Response.question_id == AttemptAnchor.anchor_question_id``
+    walks the existing per-attempt Response index. No new join needed.
+
+    Anchors with no answering Response (Testee skipped the item, or
+    submit fired before autosave) leave ``score = None`` — the
+    calibration sweep treats those as missing observations rather
+    than zeros.
+    """
+    anchors = await _attempt_anchors(db, attempt.id)
+    if not anchors:
+        return
+    responses_by_qid = {r.question_id: r for r in await _responses(db, attempt.id)}
+    for anchor in anchors:
+        response = responses_by_qid.get(anchor.anchor_question_id)
+        if response is not None and response.response_score is not None:
+            anchor.score = response.response_score
 
 
 async def _attempt_questions(db: AsyncSession, attempt_id: uuid.UUID) -> list[Question]:
@@ -552,10 +591,19 @@ async def start_attempt(
             record_provenance_share(question, gen_result, share_count=share_count)
             db.add(question)
         await db.flush()
+        # P8 Slice 3 — anchor draw. Adds up to 2 :class:`AttemptAnchor`
+        # rows + folds the matching anchor :class:`Question` rows into
+        # the snapshot so the Testee sees them inline with the
+        # per_testee items (AC-D20 / AC-D27). No-ops for learning-path
+        # assignments (assignment.pill_id is None) and for empty pools
+        # (pill has no anchors generated yet).
+        anchor_questions = await draw_anchors_for_attempt(
+            db, attempt=attempt, test=test, assignment_id=assignment_id
+        )
+        await db.flush()
+        per_testee_questions = await _attempt_questions(db, attempt.id)
         attempt.question_snapshot = {
-            "questions": _snapshot_from_questions(
-                await _attempt_questions(db, attempt.id)
-            )
+            "questions": _snapshot_from_questions(per_testee_questions + anchor_questions)
         }
     else:  # benchmark — sequential, no upfront set
         attempt.question_snapshot = {"questions": []}
@@ -772,6 +820,21 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     await _auto_grade_deterministic(db, attempt, test)
     await _ai_grade_responses(db, attempt)
     await db.flush()
+    # P8 Slice 3 — denormalise per-anchor scores. Each
+    # :class:`AttemptAnchor` row written by ``start_attempt`` carries a
+    # nullable ``score`` mirroring the Testee's response_score for that
+    # anchor (refinement #3 — keep the column in sync with the source
+    # so the calibration sweep can read a single column rather than
+    # walking the Response table per anchor). Failure-isolated: a
+    # denormalisation fault must not block the submit; the next
+    # calibration sweep will re-read scores from Response anyway if
+    # we ever need to recover.
+    try:
+        await _denormalise_attempt_anchor_scores(db, attempt)
+    except Exception:
+        _log.exception(
+            "P8 anchor score denormalisation failed for attempt %s", attempt.id
+        )
     # P7 — n-gram trigram overlap pass against the last
     # ``LearningMaterial.served_text`` for (testee, pill). Sets
     # ``Grade.overlap_pct`` + ``Grade.overlap_flagged`` on AI-graded

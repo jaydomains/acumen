@@ -7,11 +7,15 @@ The call is **batched per attempt** — one OpenAI call covers every
 AI-graded response in the attempt — with a 60-second hard ceiling
 enforced by the caller (``app.domain.grade_review``), not here.
 
-``anchor_self_review`` continues to raise :class:`NotImplementedError`
-(P8 ships the caller + prompt). ``embed`` continues to raise
-:class:`NotImplementedError` (P9). ``generate`` / ``grade`` continue to
-raise — the 5 Anthropic ops never route to OpenAI by default
-(AC-D12 v1.6).
+P8 widens ``review()`` to handle ``anchor_self_review`` (AC-D23) over
+the same call path — same prompt-render + JSON-object response_format +
+cost capture as ``grade_review``. The two review operations share
+``_call``; only the ``_REVIEW_OPS`` whitelist and the per-op
+``_MAX_OUTPUT_TOKENS`` ceiling differ.
+
+``embed`` continues to raise :class:`NotImplementedError` (P9).
+``generate`` / ``grade`` continue to raise — the 5 Anthropic ops never
+route to OpenAI by default (AC-D12 v1.6).
 
 Calls are wrapped with :mod:`tenacity` exponential backoff for the
 documented transient errors (rate limit, connection drops, timeout,
@@ -40,19 +44,24 @@ from app.ai.prompts import get_prompt, render_prompt
 from app.ai.provider import AIResult, EmbedResult, Operation, resolve_model
 from app.config import get_settings
 
-# OpenAI handles only cross-family review on the ``review()`` method.
-# ``anchor_self_review`` routes here too per AC-CD8 v1.6 but its prompt
-# + caller arrive with P8 — keep it on the NotImplementedError path so
-# a stray P6-era call surfaces with the right phase pointer.
-_REVIEW_OPS: frozenset[Operation] = frozenset({Operation.grade_review})
+# OpenAI handles cross-family review on the ``review()`` method per
+# AC-CD8 v1.6 routing. Both ``grade_review`` (P6) and
+# ``anchor_self_review`` (P8) land here.
+_REVIEW_OPS: frozenset[Operation] = frozenset(
+    {Operation.grade_review, Operation.anchor_self_review}
+)
 
 
-# Conservative cap on the structured JSON the review pass returns. A
+# Conservative cap on the structured JSON each review pass returns. A
 # 5-item batch returning ~3 sentences per item lands well under 1000
-# tokens; 2000 covers the worst case (≈10-item attempts on busy days)
-# without exposing the bill to a runaway model response.
+# tokens; 2000 covers the worst case (~10-item attempts on busy days
+# for grade_review; one pill+band anchor pool of 20 items for
+# anchor_self_review) without exposing the bill to a runaway model
+# response. The same ceiling fits both ops at the v1 pool size; if a
+# future op needs a different cap it gets its own entry.
 _MAX_OUTPUT_TOKENS: dict[Operation, int] = {
     Operation.grade_review: 2000,
+    Operation.anchor_self_review: 2000,
 }
 
 
@@ -101,11 +110,6 @@ class OpenAIProvider:
         )
 
     async def review(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
-        if operation == Operation.anchor_self_review:
-            raise NotImplementedError(
-                "OpenAI anchor_self_review wiring lands in P8 — the "
-                "bootstrap pass triggers anchor self-review per AC-D23."
-            )
         if operation not in _REVIEW_OPS:
             raise ValueError(
                 f"OpenAIProvider.review() handles only grade_review (P6) "

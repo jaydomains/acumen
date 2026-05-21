@@ -41,11 +41,13 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.calibration import compute_fresh_question_delta
 from app.models import (
     SEED_TENANT_ID,
     AnchorQuestion,
     Assignment,
     Attempt,
+    AttemptAnchor,
     AttemptOrigin,
     CompetencyProfile,
     Grade,
@@ -284,17 +286,79 @@ async def _anchor_question(
     return result.scalar_one_or_none()
 
 
+async def _attempt_anchor_records(
+    db: AsyncSession, attempt_id: uuid.UUID
+) -> list[tuple[float, float]]:
+    """``[(effective_difficulty, assigned_difficulty), ...]`` for every
+    anchor drawn into ``attempt_id`` — input to
+    :func:`compute_fresh_question_delta`. Empty list when no anchors
+    were drawn (learning-path / empty pool / non-per_testee mode).
+
+    For an anchor whose ``effective_difficulty`` is still NULL (the
+    P8 calibration sweep has not yet observed enough scores to write
+    a shrunken value) we fall back to ``assigned_difficulty`` — the
+    Bayesian prior — so the delta is well-defined from day one.
+    """
+    anchors_result = await db.execute(
+        select(AttemptAnchor).where(
+            AttemptAnchor.attempt_id == attempt_id,
+            AttemptAnchor.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    anchors = list(anchors_result.scalars().all())
+    if not anchors:
+        return []
+    records: list[tuple[float, float]] = []
+    for attempt_anchor in anchors:
+        aq = await _anchor_question(db, attempt_anchor.anchor_question_id)
+        if aq is None:
+            continue
+        effective = (
+            float(aq.effective_difficulty)
+            if aq.effective_difficulty is not None
+            else float(aq.assigned_difficulty)
+        )
+        records.append((effective, float(aq.assigned_difficulty)))
+    return records
+
+
+def _clamp_difficulty(value: float) -> float:
+    """1.0-10.0 axis clamp (SPEC §5). Local copy of
+    :func:`app.domain.calibration._clamp_difficulty` — kept local so the
+    competence module doesn't import a private helper and so the clamp
+    boundary is identical to the calibration sweep's clamp (both must
+    track the same axis to keep the loop_target_difficulty rounding
+    well-defined)."""
+    if value < 1.0:
+        return 1.0
+    if value > 10.0:
+        return 10.0
+    return value
+
+
 async def _effective_difficulty(db: AsyncSession, question: Question) -> float:
     """Resolve ``effective_difficulty`` for the AC-D9 v1.2 per-response
     formula.
 
-    AC-D27 / AC-D20: anchor-pool questions carry a Bayesian-shrunk
-    ``AnchorQuestion.effective_difficulty`` (float, computed by the P8
-    calibration cron). Until P8 lands, anchor rows may have a null
-    effective_difficulty — fall through to ``assigned_difficulty`` in
-    that case rather than crash the submit. Per_testee generated
-    questions never have an AnchorQuestion row; they use
-    ``Question.assigned_difficulty`` directly.
+    Three branches per the AC-D27 / AC-D20 / CODE_SPEC §12 wiring:
+
+    1. **Anchor-pool questions** (``question.pill_id is not None``) —
+       look up the shared-PK :class:`AnchorQuestion` and read its
+       Bayesian-shrunk ``effective_difficulty`` (populated by the P8
+       calibration sweep). Falls through to ``assigned_difficulty``
+       when the column is still NULL — the cold-start case before
+       the sweep has observed any scores.
+    2. **Per_testee questions in anchor-bearing attempts**
+       (``question.attempt_id is not None``) — apply the
+       fresh-question delta (P8 Slice 3): mean per-anchor
+       ``(effective - assigned)`` across the anchors drawn into the
+       same attempt, added to the question's own
+       ``assigned_difficulty``. Clamped to the 1.0-10.0 axis so a
+       base-1 question with a +9 delta does not shoot past 10.
+    3. **Fall-through** (no anchor, no attempt-owner, no triangulation)
+       — return the bare ``assigned_difficulty``. Covers
+       frozen / hand_authored test questions whose difficulty is
+       admin-authored and not subject to calibration.
     """
     # An anchor question's Question row is owned by ``pill_id`` (AC-D20)
     # — a per_testee generated question is owned by ``attempt_id``. We
@@ -303,6 +367,11 @@ async def _effective_difficulty(db: AsyncSession, question: Question) -> float:
         anchor = await _anchor_question(db, question.id)
         if anchor is not None and anchor.effective_difficulty is not None:
             return float(anchor.effective_difficulty)
+        return float(question.assigned_difficulty)
+    if question.attempt_id is not None:
+        records = await _attempt_anchor_records(db, question.attempt_id)
+        delta = compute_fresh_question_delta(records)
+        return _clamp_difficulty(float(question.assigned_difficulty) + delta)
     return float(question.assigned_difficulty)
 
 
