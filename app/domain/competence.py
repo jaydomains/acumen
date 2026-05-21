@@ -18,17 +18,42 @@ Slice 1 ships the **pure-function math** that AC-D9 v1.2 specifies:
 clamp (AC-D9 v1.6), and the AC-D6 "three-consecutive well-below-difficulty"
 step-down.
 
-The DB-writing wrapper that resolves ``effective_difficulty`` per response
-(anchor pool vs ``question.assigned_difficulty``), loads attempt history,
-and writes :class:`CompetencyProfile` lives in Slice 2 (`apply_competence_
-update`). Slice 1 stays free of SQLAlchemy / DB session imports so the
-unit tests run as pure-Python without the FakeSession harness.
+Slice 2 adds :func:`apply_competence_update` — the DB-writing wrapper
+invoked from :func:`app.domain.attempts.submit_attempt`. It resolves
+``effective_difficulty`` per response (anchor-pool ``AnchorQuestion.
+effective_difficulty`` when the question is anchor-backed; else
+``Question.assigned_difficulty``), loads every prior submitted attempt by
+this Testee on the pill, and recomputes the recency-weighted aggregate
+from scratch — write-time-with-all-history per the locked v1 decay
+strategy. The stored value is therefore fresh as of the last submit and
+goes stale between submits, but staleness only matters once new data
+exists; if a future operational dashboard wants live decay against a
+fixed point in time, that lookup recomputes from history (which is what
+this code does) rather than reading the stored estimate.
 """
 
 from __future__ import annotations
 
 import math
+import uuid
 from collections.abc import Sequence
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    SEED_TENANT_ID,
+    AnchorQuestion,
+    Assignment,
+    Attempt,
+    AttemptOrigin,
+    CompetencyProfile,
+    Grade,
+    Question,
+    Response,
+    SystemSettings,
+)
+from app.permissions import now_utc
 
 # Threshold for the AC-D6 "three consecutive well-below-difficulty"
 # step-down. AC-D9 v1.2 names the rule but does not name the threshold —
@@ -198,3 +223,236 @@ def loop_target_difficulty(
     if target > available_difficulty_max:
         return available_difficulty_max
     return target
+
+
+# --- DB-writing wrapper (Slice 2) -------------------------------------
+#
+# Scope: only single-pill assignment-backed attempts contribute to a
+# CompetencyProfile per the locked P7 plan. Self-initiated and learning-
+# path attempts have no single pill to attribute the update to — those
+# scenarios produce WeaknessReport + LearningMaterial via the standard
+# loop but skip the per-pill competence aggregate. Broader pill-
+# resolution lands when self-directed pill selection lands on the data
+# model (post-v1).
+
+_DEFAULT_SENSITIVITY = 2.0
+_DEFAULT_HALFLIFE_DAYS = 90
+
+_COMPETENCE_SCOPED_ORIGINS = frozenset(
+    {AttemptOrigin.assignment_driven, AttemptOrigin.loop_driven}
+)
+
+
+async def _system_settings(db: AsyncSession) -> SystemSettings | None:
+    result = await db.execute(
+        select(SystemSettings).where(SystemSettings.tenant_id == SEED_TENANT_ID)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _assignment(db: AsyncSession, assignment_id: uuid.UUID) -> Assignment | None:
+    result = await db.execute(select(Assignment).where(Assignment.id == assignment_id))
+    return result.scalar_one_or_none()
+
+
+async def _responses_for(db: AsyncSession, attempt_id: uuid.UUID) -> list[Response]:
+    result = await db.execute(select(Response).where(Response.attempt_id == attempt_id))
+    return list(result.scalars().all())
+
+
+async def _question_by_id(db: AsyncSession, question_id: uuid.UUID) -> Question | None:
+    """Look up a Question by primary key regardless of ownership
+    (frozen test → ``test_id``, per_testee generation → ``attempt_id``,
+    anchor pool → ``pill_id``). The Response.question_id FK is the
+    source of truth — we resolve through it rather than re-deriving
+    ownership from any of the three optional parent FKs."""
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    return result.scalar_one_or_none()
+
+
+async def _grade_for_response(db: AsyncSession, response_id: uuid.UUID) -> Grade | None:
+    result = await db.execute(select(Grade).where(Grade.response_id == response_id))
+    return result.scalar_one_or_none()
+
+
+async def _anchor_question(
+    db: AsyncSession, question_id: uuid.UUID
+) -> AnchorQuestion | None:
+    result = await db.execute(
+        select(AnchorQuestion).where(AnchorQuestion.id == question_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _effective_difficulty(db: AsyncSession, question: Question) -> float:
+    """Resolve ``effective_difficulty`` for the AC-D9 v1.2 per-response
+    formula.
+
+    AC-D27 / AC-D20: anchor-pool questions carry a Bayesian-shrunk
+    ``AnchorQuestion.effective_difficulty`` (float, computed by the P8
+    calibration cron). Until P8 lands, anchor rows may have a null
+    effective_difficulty — fall through to ``assigned_difficulty`` in
+    that case rather than crash the submit. Per_testee generated
+    questions never have an AnchorQuestion row; they use
+    ``Question.assigned_difficulty`` directly.
+    """
+    # An anchor question's Question row is owned by ``pill_id`` (AC-D20)
+    # — a per_testee generated question is owned by ``attempt_id``. We
+    # only look up an AnchorQuestion if the Question is pill-owned.
+    if question.pill_id is not None:
+        anchor = await _anchor_question(db, question.id)
+        if anchor is not None and anchor.effective_difficulty is not None:
+            return float(anchor.effective_difficulty)
+    return float(question.assigned_difficulty)
+
+
+async def _attempt_competence_for(
+    db: AsyncSession, attempt: Attempt, *, sensitivity: float
+) -> float | None:
+    """Compute ``attempt_competence`` for a single attempt by walking its
+    Response rows, joining each to its Grade + Question, resolving
+    effective_difficulty, then averaging the per-response competences.
+    Returns ``None`` when the attempt has no scored responses (matches
+    :func:`attempt_competence`'s null contract)."""
+    responses = await _responses_for(db, attempt.id)
+    if not responses:
+        return None
+    per_response: list[float] = []
+    for response in responses:
+        question = await _question_by_id(db, response.question_id)
+        if question is None:
+            continue
+        grade = await _grade_for_response(db, response.id)
+        if grade is None:
+            continue
+        eff_diff = await _effective_difficulty(db, question)
+        per_response.append(response_competence(eff_diff, grade.score, sensitivity))
+    return attempt_competence(per_response)
+
+
+async def _prior_attempts_on_pill(
+    db: AsyncSession, testee_id: uuid.UUID, pill_id: uuid.UUID
+) -> list[Attempt]:
+    """Every submitted attempt by ``testee_id`` whose assignment targets
+    ``pill_id``. Self-initiated attempts have no assignment_id and are
+    excluded — they would contribute no signal anyway (their pill
+    membership is undefined under the locked v1 scope).
+
+    Equality-only walk for harness compatibility (AC-CD15 zero-DB
+    contract); at v1 scale (~10 attempts per (testee, pill)) this is
+    cheap."""
+    result = await db.execute(select(Attempt).where(Attempt.testee_id == testee_id))
+    candidates = list(result.scalars().all())
+    out: list[Attempt] = []
+    for candidate in candidates:
+        if candidate.submitted_at is None:
+            continue
+        if candidate.assignment_id is None:
+            continue
+        assignment = await _assignment(db, candidate.assignment_id)
+        if assignment is None or assignment.pill_id != pill_id:
+            continue
+        out.append(candidate)
+    return out
+
+
+async def _competency_profile(
+    db: AsyncSession, testee_id: uuid.UUID, pill_id: uuid.UUID
+) -> CompetencyProfile | None:
+    """Equality-only lookup; the harness has no compound where, so walk
+    and match in Python."""
+    result = await db.execute(
+        select(CompetencyProfile).where(CompetencyProfile.testee_id == testee_id)
+    )
+    for row in result.scalars().all():
+        if row.pill_id == pill_id:
+            return row
+    return None
+
+
+async def apply_competence_update(db: AsyncSession, attempt: Attempt) -> None:
+    """Recompute the (testee, pill) competence_estimate from this and
+    every prior submitted attempt by the same Testee on the same pill,
+    then upsert :class:`CompetencyProfile`. Idempotent — re-invocation on
+    the same attempt produces the same write (assuming Grade rows have
+    not changed underneath).
+
+    Scope per the locked P7 plan: single-pill assignment-backed
+    origins only (``assignment_driven`` and ``loop_driven``).
+    Self-initiated and learning-path attempts return silently — their
+    multi-pill / no-pill nature has no single pill to attribute the
+    update to, and broader pill resolution is post-v1.
+
+    Pure-function math is in :func:`response_competence`,
+    :func:`attempt_competence`, and :func:`compute_competence_estimate`
+    above; this wrapper handles the DB walk only. Decay strategy is
+    write-time-with-all-history per the locked v1 choice — every
+    submit recomputes from scratch so the stored estimate is fresh
+    as of last submit.
+    """
+    if attempt.origin not in _COMPETENCE_SCOPED_ORIGINS:
+        return
+    if attempt.assignment_id is None:
+        return
+    assignment = await _assignment(db, attempt.assignment_id)
+    if assignment is None or assignment.pill_id is None:
+        return  # learning-path assignment — no single pill to attribute
+
+    settings = await _system_settings(db)
+    sensitivity = _DEFAULT_SENSITIVITY
+    halflife = _DEFAULT_HALFLIFE_DAYS
+    if settings is not None:
+        # Explicit ``is None`` so an admin's intentional ``0`` (disabled
+        # signal) is preserved — matches the pattern used by the rate-
+        # limit defaults in attempts.py (Gitar PR-#15 precedent).
+        configured_sens = getattr(settings, "competence_sensitivity", None)
+        configured_half = getattr(settings, "competence_decay_halflife_days", None)
+        if configured_sens is not None:
+            sensitivity = float(configured_sens)
+        if configured_half is not None:
+            halflife = int(configured_half)
+
+    pill_id = assignment.pill_id
+    historical: list[tuple[float, int]] = []
+    now = now_utc()
+    for prior in await _prior_attempts_on_pill(db, attempt.testee_id, pill_id):
+        if prior.id == attempt.id:
+            # The current attempt is included separately below so we
+            # don't double-count it (the submit-time flush has already
+            # written the current attempt's Grade rows, so the prior
+            # walk could pick it up too).
+            continue
+        if prior.submitted_at is None:
+            # _prior_attempts_on_pill already filters but the type
+            # narrowing doesn't propagate; restate to keep mypy happy.
+            continue
+        comp = await _attempt_competence_for(db, prior, sensitivity=sensitivity)
+        if comp is None:
+            continue
+        age_days = max(0, (now - prior.submitted_at).days)
+        historical.append((comp, age_days))
+
+    current = await _attempt_competence_for(db, attempt, sensitivity=sensitivity)
+    if current is None and not historical:
+        # No signal at all — leave the profile untouched. AC-D9 null-
+        # handling: never substitute 0.0.
+        return
+    if current is not None:
+        historical.append((current, 0))
+
+    estimate = compute_competence_estimate(historical, halflife_days=halflife)
+
+    profile = await _competency_profile(db, attempt.testee_id, pill_id)
+    if profile is None:
+        profile = CompetencyProfile(
+            tenant_id=SEED_TENANT_ID,
+            testee_id=attempt.testee_id,
+            pill_id=pill_id,
+            competence_estimate=estimate,
+            last_activity_at=now,
+        )
+        db.add(profile)
+    else:
+        profile.competence_estimate = estimate
+        profile.last_activity_at = now
+    await db.flush()
