@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import uuid
 from collections.abc import Sequence
 from typing import Any
@@ -58,10 +59,14 @@ from app.ai.provider import Operation, resolve_provider
 from app.models import (
     SEED_TENANT_ID,
     AnchorQuestion,
+    Assignment,
+    Attempt,
+    AttemptAnchor,
     Pill,
     Question,
     QuestionType,
     SystemSettings,
+    Test,
 )
 from app.permissions import APIError
 
@@ -614,3 +619,134 @@ async def generate_anchor_pool_for_pill(
         "total_self_review_calls": total_self_review_calls,
         "per_band_summary": per_band,
     }
+
+
+# --- Slice 3 — Per-attempt anchor draw (AC-D20 / AC-D27) --------------
+#
+# At ``start_attempt`` for a per_testee + assignment-backed attempt with
+# a pill assignment, the loop draws up to 2 anchors from the pill's
+# live pool (band = ``round(test.target_difficulty or 5)``) and writes
+# an :class:`AttemptAnchor` row per drawn anchor. The drawn
+# anchors' :class:`Question` rows (sharing the same UUID as the
+# ``AnchorQuestion`` rows per the shared-PK convention) are added to
+# the attempt's ``question_snapshot`` so the Testee sees them inline
+# with the per_testee questions.
+#
+# Determinism contract: the draw is keyed by
+# ``random.Random(attempt.shuffle_seed)`` — same attempt always draws
+# the same anchors on resume. The seed is already deterministic per
+# AC-D5 ``seed_for(attempt.id)``. The pool list is **sorted by
+# ``anchor.id``** before sampling so the DB's physical row order
+# can't leak into the draw (without the sort a resume would re-sample
+# from a possibly-different ordering even with the same seed).
+
+_ANCHORS_PER_ATTEMPT = 2
+
+
+async def _load_assignment(
+    db: AsyncSession, assignment_id: uuid.UUID
+) -> Assignment | None:
+    result = await db.execute(
+        select(Assignment).where(
+            Assignment.id == assignment_id,
+            Assignment.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _load_anchor_questions_by_ids(
+    db: AsyncSession, anchor_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, Question]:
+    """Load the :class:`Question` rows whose ``id`` matches one of
+    ``anchor_ids``. Returned as ``{id: Question}`` so the caller can
+    reorder per the draw order (the dict lookup preserves the random
+    sample's order — Python 3.7+ insertion-order semantics aren't
+    relevant here since the caller indexes by id).
+
+    Equality-only walk per AC-CD15: one query per id, accumulated.
+    The pool is small (<= 2 anchors per attempt at v1) so the N+1
+    cost is operationally insignificant; if a future v needs larger
+    pools this becomes a single ``WHERE id IN (...)`` query.
+    """
+    found: dict[uuid.UUID, Question] = {}
+    for aid in anchor_ids:
+        result = await db.execute(
+            select(Question).where(
+                Question.id == aid, Question.tenant_id == SEED_TENANT_ID
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is not None:
+            found[aid] = row
+    return found
+
+
+async def draw_anchors_for_attempt(
+    db: AsyncSession,
+    *,
+    attempt: Attempt,
+    test: Test,
+    assignment_id: uuid.UUID | None,
+) -> list[Question]:
+    """Draw up to ``_ANCHORS_PER_ATTEMPT`` anchors for ``attempt`` and
+    write the matching :class:`AttemptAnchor` rows. Returns the
+    :class:`Question` rows for the drawn anchors so the caller can
+    fold them into the attempt's ``question_snapshot``.
+
+    Scope: per_testee mode, assignment-backed, single-pill assignment.
+    Returns ``[]`` for learning-path assignments (``pill_id is None``)
+    and for any attempt whose pool is empty (no anchors generated yet
+    for that pill+band).
+
+    Resume stability: ``random.Random(attempt.shuffle_seed).sample(...)``
+    against a list **sorted by anchor.id**. Both inputs are
+    deterministic across a resume so the same two anchors come back.
+    """
+    if assignment_id is None:
+        return []
+    assignment = await _load_assignment(db, assignment_id)
+    if assignment is None or assignment.pill_id is None:
+        return []
+
+    target_band = int(round(test.target_difficulty or 5))
+
+    pool_result = await db.execute(
+        select(AnchorQuestion).where(AnchorQuestion.pill_id == assignment.pill_id)
+    )
+    pool_all = list(pool_result.scalars().all())
+    live = [a for a in pool_all if not a.excluded and a.band == target_band]
+    if not live:
+        return []
+
+    sorted_pool = sorted(live, key=lambda a: a.id)
+    rng = random.Random(attempt.shuffle_seed)
+    drawn = rng.sample(sorted_pool, min(_ANCHORS_PER_ATTEMPT, len(sorted_pool)))
+
+    drawn_ids = [a.id for a in drawn]
+    questions_by_id = await _load_anchor_questions_by_ids(db, drawn_ids)
+
+    rendered: list[Question] = []
+    for anchor in drawn:
+        question = questions_by_id.get(anchor.id)
+        if question is None:
+            # Shared-PK invariant violation — the AnchorQuestion exists
+            # but no Question row matches its UUID. Logged so the
+            # operator notices; the slot is silently dropped from the
+            # draw rather than crashing the attempt.
+            _log.warning(
+                "Anchor %s has no shared-PK Question row; dropping from draw",
+                anchor.id,
+                extra={"anchor_id": str(anchor.id), "attempt_id": str(attempt.id)},
+            )
+            continue
+        db.add(
+            AttemptAnchor(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                anchor_question_id=anchor.id,
+                score=None,
+            )
+        )
+        rendered.append(question)
+    return rendered
