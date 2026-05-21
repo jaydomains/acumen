@@ -34,6 +34,7 @@ with Python-side work so the AC-CD15 zero-DB harness holds.
 
 from __future__ import annotations
 
+import logging
 import random
 import uuid
 from datetime import timedelta
@@ -76,6 +77,8 @@ from app.models import (
     TimeoutBehaviour,
 )
 from app.permissions import APIError, now_utc
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "P4_BENCHMARK_STEP_CAP",
@@ -778,10 +781,12 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     # isolated — an overlap fault is logged and the submit continues.
     try:
         await apply_overlap_check(db, attempt)
-    except Exception:  # pragma: no cover - logged + skipped per AC-D4 #5
+    except Exception:
         # No reconcile sweep for overlap in P7 — the flag is advisory,
         # not blocking; admin grade review (P6) still surfaces the row.
-        pass
+        # ``logger.exception`` emits at ERROR with the full traceback so
+        # production failures are observable (PR-019 Gitar review).
+        _log.exception("P7 overlap check failed for attempt %s", attempt.id)
     # The review pass needs the snapshot's per-question rubric + model
     # answer + prompt to build the batched payload — compute it once
     # here and pass it through so neither side re-loads the snapshot.
@@ -795,12 +800,19 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
     # loop and vice versa.
     try:
         await apply_competence_update(db, attempt)
-    except Exception:  # pragma: no cover - logged + skipped
-        pass
+    except Exception:
+        _log.exception("P7 competence update failed for attempt %s", attempt.id)
     try:
         await run_loop_after_submit(db, attempt, test)
-    except Exception:  # pragma: no cover - logged + skipped
-        pass
+    except Exception:
+        # Note: run_loop_after_submit creates Test/Assignment/Assignee
+        # rows before invoking start_attempt for the follow-up Attempt.
+        # A mid-flow failure can leave partial rows; the Slice 3 admin
+        # queue surfaces the WeaknessReport (which writes first) so an
+        # admin can manually reconcile. Future P11 work: a reconcile
+        # sweep that detects orphaned Test/Assignment without a started
+        # follow-up Attempt and either completes or rolls them back.
+        _log.exception("P7 loop driver failed for attempt %s", attempt.id)
     await record_audit(
         db,
         actor_id=attempt.testee_id,

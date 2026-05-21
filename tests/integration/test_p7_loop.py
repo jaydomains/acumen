@@ -697,6 +697,122 @@ def test_learning_path_assignment_skips_loop_and_competence(
     assert cat_session.store.get(CompetencyProfile, []) == []
 
 
+def test_followup_chain_capped_at_max_loop_depth(
+    cat_client: TestClient,
+    cat_session: CatalogueFakeSession,
+    recording_provider: RecordingProvider,
+) -> None:
+    """Defense-in-depth safety bound (PR-019 Gitar review): a Testee
+    who keeps failing must not generate an unbounded chain of follow-
+    ups. After ``MAX_LOOP_DEPTH`` consecutive loop_driven attempts in
+    a single chain, the loop driver writes the WeaknessReport +
+    LearningMaterial (audit trail + admin queue intact) but stops
+    creating further follow-up Attempts.
+
+    Setup: hand-build a chain of submitted loop_driven attempts at
+    depth ``MAX_LOOP_DEPTH`` parented via ``parent_attempt_id``, then
+    submit the depth-N attempt as a new failure. The loop must NOT
+    create another follow-up. The WeaknessReport MUST still exist.
+    """
+    from app.domain.loop import MAX_LOOP_DEPTH
+
+    seed_system_settings(cat_session)
+    admin = _admin(cat_session)
+    testee = _testee(cat_session)
+    subject = _subject(cat_session)
+    pill = _pill(cat_session, subject=subject)
+    _set_weakness(recording_provider, pill_id=pill.id)
+
+    # Hand-build a chain of MAX_LOOP_DEPTH already-submitted loop_driven
+    # attempts. We don't need them to be fully realistic — just for
+    # _loop_chain_depth to walk via parent_attempt_id and find the
+    # right depth.
+    chain_parent: Attempt | None = None
+    for _i in range(MAX_LOOP_DEPTH):
+        new_test = Test(
+            tenant_id=SEED_TENANT_ID,
+            name=f"chain-{_i}",
+            mode=TestMode.per_testee,
+            status=TestStatus.published,
+            visibility=TestVisibility.private,
+            timed=False,
+            timeout_behaviour=TimeoutBehaviour.auto_submit,
+            max_pause_duration_minutes=30,
+            target_difficulty=5,
+            randomise_question_order=False,
+            randomise_option_order=False,
+            pass_threshold=0.5,
+        )
+        cat_session.add(new_test)
+        new_assignment = Assignment(
+            tenant_id=SEED_TENANT_ID,
+            assigner_id=admin.id,
+            pill_id=pill.id,
+            learning_path_id=None,
+            difficulty=5,
+            deadline=None,
+            is_mandatory=False,
+            loop_mode=LoopMode.autonomous,
+        )
+        cat_session.add(new_assignment)
+        a = Attempt(
+            tenant_id=SEED_TENANT_ID,
+            test_id=new_test.id,
+            testee_id=testee.id,
+            origin=AttemptOrigin.loop_driven,
+            assignment_id=new_assignment.id,
+            parent_attempt_id=(chain_parent.id if chain_parent else None),
+            started_at=p.now_utc(),
+            submitted_at=p.now_utc(),
+            sequence_number=1,
+            pauses_used=0,
+            total_pause_duration_seconds=0,
+            overall_score=0.0,
+        )
+        cat_session.add(a)
+        chain_parent = a
+
+    # The tail of the chain is what we submit next. Now run a fresh
+    # submit that the loop driver will walk back from. We can't easily
+    # round-trip through the HTTP client because the chain is hand-
+    # built; invoke run_loop_after_submit directly. That's the
+    # function under test — the wiring into submit_attempt is covered
+    # by the happy-path test above.
+    import asyncio
+
+    from app.domain.loop import run_loop_after_submit
+    from app.models import get_db  # noqa: F401  (proves the import side)
+
+    # Build a tail test/attempt to act as the depth-N submission.
+    # The chain_parent is at depth MAX_LOOP_DEPTH; a submit on it
+    # should produce no further follow-up because the depth check
+    # observes ``depth == MAX_LOOP_DEPTH`` and skips.
+    tail_test = next(
+        t for t in cat_session.store.get(Test, []) if t.id == chain_parent.test_id
+    )
+    asyncio.run(run_loop_after_submit(cat_session, chain_parent, tail_test))
+
+    # WeaknessReport written — audit trail preserved per the
+    # chain-cap docstring.
+    reports = cat_session.store.get(WeaknessReport, [])
+    assert len(reports) == 1
+
+    # LearningMaterial generated — the explainer is useful regardless.
+    materials = cat_session.store.get(LearningMaterial, [])
+    assert len(materials) == 1
+
+    # The key assertion: NO new follow-up Attempt beyond the ones we
+    # hand-built. Counting loop_driven attempts: started with
+    # MAX_LOOP_DEPTH and must STILL be MAX_LOOP_DEPTH after the depth-
+    # capped submit.
+    loop_attempts = [
+        a
+        for a in cat_session.store.get(Attempt, [])
+        if a.origin == AttemptOrigin.loop_driven
+    ]
+    assert len(loop_attempts) == MAX_LOOP_DEPTH
+
+
 def test_passing_attempt_updates_competence_but_creates_no_followup(
     cat_client: TestClient,
     cat_session: CatalogueFakeSession,

@@ -77,6 +77,21 @@ _LOOP_SCOPED_ORIGINS = frozenset(
     {AttemptOrigin.assignment_driven, AttemptOrigin.loop_driven}
 )
 
+# Hard cap on consecutive loop-driven follow-ups for a single failure
+# chain (PR-019 Gitar review — defense in depth). AC-D6 says the loop
+# continues "until the Testee passes or the admin overrides"; admin
+# override + budget alerts (AC-D18 v1.1) are the spec's primary
+# termination conditions. The cap is a safety bound for the edge case
+# where neither fires — a Testee who consistently fails 10 times in a
+# row will see the 11th submit produce no further follow-up, and the
+# admin queue surfaces the WeaknessReport so manual remediation is
+# still possible. Cap is set to 10 — far above any realistic learning
+# progression (a Testee genuinely needing 5+ follow-ups likely needs
+# direct admin intervention anyway) but tight enough to bound runaway
+# AI cost. P7 code constant; could become a ``system_settings`` column
+# in v1.x if operational tuning needs it.
+MAX_LOOP_DEPTH = 10
+
 
 # --- overlap check (AC-D4 #5 / AC-CD14) -------------------------------
 
@@ -117,16 +132,25 @@ async def _ai_grades_for_attempt(
 ) -> list[tuple[Grade, Response]]:
     """Pair each AI Grade row on this attempt with its Response — the
     Response's ``answer_payload`` carries the candidate text the overlap
-    check compares against the served material."""
-    grades_result = await db.execute(
-        select(Grade).where(Grade.tenant_id == SEED_TENANT_ID)
+    check compares against the served material.
+
+    Walks attempt → responses → per-response Grade. The reverse walk
+    (load every Grade for the tenant, filter by response.attempt_id in
+    Python) avoids the full-table Grade scan that PR-019 Gitar review
+    flagged: the Grade table grows with every graded response across
+    every Testee, so a tenant-wide ``select`` runs in O(total grades)
+    per submit. The forward walk runs in O(responses-on-this-attempt)
+    equality lookups, which the harness supports natively and prod PG
+    indexes cleanly via the ``grade.response_id`` FK index.
+    """
+    resp_result = await db.execute(
+        select(Response).where(Response.attempt_id == attempt_id)
     )
-    grades = [g for g in grades_result.scalars().all() if g.source == GradeSource.ai]
     out: list[tuple[Grade, Response]] = []
-    for grade in grades:
-        resp = await db.execute(select(Response).where(Response.id == grade.response_id))
-        response = resp.scalar_one_or_none()
-        if response is None or response.attempt_id != attempt_id:
+    for response in resp_result.scalars().all():
+        g_result = await db.execute(select(Grade).where(Grade.response_id == response.id))
+        grade = g_result.scalar_one_or_none()
+        if grade is None or grade.source != GradeSource.ai:
             continue
         out.append((grade, response))
     return out
@@ -189,6 +213,42 @@ async def _pill(db: AsyncSession, pill_id: uuid.UUID) -> Pill | None:
     return result.scalar_one_or_none()
 
 
+async def _loop_chain_depth(db: AsyncSession, attempt: Attempt) -> int:
+    """Count how many consecutive loop-driven attempts are in the
+    parent chain rooted at ``attempt``, INCLUDING ``attempt`` itself
+    if its origin is ``loop_driven``. Used by ``run_loop_after_submit``
+    to enforce ``MAX_LOOP_DEPTH``.
+
+    Walk semantics: an assignment_driven attempt is the chain root with
+    depth 0. Each loop_driven follow-up's
+    ``parent_attempt_id`` points back at the failed attempt that
+    triggered it (set explicitly by ``_create_followup`` after
+    ``start_attempt`` returns — ``start_attempt``'s default semantics
+    chain by Test, not by loop, and a freshly-created per_testee Test
+    has no Test-internal prior to chain through, so we overwrite).
+
+    Walk terminates on null parent or non-loop_driven parent, OR when
+    depth exceeds ``MAX_LOOP_DEPTH + 1`` (defensive — a circular chain
+    should never exist but the bound prevents an unbounded walk if
+    the data model is ever corrupted).
+    """
+    depth = 0
+    current: Attempt | None = attempt
+    while (
+        current is not None
+        and current.origin == AttemptOrigin.loop_driven
+        and depth <= MAX_LOOP_DEPTH + 1
+    ):
+        depth += 1
+        if current.parent_attempt_id is None:
+            break
+        result = await db.execute(
+            select(Attempt).where(Attempt.id == current.parent_attempt_id)
+        )
+        current = result.scalar_one_or_none()
+    return depth
+
+
 async def _weakness_report_pills(
     db: AsyncSession, weakness_report_id: uuid.UUID
 ) -> list[WeaknessReportPill]:
@@ -204,22 +264,20 @@ async def _wrong_question_prompts(db: AsyncSession, attempt: Attempt) -> list[st
     """Surface the prompt text of the attempt's wrong responses for
     inclusion in the ``generate_for_weakness`` payload. AI material
     benefits from knowing what the Testee specifically got wrong (per
-    F18) — "wrong" = Grade.score < 1.0."""
-    grades_result = await db.execute(
-        select(Grade).where(Grade.tenant_id == SEED_TENANT_ID)
-    )
-    grades = list(grades_result.scalars().all())
-    wrong_response_ids = {g.response_id for g in grades if g.score < 1.0}
-    if not wrong_response_ids:
-        return []
+    F18) — "wrong" = Grade.score < 1.0.
+
+    Walks attempt → responses → per-response Grade (same forward-walk
+    pattern as ``_ai_grades_for_attempt`` — see that docstring for why
+    we don't tenant-scan Grade)."""
     resp_result = await db.execute(
         select(Response).where(Response.attempt_id == attempt.id)
     )
-    wrong_responses = [
-        r for r in resp_result.scalars().all() if r.id in wrong_response_ids
-    ]
     prompts: list[str] = []
-    for response in wrong_responses:
+    for response in resp_result.scalars().all():
+        g_result = await db.execute(select(Grade).where(Grade.response_id == response.id))
+        grade = g_result.scalar_one_or_none()
+        if grade is None or grade.score >= 1.0:
+            continue
         q_result = await db.execute(
             select(Question).where(Question.id == response.question_id)
         )
@@ -358,13 +416,24 @@ async def _create_followup(
     # creates the Attempt row, and triggers per_testee question
     # generation against ``new_test.target_difficulty``. Rate limit is
     # already exempt for loop_driven origin (AC-D18).
-    return await _start_attempt(
+    new_attempt = await _start_attempt(
         db,
         test=new_test,
         testee_id=parent_attempt.testee_id,
         origin=AttemptOrigin.loop_driven,
         assignment_id=new_assignment.id,
     )
+    # start_attempt sets parent_attempt_id from the in-test attempt
+    # chain (most-recent prior attempt on the same Test by this Testee).
+    # A freshly-created per_testee follow-up Test has no in-test prior,
+    # so parent_attempt_id comes back as None. Override here to point
+    # at the failed PARENT ATTEMPT — this is what makes the loop chain
+    # walkable for ``_loop_chain_depth`` and matches the planned
+    # semantics: "Attempt(origin=loop_driven, parent_attempt_id=<failed
+    # original>)".
+    new_attempt.parent_attempt_id = parent_attempt.id
+    await db.flush()
+    return new_attempt
 
 
 async def _should_run_loop(
@@ -375,7 +444,10 @@ async def _should_run_loop(
 
       * origin is assignment_driven OR loop_driven (loop-of-loops allowed
         — a failed follow-up triggers another follow-up at the new
-        target_difficulty until the Testee passes or the admin overrides)
+        target_difficulty until the Testee passes, the admin overrides,
+        or the ``MAX_LOOP_DEPTH`` safety bound is reached — see
+        ``run_loop_after_submit`` for the cap enforcement; this helper
+        only checks scope, not chain depth)
       * assignment.pill_id IS NOT NULL (single-pill scope)
       * overall_score < pass_threshold (failed; passing attempts produce
         a competence update but no follow-up)
@@ -438,6 +510,17 @@ async def run_loop_after_submit(
 
     admin_reviewed = parent_assignment.loop_mode == LoopMode.admin_reviewed
 
+    # PR-019 Gitar review — bound the loop-of-loops chain. AC-D6 says
+    # "until pass or admin override" but adds a safety bound here in
+    # case neither fires (e.g., a Testee fails 10× without anyone
+    # noticing). At MAX_LOOP_DEPTH the WeaknessReport is still written
+    # (audit trail preserved) and material is still generated (the
+    # explainer is useful regardless of follow-up creation), but no
+    # further follow-up Attempt is queued — Slice 3's admin queue
+    # surfaces the report so manual remediation is still possible.
+    depth = await _loop_chain_depth(db, attempt)
+    chain_capped = attempt.origin == AttemptOrigin.loop_driven and depth >= MAX_LOOP_DEPTH
+
     if admin_reviewed:
         # Admin queue lights up at the WeaknessReport row; Slice 3
         # endpoints (GET queue / POST approve / POST reject) walk
@@ -466,6 +549,10 @@ async def run_loop_after_submit(
             )
         # else: safety pill — skip AI material; P11 ships curated
         # external links via the ``curated_safety_links`` source.
+        if chain_capped:
+            # Material still written above (useful regardless), but
+            # no further follow-up — admin queue picks it up.
+            continue
         await _create_followup(
             db,
             parent_attempt=attempt,
