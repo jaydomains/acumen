@@ -48,6 +48,7 @@ import json
 import logging
 import random
 import uuid
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
@@ -806,22 +807,31 @@ async def _all_live_anchors(db: AsyncSession) -> list[AnchorQuestion]:
     return [row for row in result.scalars().all() if not row.excluded]
 
 
-async def _scored_observations_for_anchor(
-    db: AsyncSession, anchor_id: uuid.UUID
-) -> list[float]:
-    """Per-anchor ``AttemptAnchor.score`` values, filtering out NULLs.
-    The score column is denormalised by ``submit_attempt`` from
-    ``Response.response_score`` (Slice 3); a NULL means no Testee has
-    answered this anchor yet, so the AC-D27 estimator should treat it
-    as a missing observation rather than a zero."""
+async def _scored_observations_grouped_by_anchor(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[float]]:
+    """All non-NULL ``AttemptAnchor.score`` observations for the
+    tenant, grouped into ``{anchor_question_id: [score, ...]}`` —
+    fetched in **one** equality-WHERE query and grouped in Python.
+
+    This replaces a per-anchor query inside the sweep loop (Gitar
+    PR-#20 Slice 4 finding #1: at hundreds of live anchors per
+    tenant, the per-anchor walk was sequential N+1 DB round-trips).
+    Same fix shape as PR-019 Slice 2's full-table Grade scan
+    refactor — fetch once at the boundary, group + filter in Python,
+    preserve the per-anchor failure isolation inside the loop.
+
+    NULL scores (anchors a Testee was offered but never answered
+    autosaved a response for) are filtered here so the AC-D27
+    estimator only sees real observations rather than zeros."""
     result = await db.execute(
-        select(AttemptAnchor).where(
-            AttemptAnchor.tenant_id == SEED_TENANT_ID,
-            AttemptAnchor.anchor_question_id == anchor_id,
-        )
+        select(AttemptAnchor).where(AttemptAnchor.tenant_id == SEED_TENANT_ID)
     )
-    rows = list(result.scalars().all())
-    return [row.score for row in rows if row.score is not None]
+    grouped: dict[uuid.UUID, list[float]] = defaultdict(list)
+    for row in result.scalars().all():
+        if row.score is not None:
+            grouped[row.anchor_question_id].append(row.score)
+    return grouped
 
 
 def _settings_with_defaults(settings: SystemSettings | None) -> tuple[int, float, int]:
@@ -864,9 +874,18 @@ async def run_calibration_sweep(db: AsyncSession) -> dict[str, Any]:
           "mean_effective_difficulty":      <float>,  # mean updated value
         }
 
-    Failure-isolated per anchor — a single bad row logs and continues."""
+    Failure-isolated per anchor — a single bad row logs and continues.
+
+    Observations are batch-fetched in **one** equality-WHERE query
+    upfront (``_scored_observations_grouped_by_anchor``) and grouped
+    in Python; the per-anchor loop reads the grouped dict by id.
+    Eliminates the per-anchor DB round-trip Gitar PR-#20 Slice 4
+    flagged (same fix shape as PR-019 Slice 2's full-table Grade
+    scan refactor — fetch once at the boundary, group in Python,
+    keep the per-row failure isolation intact)."""
     settings = await _load_settings(db)
     prior_weight, sensitivity, _confidence_threshold = _settings_with_defaults(settings)
+    scores_by_anchor = await _scored_observations_grouped_by_anchor(db)
 
     anchors_processed = 0
     anchors_updated = 0
@@ -877,7 +896,7 @@ async def run_calibration_sweep(db: AsyncSession) -> dict[str, Any]:
     for anchor in await _all_live_anchors(db):
         anchors_processed += 1
         try:
-            scores = await _scored_observations_for_anchor(db, anchor.id)
+            scores = scores_by_anchor.get(anchor.id, [])
             if not scores:
                 anchors_skipped += 1
                 continue
