@@ -54,7 +54,12 @@ from app.domain._scoring import outcome_for as _outcome_for
 from app.domain.calibration import draw_anchors_for_attempt
 from app.domain.catalogue import record_audit
 from app.domain.competence import apply_competence_update
-from app.domain.drive_rag import render_rag_context, retrieve_for_generation
+from app.domain.drive_rag import (
+    list_low_realism_questions_for_pill,
+    render_low_realism_examples,
+    render_rag_context,
+    retrieve_for_generation,
+)
 from app.domain.grade_review import _review_ai_grades
 from app.domain.loop import apply_overlap_check, run_loop_after_submit
 from app.models import (
@@ -613,6 +618,15 @@ async def start_attempt(
         rag_hits = await retrieve_for_generation(
             db, pill=rag_pill, target_difficulty=target_difficulty
         )
+        # P9 Slice 4 — low-realism negative-examples per AC-D22. The
+        # pool is per-pill, so a learning-path assignment (rag_pill is
+        # None) sees ``(none)``; same fallthrough as the rag_context
+        # block above.
+        low_realism = (
+            await list_low_realism_questions_for_pill(db, pill_id=rag_pill.id)
+            if rag_pill is not None
+            else []
+        )
         provider = resolve_provider(Operation.generation, system_settings=settings)
         gen_result = await provider.generate(
             Operation.generation,
@@ -622,6 +636,7 @@ async def start_attempt(
                 "question_count": _GENERATION_DEFAULT_QUESTION_COUNT,
                 "attempt_id": str(attempt.id),
                 "rag_context": render_rag_context(rag_hits),
+                "low_realism_negative_examples": render_low_realism_examples(low_realism),
             },
         )
         generated = gen_result.content.get("questions") or []

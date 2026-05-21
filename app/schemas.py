@@ -765,3 +765,38 @@ class DriveIngestResult(_Base):
     chunks_added: int
     chunks_deleted: int
     embed_calls: int
+
+
+class RealismFlagResult(_Base):
+    """Response shape after a successful testee realism-flag click
+    (AC-D22 / P9 Slice 4). ``created`` is ``False`` on the
+    idempotent double-flag case (the testee clicked the button twice
+    on the same question — the unique constraint short-circuits the
+    second call and returns the existing row)."""
+
+    realism_flag_id: uuid.UUID
+    question_id: uuid.UUID
+    testee_id: uuid.UUID
+    created: bool
+
+
+class RealismAggregationResult(_Base):
+    """Telemetry returned by one realism-aggregation sweep (AC-D22 /
+    P9 Slice 4). Same body shape the P11 beat task will emit per
+    nightly run."""
+
+    flags_processed: int
+    questions_updated: int
+    anchors_excluded: int
+    anchor_questions_seen: int
+
+
+class DriveIndexStatus(_Base):
+    """Read-only dashboard surface for the Drive RAG index (AC-D22 /
+    P9 Slice 4). Operators inspect this to verify AC-D23 step 4
+    (initial folder bootstrap) actually completed and the daily cron
+    is keeping the index fresh once P11 wires the schedule."""
+
+    chunks: int
+    files: int
+    last_indexed_at: datetime | None

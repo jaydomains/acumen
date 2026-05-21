@@ -60,7 +60,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
 from app.domain.drive_source import DriveFile, DriveSource, get_drive_source
-from app.models import SEED_TENANT_ID, DriveChunk, SystemSettings
+from app.models import (
+    SEED_TENANT_ID,
+    AnchorQuestion,
+    Attempt,
+    AttemptAnchor,
+    DriveChunk,
+    Question,
+    RealismFlag,
+    SystemSettings,
+)
 from app.permissions import APIError, now_utc
 
 logger = logging.getLogger(__name__)
@@ -742,3 +751,409 @@ async def retrieve_for_generation(
         top_k=k,
     )
     return hits
+
+
+# --- Slice 4: realism flag write + aggregation + negative examples ---
+
+
+_LOW_REALISM_THRESHOLD = 2
+"""Minimum :attr:`Question.realism_flag_count` for a question to land
+in :func:`list_low_realism_questions_for_pill`. The aggregation step
+writes a *weighted* count, so 2 unweighted flags (or one full-weight +
+two half-weight) suffice to mark a question for the negative-examples
+pool. P9-default; tunable in v1.x if operators want a stricter or
+looser cutoff."""
+
+
+_LOW_REALISM_DEFAULT_LIMIT = 5
+"""Cap on the negative-examples block size injected into the
+generation prompt — keeps the prompt bloat bounded. Mirrors the
+``_DEFAULT_TOP_K = 5`` chunk cap for RAG context."""
+
+
+async def _question_for_realism_check(
+    db: AsyncSession,
+    *,
+    question_id: uuid.UUID,
+    attempt_id: uuid.UUID,
+    testee_id: uuid.UUID,
+) -> Question | None:
+    """Resolve a :class:`Question` row the testee was actually served
+    in ``attempt_id``. Returns ``None`` when:
+
+    * the attempt isn't the testee's, or
+    * the question isn't one of the served items (per-testee /
+      frozen / anchor — any of the three origins is valid as long as
+      it appears in the attempt's question_snapshot OR is an anchor
+      drawn via AttemptAnchor for the attempt).
+
+    Tenant-scoped equality WHEREs only per AC-CD15. The privacy
+    semantic (a testee can only flag a question they actually saw)
+    is enforced here rather than at the router — the same domain
+    boundary that owns the realism mutation owns the ownership check.
+    """
+    attempt_result = await db.execute(
+        select(Attempt).where(
+            Attempt.id == attempt_id,
+            Attempt.tenant_id == SEED_TENANT_ID,
+            Attempt.testee_id == testee_id,
+        )
+    )
+    attempt = attempt_result.scalar_one_or_none()
+    if attempt is None:
+        return None
+
+    question_result = await db.execute(
+        select(Question).where(
+            Question.id == question_id, Question.tenant_id == SEED_TENANT_ID
+        )
+    )
+    question = question_result.scalar_one_or_none()
+    if question is None:
+        return None
+
+    # Validate the question was served in this attempt: it must be
+    # either in the snapshot (per_testee / frozen) or recorded as a
+    # drawn anchor on the attempt (AnchorQuestion has pill_id, the
+    # Question shares the same UUID per the P8 shared-PK convention).
+    snapshot = attempt.question_snapshot or {}
+    snapshot_ids = {
+        str(q.get("id")) for q in (snapshot.get("questions") or []) if isinstance(q, dict)
+    }
+    if str(question_id) in snapshot_ids:
+        return question
+
+    anchor_result = await db.execute(
+        select(AttemptAnchor).where(
+            AttemptAnchor.attempt_id == attempt_id,
+            AttemptAnchor.anchor_question_id == question_id,
+            AttemptAnchor.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    if anchor_result.scalar_one_or_none() is not None:
+        return question
+
+    return None
+
+
+def _generation_context_from_question(question: Question) -> dict[str, Any]:
+    """Server-derived ``generation_context`` per AC-D22 ("records a
+    flag against that specific question's content and the generation
+    context that produced it"). The fields come from the Question's
+    :class:`AIProvenanceMixin` columns — provider, model, prompt
+    version — plus the question's own type and assigned difficulty so
+    downstream pattern-aggregation can group flags by question shape
+    (e.g. "all the flagged questions came from prompt_version 1.0.0")
+    without re-joining the Question row at aggregation time.
+
+    Per the user-confirmed correction: the context is server-derived,
+    not testee-supplied. The testee endpoint accepts an empty body.
+    """
+    return {
+        "ai_provider": question.ai_provider,
+        "ai_model": question.ai_model,
+        "ai_prompt_version": question.ai_prompt_version,
+        "question_type": question.type.value if question.type else None,
+        "assigned_difficulty": question.assigned_difficulty,
+    }
+
+
+async def record_realism_flag(
+    db: AsyncSession,
+    *,
+    question_id: uuid.UUID,
+    attempt_id: uuid.UUID,
+    testee_id: uuid.UUID,
+) -> tuple[RealismFlag, bool]:
+    """Persist a :class:`RealismFlag` row for the testee's flag on
+    ``question_id`` in ``attempt_id``. Returns
+    ``(flag, created)`` where ``created`` is ``False`` for the
+    idempotent double-flag case (a testee clicking the button twice
+    on the same question must not create a duplicate row — the unique
+    constraint ``uq_realism_question_testee`` enforces this; we
+    short-circuit on the second call so the endpoint returns 200
+    rather than 409).
+
+    Raises :class:`APIError` (404 ``question_not_found``) when the
+    question isn't one the testee was served in this attempt — the
+    privacy-preserving "I can only flag what I saw" semantic
+    (the same 404 covers "wrong attempt" and "wrong testee" so the
+    endpoint never leaks ownership information by error code).
+    """
+    question = await _question_for_realism_check(
+        db, question_id=question_id, attempt_id=attempt_id, testee_id=testee_id
+    )
+    if question is None:
+        raise APIError(
+            404,
+            "question_not_found",
+            "The question is not part of an attempt by this testee.",
+        )
+
+    # Idempotency check: equality WHERE on (question_id, testee_id)
+    # — same shape as the unique constraint, so the second click is
+    # detected and the existing row is returned without raising.
+    existing_result = await db.execute(
+        select(RealismFlag).where(
+            RealismFlag.question_id == question_id,
+            RealismFlag.testee_id == testee_id,
+            RealismFlag.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing is not None:
+        return existing, False
+
+    flag = RealismFlag(
+        tenant_id=SEED_TENANT_ID,
+        question_id=question_id,
+        testee_id=testee_id,
+        generation_context=_generation_context_from_question(question),
+    )
+    db.add(flag)
+    await db.flush()
+    return flag, True
+
+
+async def _testee_overall_scores(
+    db: AsyncSession, testee_id: uuid.UUID
+) -> list[float | None]:
+    """Per amended AC-D22 ("Feedback weight per Testee is scaled by
+    the Testee's overall attempt accuracy"): the Testee's
+    ``Attempt.overall_score`` over their submitted attempts. The
+    aggregation pass calls :func:`compute_testee_realism_weight` to
+    fold these into the 0.0-1.0 weight. Tenant-scoped equality
+    WHERE only; the submitted-only filter is applied in Python
+    (per AC-CD15 — submitted_at is a nullable timestamp, not an
+    equality-friendly column)."""
+    result = await db.execute(
+        select(Attempt).where(
+            Attempt.testee_id == testee_id, Attempt.tenant_id == SEED_TENANT_ID
+        )
+    )
+    return [a.overall_score for a in result.scalars().all() if a.submitted_at is not None]
+
+
+async def _attempts_for_anchor_serve_count(
+    db: AsyncSession, anchor_question_id: uuid.UUID
+) -> int:
+    """Count of :class:`AttemptAnchor` rows for ``anchor_question_id``
+    — the denominator for the realism-flag ratio per AC-D22 ("high
+    flag count relative to its attempt count"). Tenant-scoped
+    equality WHERE only."""
+    result = await db.execute(
+        select(AttemptAnchor).where(
+            AttemptAnchor.anchor_question_id == anchor_question_id,
+            AttemptAnchor.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return len(list(result.scalars().all()))
+
+
+async def aggregate_realism_flags(db: AsyncSession) -> dict[str, Any]:
+    """Admin-triggered nightly realism aggregation (AC-D22). Mirrors
+    the P6 reconcile + P8 calibration-sweep precedent — same callable
+    is wired to the beat schedule at P11.
+
+    Algorithm:
+
+    1. Load every :class:`RealismFlag` row for the tenant.
+    2. Group by ``question_id``.
+    3. For each group, fold the flagging Testees' weights via
+       :func:`compute_testee_realism_weight` (mean overall_score
+       or neutral 0.5) — the AC-D22 "weighted by Testee accuracy"
+       requirement. The sum becomes the question's new
+       :attr:`Question.realism_flag_count`.
+    4. For each anchor-pool question (``pill_id IS NOT NULL``), check
+       the weighted ratio against
+       :func:`aggregate_flag_ratio` over the AttemptAnchor serve
+       count. Above :data:`_FLAG_RATIO_EXCLUSION_THRESHOLD` and not
+       already excluded → set ``excluded=True``,
+       ``excluded_reason="high_realism_flag_ratio: {ratio:.2f}"``,
+       ``needs_admin_attention=True``. The :func:`draw_anchors_for_attempt`
+       filter already respects ``excluded``, so the anchor drops from
+       subsequent attempts automatically.
+
+    Per-question try/except so one bad row (a Question that was
+    hard-deleted out from under the flags, leaving orphan
+    realism_flag rows) does not poison the sweep — mirrors the
+    PR-019 Slice 2 / PR-020 Slice 4 isolation pattern.
+
+    Returns telemetry ``{flags_processed, questions_updated,
+    anchors_excluded, anchor_questions_seen}``.
+    """
+    flags_result = await db.execute(
+        select(RealismFlag).where(RealismFlag.tenant_id == SEED_TENANT_ID)
+    )
+    flags = list(flags_result.scalars().all())
+
+    # Group flags by question; collect each flagger's testee_id.
+    flaggers_by_question: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for flag in flags:
+        flaggers_by_question.setdefault(flag.question_id, []).append(flag.testee_id)
+
+    # Cache per-Testee weight so a Testee who flagged N questions
+    # only pays the overall_score fetch once per aggregation pass.
+    weight_by_testee: dict[uuid.UUID, float] = {}
+
+    async def _weight_for(testee_id: uuid.UUID) -> float:
+        if testee_id not in weight_by_testee:
+            scores = await _testee_overall_scores(db, testee_id)
+            weight_by_testee[testee_id] = compute_testee_realism_weight(scores)
+        return weight_by_testee[testee_id]
+
+    questions_updated = 0
+    anchors_excluded = 0
+    anchor_questions_seen = 0
+
+    for question_id, testee_ids in flaggers_by_question.items():
+        try:
+            weight_sum = 0.0
+            for tid in testee_ids:
+                weight_sum += await _weight_for(tid)
+            # Persist as an int — the column is INTEGER; round to
+            # nearest. Half-weights collapse cleanly:
+            # 2 × 0.5 → 1, 2 × 0.6 → 1, 3 × 0.6 → 2, etc.
+            new_count = int(round(weight_sum))
+
+            question_result = await db.execute(
+                select(Question).where(
+                    Question.id == question_id,
+                    Question.tenant_id == SEED_TENANT_ID,
+                )
+            )
+            question = question_result.scalar_one_or_none()
+            if question is None:
+                # Orphan flag — Question hard-deleted. The flag's CASCADE
+                # FK should have removed it; defensive skip.
+                continue
+
+            if question.realism_flag_count != new_count:
+                question.realism_flag_count = new_count
+                questions_updated += 1
+
+            # Anchor-pool questions get the exclusion check.
+            if question.pill_id is not None:
+                anchor_questions_seen += 1
+                anchor_result = await db.execute(
+                    select(AnchorQuestion).where(
+                        AnchorQuestion.id == question_id,
+                        AnchorQuestion.tenant_id == SEED_TENANT_ID,
+                    )
+                )
+                anchor = anchor_result.scalar_one_or_none()
+                if anchor is None or anchor.excluded:
+                    continue
+                serves = await _attempts_for_anchor_serve_count(db, question_id)
+                ratio = aggregate_flag_ratio(weight_sum, serves)
+                if ratio >= _FLAG_RATIO_EXCLUSION_THRESHOLD:
+                    anchor.excluded = True
+                    anchor.excluded_reason = f"high_realism_flag_ratio: {ratio:.2f}"
+                    anchor.needs_admin_attention = True
+                    anchors_excluded += 1
+        except Exception:
+            # Per-row isolation: one bad row can't poison the sweep.
+            logger.exception(
+                "Realism aggregation: per-question fold failed for %s; "
+                "continuing the sweep",
+                question_id,
+            )
+            continue
+
+    await db.flush()
+
+    return {
+        "flags_processed": len(flags),
+        "questions_updated": questions_updated,
+        "anchors_excluded": anchors_excluded,
+        "anchor_questions_seen": anchor_questions_seen,
+    }
+
+
+async def list_low_realism_questions_for_pill(
+    db: AsyncSession,
+    *,
+    pill_id: uuid.UUID,
+    limit: int = _LOW_REALISM_DEFAULT_LIMIT,
+) -> list[dict[str, Any]]:
+    """Return the high-flag questions for ``pill_id``, capped at
+    ``limit`` — the "negative examples" pool the generation prompt
+    weights away from per AC-D22 ("realism-flag pool weights
+    generation as negative examples").
+
+    Returns a list of ``{type, config, assigned_difficulty,
+    realism_flag_count}`` dicts (the prompt-payload shape). Ordered
+    by realism_flag_count descending so the most-flagged questions
+    surface first — a small ``limit`` (default 5) keeps the prompt
+    bloat bounded. Empty list when the pill has no flagged anchor
+    questions yet (steady state at deployment day-one).
+
+    Tenant-scoped equality WHERE on ``pill_id``; the count threshold
+    filter is applied in Python after the equality fetch (AC-CD15 —
+    ``realism_flag_count >= N`` is a comparison, not an equality).
+    """
+    if limit <= 0:
+        return []
+    result = await db.execute(
+        select(Question).where(
+            Question.pill_id == pill_id, Question.tenant_id == SEED_TENANT_ID
+        )
+    )
+    rows = [
+        q
+        for q in result.scalars().all()
+        if q.realism_flag_count >= _LOW_REALISM_THRESHOLD
+    ]
+    rows.sort(key=lambda q: (-q.realism_flag_count, str(q.id)))
+    return [
+        {
+            "type": q.type.value if q.type else None,
+            "config": q.config,
+            "assigned_difficulty": q.assigned_difficulty,
+            "realism_flag_count": q.realism_flag_count,
+        }
+        for q in rows[:limit]
+    ]
+
+
+def render_low_realism_examples(items: list[dict[str, Any]]) -> str:
+    """Render the negative-examples pool for the prompt template.
+    Empty list renders as ``(none)``; each item renders as
+    ``- [difficulty N, flags M]: <type> — <config-summary>``.
+
+    The summary is a short ``str(config)`` truncation; the prompt
+    asks the model to "avoid" the listed patterns rather than to
+    reproduce them, so the verbatim rendering is operator-friendly
+    (debugging "why is this question pattern still appearing?") not
+    something the model needs to fully consume."""
+    if not items:
+        return "(none)"
+    lines: list[str] = []
+    for item in items:
+        config_str = str(item.get("config") or {})
+        if len(config_str) > 200:
+            config_str = config_str[:197] + "..."
+        lines.append(
+            f"- [difficulty {item.get('assigned_difficulty')}, "
+            f"flags {item.get('realism_flag_count')}]: "
+            f"{item.get('type')} — {config_str}"
+        )
+    return "\n".join(lines)
+
+
+async def drive_index_status(db: AsyncSession) -> dict[str, Any]:
+    """Read-only dashboard surface: chunk count + distinct file count
+    + ``max(indexed_at)``. The cron schedule lands at P11; until
+    then the operator inspects the index through this endpoint to
+    verify AC-D23 step 4 actually completed."""
+    result = await db.execute(
+        select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
+    )
+    chunks = list(result.scalars().all())
+    files = {c.source_doc_ref for c in chunks}
+    last_indexed = max((c.indexed_at for c in chunks), default=None)
+    return {
+        "chunks": len(chunks),
+        "files": len(files),
+        "last_indexed_at": last_indexed,
+    }

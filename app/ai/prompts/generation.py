@@ -21,6 +21,14 @@ draw KBC-specific material from. The retrieval helper is
 when the Drive index is empty (day-one deployment or learning-path
 assignments where the call site doesn't have a pill to query for).
 
+**P9 / v1.2.0** (AC-D22): the payload now also carries
+``low_realism_negative_examples`` — a pre-rendered string of recent
+flagged-as-unrealistic questions for the pill, weighted by Testee
+accuracy per :func:`app.domain.drive_rag.aggregate_realism_flags`.
+The prompt instructs the model to AVOID the listed patterns. Empty
+list renders as ``(none)``; the negative-examples pool is bounded
+to keep prompt bloat in check.
+
 Anchor exemplars (AC-D20) — note: P8 chose AC-D27 effective_difficulty
 triangulation over in-context exemplar injection. The spec §6.1
 "anchor questions as in-context calibration exemplars" wording is
@@ -34,7 +42,7 @@ Output JSON contract:
 
 from __future__ import annotations
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 TEMPLATE = """\
 You are an expert assessment author producing a calibrated question set
@@ -47,6 +55,10 @@ Number of questions to produce: {question_count}
 Relevant KBC reference material from the Drive index (may be empty):
 {rag_context}
 
+Examples flagged as unrealistic by Testees — AVOID these patterns
+(may be empty):
+{low_realism_negative_examples}
+
 Produce questions that are:
 - Answerable from the test's domain (not trivia adjacent to it).
 - Calibrated to the difficulty band (cross-reference standards for the
@@ -54,6 +66,9 @@ Produce questions that are:
 - Grounded in the KBC reference material above where it is relevant
   (do not invent facts beyond it; if it is empty, fall back to general
   domain knowledge).
+- Distinct from the negative-example patterns above — re-using the
+  same surface form, framing, or trope-level structure of a flagged
+  question is the failure mode this list exists to prevent.
 - Free of trick framing, ambiguous wording, or unstated assumptions.
 - Varied across runs (different surface form, examples, framings).
 

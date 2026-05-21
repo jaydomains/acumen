@@ -57,7 +57,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
-from app.domain.drive_rag import render_rag_context, retrieve_for_generation
+from app.domain.drive_rag import (
+    list_low_realism_questions_for_pill,
+    render_low_realism_examples,
+    render_rag_context,
+    retrieve_for_generation,
+)
 from app.models import (
     SEED_TENANT_ID,
     AnchorQuestion,
@@ -532,6 +537,12 @@ async def generate_anchor_pool_for_pill(
             db, pill=pill, target_difficulty=band
         )
 
+    # P9 Slice 4 — low-realism negative examples cached once per pill
+    # (the pool is pill-scoped, not band-scoped; same examples flow
+    # into every band's generation calls).
+    low_realism = await list_low_realism_questions_for_pill(db, pill_id=pill_id)
+    low_realism_rendered = render_low_realism_examples(low_realism)
+
     for band in bands:
         band_generated = 0
         band_excluded = 0
@@ -551,6 +562,7 @@ async def generate_anchor_pool_for_pill(
                     "question_count": 1,
                     "attempt_id": str(anchor_id),
                     "rag_context": rag_context,
+                    "low_realism_negative_examples": low_realism_rendered,
                 }
                 last_gen_result = await provider.generate(
                     Operation.generation, gen_payload

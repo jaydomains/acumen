@@ -12,13 +12,19 @@ in KBC-specific reference material when available. Empty / missing
 ``rag_context`` renders as ``(none)`` so the prompt stays well-formed
 when the Drive index is empty.
 
+**P9 / v1.2.0** (AC-D22): the payload now also carries
+``low_realism_negative_examples`` — flagged-as-unrealistic questions
+for the pill, used as a "don't sound like this" signal for the
+explainer's worded examples (mirrors the generation prompt's
+negative-examples block).
+
 Output JSON contract:
     {"explainer": str  # 200-400 words, in-app display ready}
 """
 
 from __future__ import annotations
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 TEMPLATE = """\
 You are producing a targeted learning explainer for an Acumen testee who
@@ -34,6 +40,10 @@ Specific questions the testee got wrong (optional, may be empty):
 
 Relevant KBC reference material from the Drive index (may be empty):
 {rag_context}
+
+Examples flagged as unrealistic by Testees — your worded examples
+should not echo these patterns (may be empty):
+{low_realism_negative_examples}
 
 Write 200-400 words. Address the actual gap, not the topic in general.
 Include one or two worked examples grounded in the trade context, and

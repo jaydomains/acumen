@@ -25,7 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
-from app.domain.drive_rag import render_rag_context, retrieve_for_generation
+from app.domain.drive_rag import (
+    list_low_realism_questions_for_pill,
+    render_low_realism_examples,
+    render_rag_context,
+    retrieve_for_generation,
+)
 from app.models import (
     SEED_TENANT_ID,
     LearningMaterial,
@@ -113,12 +118,15 @@ async def generate_for_weakness(
     rag_hits = await retrieve_for_generation(
         db, pill=pill, target_difficulty=target_difficulty
     )
+    # P9 Slice 4 — low-realism negative examples for the pill.
+    low_realism = await list_low_realism_questions_for_pill(db, pill_id=pill_id)
     payload = {
         "pill_name": pill.name,
         "pill_description": pill.description or "",
         "severity": severity,
         "wrong_questions": wrong_questions or [],
         "rag_context": render_rag_context(rag_hits),
+        "low_realism_negative_examples": render_low_realism_examples(low_realism),
     }
     result = await provider.generate(Operation.learning_material, payload)
     explainer_text = str(result.content.get("explainer", "")).strip()
