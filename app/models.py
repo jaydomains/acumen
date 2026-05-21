@@ -748,10 +748,16 @@ class CompetencyProfile(Base, TimestampMixin):
     last_activity_at: Mapped[datetime | None]
 
 
-class DriveChunk(Base, TimestampMixin):
+class DriveChunk(Base, TimestampMixin, AIProvenanceMixin):
     """Drive RAG index chunk (AC-D22). ``embedding`` is
-    ``Vector(1536)`` — ``text-embedding-3-small``; IVFFlat index added in
-    the migration (Slice 3)."""
+    ``Vector(1536)`` — ``text-embedding-3-small``; IVFFlat index added
+    in the P1 migration. The 6 ``AIProvenanceMixin`` columns are added
+    by migration 0006 (P9, AC-D22 / AC-CD8 v1.6) so each chunk carries
+    the embedding call's per-call cost — :func:`app.ai.cost.record_provenance`
+    stamps them, and :func:`app.ai.cost.current_month_spend` aggregates
+    the OpenAI embedding spend alongside the other 6 provenance-bearing
+    tables. ``ai_prompt_version`` stays NULL for embed rows (no prompt
+    template); ``ai_completion_tokens`` stays 0 (no completion side)."""
 
     __tablename__ = "drive_chunk"
 

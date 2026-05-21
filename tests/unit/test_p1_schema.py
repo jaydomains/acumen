@@ -93,6 +93,22 @@ def test_key_columns_present() -> None:
     assert isinstance(emb, Vector)
     assert emb.dim == 1536
 
+    # P9 / AC-CD8 v1.6: DriveChunk joined AIProvenanceMixin via
+    # migration 0006 so embedding spend surfaces in the cost
+    # dashboard. The six provenance columns are nullable (existing rows
+    # tolerate null; cost aggregator short-circuits on cost is None).
+    drive_chunk = _table("drive_chunk").c
+    for c in (
+        "ai_provider",
+        "ai_model",
+        "ai_prompt_version",
+        "ai_prompt_tokens",
+        "ai_completion_tokens",
+        "ai_cost_usd",
+    ):
+        assert c in drive_chunk
+        assert drive_chunk[c].nullable is True
+
     # AC-D19 v1.3: three-state review_status.
     status = _table("grade_review").c["status"].type
     assert isinstance(status, SAEnum)
@@ -192,3 +208,39 @@ def test_migration_0003_safety_override_round_trip() -> None:
     )
     assert down.returncode == 0, down.stderr
     assert "DROP COLUMN safety_relevant_overridden_at" in down.stdout
+
+
+def test_migration_0006_drive_chunk_provenance_round_trip() -> None:
+    # P9 additive AI-provenance columns on drive_chunk; reversible per
+    # AC-CD3. Six columns up, six columns down.
+    up = _alembic(
+        "upgrade",
+        "0005_p4_attempt_sequence_unique:0006_p9_drive_chunk_provenance",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    for column in (
+        "ADD COLUMN ai_provider",
+        "ADD COLUMN ai_model",
+        "ADD COLUMN ai_prompt_version",
+        "ADD COLUMN ai_prompt_tokens",
+        "ADD COLUMN ai_completion_tokens",
+        "ADD COLUMN ai_cost_usd",
+    ):
+        assert column in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0006_p9_drive_chunk_provenance:0005_p4_attempt_sequence_unique",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    for column in (
+        "DROP COLUMN ai_provider",
+        "DROP COLUMN ai_model",
+        "DROP COLUMN ai_prompt_version",
+        "DROP COLUMN ai_prompt_tokens",
+        "DROP COLUMN ai_completion_tokens",
+        "DROP COLUMN ai_cost_usd",
+    ):
+        assert column in down.stdout

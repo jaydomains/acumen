@@ -240,8 +240,19 @@ async def current_month_spend(
 
     Returns ``{"total_usd": float, "by_provider": dict, "by_model":
     dict, "since": datetime}``. Tables included: Grade, GradeReview,
-    Question, AnchorQuestion, WeaknessReport, LearningMaterial; plus
-    ``processing_tasks.payload['provenance']`` for pill_proposal.
+    Question, AnchorQuestion, WeaknessReport, LearningMaterial,
+    DriveChunk; plus ``processing_tasks.payload['provenance']`` for
+    pill_proposal.
+
+    ``DriveChunk`` joined the loop at P9 (AC-D22 / AC-CD8 v1.6): the
+    OpenAI embedding spend now surfaces in ``by_provider["openai"]`` /
+    ``by_model["text-embedding-3-small"]`` alongside the
+    generation/grading/review spend. Embed rows carry
+    ``ai_completion_tokens=0`` and ``ai_prompt_version=None`` per
+    :func:`record_provenance`'s embed branch; ``_spend_for_table``
+    only consults ``ai_cost_usd`` so the embed shape sums cleanly with
+    the message-op shape (ROADMAP P9 "embedding spend appears against
+    OpenAI in cost").
 
     The original implementation tried to interpolate
     ``_PROVENANCE_ENTITIES_HINT`` into this docstring via string
@@ -252,6 +263,7 @@ async def current_month_spend(
     """
     from app.models import (
         AnchorQuestion,
+        DriveChunk,
         Grade,
         GradeReview,
         LearningMaterial,
@@ -273,6 +285,7 @@ async def current_month_spend(
         AnchorQuestion,
         WeaknessReport,
         LearningMaterial,
+        DriveChunk,
     ):
         sub_total, sub_provider, sub_model = await _spend_for_table(
             db, model, tenant_id=tenant_id, since=since
