@@ -21,13 +21,13 @@ are *documented, not built* in v1.
 1. **This file.**
 2. The **most recent handover** in `/handovers/` — the live state of the
    build, what the last PR closed, traps it flagged.
-3. **`SPEC.md`** (functional, v1.7) — refresh the product.
+3. **`SPEC.md`** (functional, v1.8) — refresh the product.
 4. **`CODE_SPEC.md`** (technical spec + stack lock, AC-CD1–AC-CD18) — the
    codebase is the source of truth; unbuilt items are `(pending P{n})`.
 5. **`ROADMAP.md`** (phased plan P0–P11) — identify the phase you close.
 6. **`CHECKLIST.md`** — what is `built`/`partial`/`missing`, and the open
    Drift questions.
-7. **`DECISIONS.md`** (product anchors AC-D1–AC-D27, v1.7) — the AC-D
+7. **`DECISIONS.md`** (product anchors AC-D1–AC-D27, v1.8) — the AC-D
    anchors the phase cites.
 
 ## Working agreement (discipline — non-negotiable)
@@ -154,7 +154,7 @@ are on by its ROADMAP name.
 | **P7** | Adaptive loop, competence, integrity | Failed pill serves material then queues follow-up; competence float decays vs fixtures; n-gram flag fires; null competence = "no data yet" |
 | **P8** | Anchor calibration | Anchors drawn indistinguishably; shrinkage updates, equals `assigned_difficulty` at n=0; preliminary→confident at n threshold; fresh delta per attempt |
 | **P9** | Drive RAG + realism feedback | Folder doc indexed + retrieved into a generation prompt; realism pool weights generation; embedding spend on OpenAI |
-| **P10** | JIT streaming generation (per-Testee) | Q1 < ~3s; buffer maintained; mid-stream failure pauses; resume replays snapshot, stable order; benchmark verified sequential |
+| **P10** | JIT streaming generation (per-Testee) | **AC-CD10 gate closed at v1.8** (in-process asyncio + Semaphore, `attempt_position` ordering, single-retry then AC-D11 pause). Q1 < ~3s; buffer maintained; mid-stream failure pauses; resume replays snapshot, stable order; benchmark verified sequential |
 | **P11** | Bootstrap, safety links, crons, cost, comms | One-command bootstrap is idempotent; seven crons scheduled; budget alert fires; attempt PDF export; reminder/escalation emails send |
 
 P12 (hardening / full E2E) folds into P11's done-when, or becomes a
@@ -172,9 +172,10 @@ Files to touch · Status · Evidence. Record progress **at PR close**:
   artifact that exists) is real. Status/Evidence stay blank until the
   phase lands.
 - The **Drift questions** section holds open, unresolved items the build
-  must close (currently none — AC-CD11 was the only entry and closed
-  at v1.7). Resolved spec/implementation divergences are recorded in
-  the **per-PR handover**, not added here.
+  must close (currently none — AC-CD11 was the first entry and closed
+  at v1.7; AC-CD10 surfaced at the P10 plan-mode gate and closed at
+  v1.8). Resolved spec/implementation divergences are recorded in the
+  **per-PR handover**, not added here.
 
 ## CODE_SPEC decisions never to silently violate
 
@@ -221,9 +222,16 @@ work from the DECISIONS formulas, flag any ambiguity before coding.
   recency-weighted (half-life 90 days), loop target
   `round(estimate + 0.5)`; null = "no data yet", not a failing score.
 - **JIT streaming — AC-D25 (AC-CD10), `app/domain/streaming.py`.** Q1
-  synchronous (~3s), Q2…N parallel Celery tasks, buffer default 3 / max 5,
-  snapshot-replay on resume (no regeneration). **Benchmark is explicitly
-  sequential** (`POST .../next`) — not JIT-streamed.
+  synchronous (~3s), Q2…N concurrent in-process via `asyncio.gather`
+  under an `asyncio.Semaphore` (size = `jit_buffer_size`, default 3;
+  ceiling = `jit_buffer_max`, default 5; both env-default in
+  `app/config.py`), snapshot-replay on resume via
+  `question.attempt_position` + `Last-Event-ID` (no regeneration,
+  stable order). Single-Q-N-generation-failure retries once at the
+  orchestration layer then pauses via AC-D11. **Benchmark is
+  explicitly sequential** (`POST .../next`) — not JIT-streamed.
+  Execution model + ordering column + single-failure policy locked
+  at v1.8 (AC-CD10).
 - **Drive RAG — AC-D22 (AC-CD9), `app/domain/drive_rag.py`.** IVFFlat,
   `text-embedding-3-small` (1536-dim), diff-based daily ingest, embedding
   spend tracked to **OpenAI**.
@@ -235,13 +243,20 @@ work from the DECISIONS formulas, flag any ambiguity before coding.
 
 ## Open items (none)
 
-AC-CD11 (cross-family review latency rule) — the only technical anchor
-that ever carried a pre-build gate — was **closed at v1.7**: batched
+AC-CD11 (cross-family review latency rule) — the first technical
+anchor to carry a pre-build gate — was **closed at v1.7**: batched
 per attempt, 60-s hard ceiling, over-ceiling falls through to the v1.6
 grade-review reconcile cron; AC-D19's submit-wait wording was realigned
 in the same change (F10). See `CODE_SPEC.md` §18 AC-CD11 and
-`DECISIONS.md` AC-D19. P6 builds against locked text; no live drift
-question remains.
+`DECISIONS.md` AC-D19. AC-CD10 / §10 (JIT streaming execution model
++ Question ordering + single-failure policy) — surfaced at the P10
+plan-mode gate as a residual ambiguity in the §10 prose body — was
+**closed at v1.8**: in-process `asyncio.gather` + `Semaphore`,
+`question.attempt_position` column, single-Q-N-retry then AC-D11
+pause. AC-D25's Implications were realigned in the same change. See
+`CODE_SPEC.md` §10 / §18 AC-CD10 and `DECISIONS.md` AC-D25 v1.8. P6
+builds (already shipped at PR-018) and P10 builds against locked
+text; no live drift question remains.
 
 ## Paste-ready session-start script
 
@@ -268,20 +283,27 @@ Copy this verbatim at the start of every session:
 > a phase lands, update *only* this section and the corresponding
 > `CHECKLIST.md` rows — nothing else in this file moves.
 
-Specs are at **v1.7** (AC-CD11 P6 gate closure — cross-family review
-locked as batched per attempt, 60-s ceiling, over-ceiling routes to the
-v1.6 grade-review reconcile cron; AC-D19 submit-wait wording realigned).
-**P0–P5 landed** (Scaffold & stack lock, Data model & migrations, Auth
-& user management, Catalogue, deterministic P4, AI provider layer + 5
-Anthropic ops at P5/PR-016). v1.4 / v1.5 merged as doc-only
-clarifications; v1.6 consolidated the pre-build spec-audit; v1.7 closes
-AC-CD11. **6 phases remain.** Next session starts at ROADMAP **P6 —
-Cross-family review** — the AC-CD11 gate is closed, so P6 builds
-against the locked contract directly. *(The footer below still reads
-"v1.2 document set" — deliberate deferral per the header-only
-precedent from PR-011/PR-013/PR-014; a future SESSION_START hardening
-PR will sweep it together with the stale DECISIONS and CODE_SPEC
-footers. See `handovers/PR-014-v1.6-spec-audit-consolidation.md` and
-this PR's handover.)*
+Specs are at **v1.8** (AC-CD10 / §10 P10 build gate closure — JIT
+streaming execution model locked as in-process `asyncio.gather` +
+`asyncio.Semaphore`, Celery wording retired from the user-facing
+path; Question gains an attempt-scoped `attempt_position` column for
+stable streamed-arrival ordering; single-Q-N-generation-failure
+policy locked as one orchestration-layer retry then AC-D11 pause;
+AC-D25 Implications realigned in the same change). **P0–P9 landed**
+(P0–P5 foundation through AI provider layer; P6 Cross-family review
+at PR-018; P7 Adaptive loop at PR-019; P8 Anchor calibration at
+PR-020; P9 Drive RAG + realism feedback at PR-021). v1.4 / v1.5
+merged as doc-only clarifications; v1.6 consolidated the pre-build
+spec-audit; v1.7 closed AC-CD11; v1.8 closes AC-CD10. **2 phases
+remain.** Next session starts at ROADMAP **P10 — JIT streaming
+generation (per-Testee)** — the AC-CD10 gate is closed, so P10
+builds against the locked contract directly. *(The footer below
+still reads "v1.2 document set" — deliberate deferral per the
+header-only precedent from PR-011/PR-013/PR-014/PR-017; a future
+SESSION_START hardening PR will sweep it together with the stale
+DECISIONS and CODE_SPEC footers. See
+`handovers/PR-014-v1.6-spec-audit-consolidation.md`,
+`handovers/PR-017-v1.7-ac-cd11-gate-closure.md`, and this PR's
+handover.)*
 
 *End of SESSION_START. Paired with the v1.2 document set.*
