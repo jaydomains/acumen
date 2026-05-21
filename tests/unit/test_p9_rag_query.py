@@ -125,3 +125,18 @@ def test_cosine_top_k_returns_all_when_k_exceeds_candidates() -> None:
     candidates = [(_id(1), [1.0, 0.0]), (_id(2), [0.5, 0.5])]
     result = cosine_top_k(query, candidates, k=10)
     assert len(result) == 2
+
+
+def test_cosine_top_k_raises_on_dimension_mismatch() -> None:
+    """A candidate embedding whose dimension differs from the query
+    raises ValueError rather than silently truncating to the shorter
+    prefix (which would produce wrong similarity scores). Catches data
+    corruption or a half-applied model change in the test harness;
+    production sees the same shape error via pgvector's ``<=>``
+    operator at the SQL layer (Gitar PR-#21 Slice 1 finding #1)."""
+    import pytest
+
+    query = [1.0, 0.0, 0.0]  # 3-dim
+    candidates = [(_id(1), [1.0, 0.0])]  # 2-dim
+    with pytest.raises(ValueError):
+        cosine_top_k(query, candidates, k=1)

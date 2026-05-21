@@ -155,6 +155,16 @@ class OpenAIProvider:
         # token count. Embeddings have no completion side, so
         # ``completion_tokens=0`` flows through ``compute_cost`` against
         # the (0.02, 0.0) PRICE_TABLE entry — cost is pure input-side.
+        # The API contract guarantees one embedding per single-string
+        # input, but a defensive guard surfaces a clear error if a
+        # future SDK change or mocked-in-test response leaves ``data``
+        # empty (the raw ``IndexError`` would otherwise lose the
+        # provider + model context — Gitar PR-#21 Slice 1 finding #2).
+        if not response.data:
+            raise ValueError(
+                f"OpenAI embeddings API returned empty data for "
+                f"model={model!r} (provider={self.name})."
+            )
         embedding = list(response.data[0].embedding)
         prompt_tokens = response.usage.prompt_tokens if response.usage is not None else 0
         cost = compute_cost(self.name, model, prompt_tokens, 0)

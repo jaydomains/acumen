@@ -173,6 +173,40 @@ async def test_embed_does_not_retry_on_auth_error(
     assert stub_client.embeddings.calls == 1
 
 
+# --- Defensive guard against malformed responses ---------------------
+
+
+async def test_embed_raises_clear_error_on_empty_response_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the OpenAI API ever returns an empty ``data`` list (contract
+    violation, mocked-in-test mistake, or SDK change), :meth:`embed`
+    surfaces a contextual :class:`ValueError` carrying the model name
+    + provider rather than letting a raw ``IndexError`` lose that
+    context (Gitar PR-#21 Slice 1 finding #2)."""
+    provider = OpenAIProvider()
+    empty_response = CreateEmbeddingResponse(
+        object="list",
+        model="text-embedding-3-small",
+        data=[],  # Defensive guard target.
+        usage=Usage(prompt_tokens=0, total_tokens=0),
+    )
+
+    async def _stub_invoke_embed(
+        *args: object, **kwargs: object
+    ) -> CreateEmbeddingResponse:
+        return empty_response
+
+    monkeypatch.setattr(openai_module, "_invoke_embed", _stub_invoke_embed)
+
+    with pytest.raises(ValueError) as exc_info:
+        await provider.embed(Operation.embed, "any text")
+    msg = str(exc_info.value)
+    assert "text-embedding-3-small" in msg
+    assert "openai" in msg
+    assert "empty data" in msg
+
+
 # --- Cost regression guard -------------------------------------------
 
 

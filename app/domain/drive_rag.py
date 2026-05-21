@@ -207,7 +207,14 @@ def cosine_top_k(
         cand_norm = math.sqrt(sum(x * x for x in vec))
         if cand_norm == 0:
             continue
-        dot = sum(a * b for a, b in zip(query_vec, vec, strict=False))
+        # ``strict=True`` so a dimension mismatch between the query
+        # embedding and a stored chunk (e.g. a 1536-dim query against a
+        # 768-dim legacy chunk after a model change) raises loudly
+        # rather than silently truncating to the shorter prefix and
+        # producing wrong similarity scores. The test harness sees the
+        # bug; production uses pgvector's ``<=>`` operator where dim
+        # mismatch is a SQL error (Gitar PR-#21 Slice 1 finding #1).
+        dot = sum(a * b for a, b in zip(query_vec, vec, strict=True))
         score = dot / (query_norm * cand_norm)
         scored.append((score, chunk_id))
     # Sort by score descending, then by id ascending for stable
