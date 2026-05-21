@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # --- JIT streaming buffer defaults (AC-D25); per-op knobs in DB (P1) ---
     jit_buffer_size: int = 3
     jit_buffer_max: int = 5
+    # SSE disconnect grace: after CancelledError, wait this many seconds
+    # for shielded per-Q-N persistence to finish before re-raising
+    # (P10 / AC-CD10 v1.8). Default ≈ one generation latency.
+    jit_persist_grace_seconds: int = 10
 
     @field_validator("db_schema")
     @classmethod

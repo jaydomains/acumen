@@ -152,6 +152,14 @@ _RATE_EXEMPT_ORIGINS = frozenset(
     {AttemptOrigin.assignment_driven, AttemptOrigin.loop_driven}
 )
 
+# Pause-event reason vocabulary (P10 / AC-D25 v1.8 / AC-CD10 v1.8). User-
+# initiated pauses leave ``reason=None`` (the existing AC-D11 path);
+# system pauses stamp a constant so the resume UI can render "retry /
+# abandon" instead of the plain resume affordance. New reasons extend
+# here without a migration — VARCHAR(255) on the column matches the P8
+# ``excluded_reason`` constant-prefix-plus-detail-suffix shape.
+PAUSE_REASON_GENERATION_FAILED = "generation_failed"
+
 # Origins that REQUIRE an ``assignment_id`` (AC-D26 v1.4). Self-initiated
 # attempts never carry one.
 _ASSIGNMENT_BACKED_ORIGINS = frozenset(
@@ -773,6 +781,7 @@ async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[s
             {
                 "paused": True,
                 "pause_seconds_remaining": max(0, remaining),
+                "pause_reason": paused.reason,
                 "watermark": str(attempt.testee_id),
                 "questions": None,
             }
@@ -783,6 +792,7 @@ async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[s
         {
             "paused": False,
             "pause_seconds_remaining": None,
+            "pause_reason": None,
             "watermark": str(attempt.testee_id),
             "questions": presented_questions(
                 snapshot,
@@ -836,15 +846,37 @@ def _pause_blocked_reason(test: Test) -> str | None:
     return None
 
 
-async def pause_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> None:
+async def pause_attempt(
+    db: AsyncSession,
+    attempt: Attempt,
+    test: Test,
+    *,
+    system: bool = False,
+    reason: str | None = None,
+) -> None:
+    """Pause an in-progress attempt.
+
+    User-initiated pauses (``system=False``, the AC-D11 path) honour the
+    pause_blocked + allowance + already_paused guards and increment
+    ``attempt.pauses_used``. System-initiated pauses (``system=True``,
+    the P10 single-Q-N-generation-failure path per AC-D25 v1.8) bypass
+    pause_blocked / pause_allowance (operational, not user-quota) and
+    do not increment ``pauses_used``, but still error on
+    ``already_paused`` — a system pause coalesces with an existing user
+    pause rather than double-writing. ``reason`` is persisted on the
+    new ``AttemptPauseEvent.reason`` column; the resume UI reads the
+    most-recent pause event's reason to decide "retry / abandon" vs
+    the plain resume affordance.
+    """
     if attempt.submitted_at is not None:
         raise APIError(409, "attempt_submitted", "This attempt is already submitted.")
-    blocked = _pause_blocked_reason(test)
-    if blocked is not None:
-        raise APIError(409, "pause_not_allowed", blocked)
+    if not system:
+        blocked = _pause_blocked_reason(test)
+        if blocked is not None:
+            raise APIError(409, "pause_not_allowed", blocked)
     if await _settle_pause(db, attempt, test) is not None:
         raise APIError(409, "already_paused", "This attempt is already paused.")
-    if attempt.pauses_used >= (test.pause_allowance or 0):
+    if not system and attempt.pauses_used >= (test.pause_allowance or 0):
         raise APIError(409, "pause_allowance_exhausted", "No pauses remaining.")
     db.add(
         AttemptPauseEvent(
@@ -852,9 +884,11 @@ async def pause_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> None:
             attempt_id=attempt.id,
             started_at=now_utc(),
             auto_resumed=False,
+            reason=reason,
         )
     )
-    attempt.pauses_used += 1
+    if not system:
+        attempt.pauses_used += 1
     await db.flush()
 
 

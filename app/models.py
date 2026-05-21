@@ -428,7 +428,7 @@ class Test(Base, TimestampMixin):
 
 
 class Question(Base, TimestampMixin, AIProvenanceMixin):
-    """A single test item (AC-D5/D17/D20/D22/D24).
+    """A single test item (AC-D5/D17/D20/D22/D24/D25 v1.8).
 
     Three-way nullable FK ownership (``test_id`` XOR ``attempt_id`` XOR
     ``pill_id``) is intentional and not a normalisation defect: a
@@ -440,9 +440,22 @@ class Question(Base, TimestampMixin, AIProvenanceMixin):
                          (AC-D20)
     Exactly one is set per row; modelling them as one table keeps grading
     and shuffle logic uniform across all three origins.
+
+    ``attempt_position`` (AC-D25 v1.8 / AC-CD10 v1.8) anchors streamed-
+    arrival order for per-Testee Q1..QN under concurrent
+    ``asyncio.gather`` resolution. Q1 = 1 synchronous; Q2..N reserved at
+    enqueue time. NULL for ``test_id``-owned and ``pill_id``-owned rows
+    per SPEC §5 v1.8.
     """
 
     __tablename__ = "question"
+    __table_args__ = (
+        UniqueConstraint(
+            "attempt_id",
+            "attempt_position",
+            name="uq_question_attempt_position",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
@@ -466,6 +479,7 @@ class Question(Base, TimestampMixin, AIProvenanceMixin):
     realism_flag_count: Mapped[int] = mapped_column(
         nullable=False, server_default=text("0")
     )
+    attempt_position: Mapped[int | None]
 
 
 class AnchorQuestion(Base, TimestampMixin, AIProvenanceMixin):
@@ -1038,7 +1052,17 @@ class AssignmentReminder(Base, TimestampMixin):
 
 class AttemptPauseEvent(Base, TimestampMixin):
     """A pause window within an attempt (AC-D11). ``auto_resumed`` marks
-    expiry of ``max_pause_duration_minutes``."""
+    expiry of ``max_pause_duration_minutes``.
+
+    ``reason`` (AC-D25 v1.8 / AC-CD10 v1.8) distinguishes system pauses
+    from user pauses so the resume UI can branch. NULL = user-initiated
+    (the existing AC-D11 path); a non-NULL string = system-initiated
+    (the P10 single-Q-N-generation-failure path stamps
+    ``"generation_failed"`` via the module constant in
+    ``app.domain.attempts``). VARCHAR(255) matches the P8
+    ``excluded_reason`` precedent — constant prefix + optional detail
+    suffix; vocabulary extends in Python, not in the schema.
+    """
 
     __tablename__ = "attempt_pause_event"
 
@@ -1056,6 +1080,7 @@ class AttemptPauseEvent(Base, TimestampMixin):
     auto_resumed: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("false")
     )
+    reason: Mapped[str | None] = mapped_column(String(255))
 
 
 class AttemptFocusEvent(Base, TimestampMixin):

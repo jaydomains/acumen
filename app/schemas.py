@@ -479,6 +479,12 @@ class AttemptView(_Base):
     pauses_used: int
     pause_allowance: int
     pause_seconds_remaining: int | None
+    # AC-D25 v1.8 / AC-CD10 v1.8: pause origin so the resume UI can
+    # branch. NULL for user pauses (AC-D11); a non-NULL string for
+    # system pauses (currently only ``"generation_failed"`` from the
+    # P10 single-Q-N-failure path). Always present; NULL when the
+    # attempt is not paused.
+    pause_reason: str | None = None
     watermark: str | None
     questions: list[dict] | None
 
