@@ -361,17 +361,25 @@ async def _existing_hashes_by_source(db: AsyncSession) -> dict[str, str]:
 
 async def _delete_chunks_for_source(db: AsyncSession, source_doc_ref: str) -> int:
     """Delete every :class:`DriveChunk` row for ``source_doc_ref``.
-    Equality-only WHERE per AC-CD15; the rows are pulled into memory
-    and removed one by one (the fake-harness ``delete`` removes by
-    object identity)."""
+    Both equality conditions land in the WHERE so the DB filters
+    rather than Python — important because :func:`ingest_drive_folder`
+    calls this once per changed / deleted file, and a folder with N
+    files would otherwise load all N×chunks_per_file rows on every
+    deletion (Gitar PR-#21 Slice 2 finding #2). The
+    :class:`CatalogueFakeSession` harness already supports
+    multi-condition equality WHEREs — the only fake-harness limit is
+    ``Column == True/False`` boolean filters (PR-#20 Slice 4
+    finding), which this query avoids."""
     result = await db.execute(
-        select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
+        select(DriveChunk).where(
+            DriveChunk.tenant_id == SEED_TENANT_ID,
+            DriveChunk.source_doc_ref == source_doc_ref,
+        )
     )
     deleted = 0
     for chunk in result.scalars().all():
-        if chunk.source_doc_ref == source_doc_ref:
-            await db.delete(chunk)
-            deleted += 1
+        await db.delete(chunk)
+        deleted += 1
     return deleted
 
 
@@ -503,6 +511,12 @@ async def ingest_drive_folder(
     existing = await _existing_hashes_by_source(db)
     diff = diff_files(drive_pairs, existing)
 
+    # Pre-build the file_id → hash lookup so per-file persistence is
+    # O(1) rather than the previous O(n) scan over ``drive_pairs``
+    # (Gitar PR-#21 Slice 2 finding #3 — without the dict a folder
+    # with N files would do O(N²) work in the persist loop).
+    hash_by_file_id = {df.id: h for df, h in drive_pairs}
+
     chunks_added = 0
     chunks_deleted = 0
 
@@ -516,14 +530,14 @@ async def ingest_drive_folder(
             db,
             file_id=df.id,
             text=file_texts[df.id],
-            file_hash=next(h for f, h in drive_pairs if f.id == df.id),
+            file_hash=hash_by_file_id[df.id],
         )
     for df in diff.added:
         chunks_added += await _persist_chunks_for_file(
             db,
             file_id=df.id,
             text=file_texts[df.id],
-            file_hash=next(h for f, h in drive_pairs if f.id == df.id),
+            file_hash=hash_by_file_id[df.id],
         )
 
     # Phase 3: drop chunks for files that vanished from the folder.

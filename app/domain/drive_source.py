@@ -41,7 +41,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -220,7 +220,15 @@ class GoogleDriveSource:
         reraise=True,
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(BaseException),
+        # ``retry_if_exception`` (singular) takes a predicate so only
+        # 5xx HttpError classes trigger a retry. A 4xx (401 auth,
+        # 403 permission, 404 not found) propagates immediately;
+        # retrying it would burn ~20 s of wall-clock per file before
+        # surfacing the deterministic error to the operator
+        # (Gitar PR-#21 Slice 2 finding #1 — the previous
+        # ``retry_if_exception_type(BaseException)`` matched
+        # everything).
+        retry=retry_if_exception(_is_retryable_http_error),
     )
     async def _list_page(
         self, service: Any, folder_id: str, page_token: str | None
@@ -259,7 +267,15 @@ class GoogleDriveSource:
         reraise=True,
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(BaseException),
+        # ``retry_if_exception`` (singular) takes a predicate so only
+        # 5xx HttpError classes trigger a retry. A 4xx (401 auth,
+        # 403 permission, 404 not found) propagates immediately;
+        # retrying it would burn ~20 s of wall-clock per file before
+        # surfacing the deterministic error to the operator
+        # (Gitar PR-#21 Slice 2 finding #1 — the previous
+        # ``retry_if_exception_type(BaseException)`` matched
+        # everything).
+        retry=retry_if_exception(_is_retryable_http_error),
     )
     async def _export_text(self, file_id: str) -> str:
         """Export a Google Doc as text/plain. Returns the decoded
@@ -284,7 +300,15 @@ class GoogleDriveSource:
         reraise=True,
         stop=stop_after_attempt(4),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(BaseException),
+        # ``retry_if_exception`` (singular) takes a predicate so only
+        # 5xx HttpError classes trigger a retry. A 4xx (401 auth,
+        # 403 permission, 404 not found) propagates immediately;
+        # retrying it would burn ~20 s of wall-clock per file before
+        # surfacing the deterministic error to the operator
+        # (Gitar PR-#21 Slice 2 finding #1 — the previous
+        # ``retry_if_exception_type(BaseException)`` matched
+        # everything).
+        retry=retry_if_exception(_is_retryable_http_error),
     )
     async def _download_text(self, file_id: str) -> str:
         """Download a plain-text / markdown / csv file. Same shape as
