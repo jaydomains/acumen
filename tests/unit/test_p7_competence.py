@@ -206,7 +206,7 @@ class TestLoopTargetDifficulty:
     """
 
     def test_basic_plus_half_then_round(self) -> None:
-        # estimate 6.7 → round(7.2) = 7. AC-D9 v1.2's exact example:
+        # estimate 6.7 → floor(7.7) = 7. AC-D9 v1.2's exact example:
         # "a competence estimate of 6.7 on a pill with current attempts
         # at integer 6 triggers a step-up to integer 7".
         assert (
@@ -219,11 +219,24 @@ class TestLoopTargetDifficulty:
             == 7
         )
 
-    def test_round_half_to_even_at_midpoint(self) -> None:
-        # estimate 5.0 → round(5.5) = 6 in Python's banker's rounding
-        # (round-half-to-even). Documented edge — the +0.5 bias means
-        # any integer-valued competence stretches to the next-higher
-        # integer at the midpoint.
+    def test_integer_estimate_always_stretches(self) -> None:
+        # Locks in the PR-019 Gitar fix: AC-D9 v1.2's "+0.5 stretch"
+        # intent is "test slightly above current competence — where
+        # learning happens". Python's banker's rounding silently
+        # killed the stretch on every EVEN-integer estimate
+        # (``round(4.0 + 0.5) == 4`` because 4 is even), producing a
+        # target equal to the current competence — no stretch at all.
+        # The implementation now uses ``math.floor(estimate + 1.0)``
+        # so every integer estimate genuinely stretches up by one.
+        assert (
+            loop_target_difficulty(
+                4.0,
+                available_difficulty_min=1,
+                available_difficulty_max=10,
+                recent_attempt_scores=[],
+            )
+            == 5
+        )
         assert (
             loop_target_difficulty(
                 5.0,
@@ -233,9 +246,18 @@ class TestLoopTargetDifficulty:
             )
             == 6
         )
+        assert (
+            loop_target_difficulty(
+                6.0,
+                available_difficulty_min=1,
+                available_difficulty_max=10,
+                recent_attempt_scores=[],
+            )
+            == 7
+        )
 
     def test_clamps_to_pill_max(self) -> None:
-        # estimate 10.0 → round(10.5) = 10 (banker's); clamp to max=8.
+        # estimate 10.0 → floor(11.0) = 11; clamp to max=8.
         assert (
             loop_target_difficulty(
                 10.0,
@@ -247,7 +269,7 @@ class TestLoopTargetDifficulty:
         )
 
     def test_clamps_to_pill_min(self) -> None:
-        # estimate 0.0 → round(0.5) = 0 (banker's); clamp to min=2.
+        # estimate 0.0 → floor(1.0) = 1; clamp to min=2.
         assert (
             loop_target_difficulty(
                 0.0,
@@ -259,7 +281,7 @@ class TestLoopTargetDifficulty:
         )
 
     def test_three_consecutive_low_scores_step_down(self) -> None:
-        # estimate 5.0 → round(5.5) = 6, then step-down by 1 → 5.
+        # estimate 5.0 → floor(6.0) = 6, then step-down by 1 → 5.
         assert (
             loop_target_difficulty(
                 5.0,
@@ -331,9 +353,9 @@ class TestLoopTargetDifficulty:
         )
 
     def test_step_down_clamped_at_min(self) -> None:
-        # estimate 2.0 → round(2.5) = 2 (banker's); step-down → 1; but
-        # min=2 so clamp returns 2. The step-down must not push below
-        # the pill's floor.
+        # estimate 2.0 → floor(3.0) = 3; step-down → 2; min=2 so the
+        # clamp is a no-op. The step-down must not push below the
+        # pill's floor (would-be-1, returns 2).
         assert (
             loop_target_difficulty(
                 2.0,
@@ -357,6 +379,7 @@ class TestLoopTargetDifficulty:
 
     def test_empty_history_no_step_down(self) -> None:
         # A first attempt has no history → no step-down possible.
+        # estimate 4.0 → floor(5.0) = 5; the +1 stretch is preserved.
         assert (
             loop_target_difficulty(
                 4.0,
@@ -364,5 +387,5 @@ class TestLoopTargetDifficulty:
                 available_difficulty_max=10,
                 recent_attempt_scores=[],
             )
-            == 4  # round(4.5) = 4 (banker's)
+            == 5
         )

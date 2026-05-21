@@ -27,6 +27,7 @@ unit tests run as pure-Python without the FakeSession harness.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 
 # Threshold for the AC-D6 "three consecutive well-below-difficulty"
@@ -169,13 +170,22 @@ def loop_target_difficulty(
     ``recent_attempt_scores`` is the sequence of overall attempt scores
     on this pill in **chronological order, most recent last**. Only the
     final 3 are consulted for step-down — earlier entries are ignored.
+
+    Rounding mode: AC-D9 v1.2 says "round" without naming a mode, but
+    the intent — "stretch slightly above current competence — where
+    learning happens" — is incompatible with Python's banker's
+    rounding. ``round(4.0 + 0.5) == 4`` under round-half-to-even, which
+    kills the stretch on every even-integer estimate. We use
+    ``math.floor(estimate + 1.0)`` so the bias is genuinely upward at
+    every integer / half-integer boundary (mathematically equivalent
+    to round-half-up of ``estimate + 0.5``). PR-019 / Gitar review.
     """
     if available_difficulty_min > available_difficulty_max:
         raise ValueError(
             f"invalid pill range: min={available_difficulty_min} > "
             f"max={available_difficulty_max}"
         )
-    target = round(competence_estimate + 0.5)
+    target = math.floor(competence_estimate + 1.0)
     last_three = list(recent_attempt_scores)[-_STEP_DOWN_CONSECUTIVE_COUNT:]
     if len(last_three) >= _STEP_DOWN_CONSECUTIVE_COUNT and all(
         s < _WELL_BELOW_DIFFICULTY_THRESHOLD for s in last_three
