@@ -108,13 +108,15 @@ async def test_review_rejects_non_review_operation() -> None:
         await provider.review(Operation.grading, {})
 
 
-async def test_review_anchor_self_review_still_raises_with_p8_pointer() -> None:
-    """``anchor_self_review`` routes to ``review()`` per AC-CD8 v1.6 but
-    its prompt + caller arrive with P8 — the error message must point at
-    P8 so a stray P6-era call surfaces with the right phase pointer."""
+async def test_review_rejects_embed_with_routing_message() -> None:
+    """``review()`` rejects ``embed`` with a routing message that points
+    operators at the correct method. P8 widened ``_REVIEW_OPS`` to
+    include ``anchor_self_review``, so the only remaining rejection
+    surfaces are ops that route to other methods (``embed`` → ``embed()``,
+    ``grading`` → ``grade()``, etc.)."""
     provider = OpenAIProvider()
-    with pytest.raises(NotImplementedError, match="P8"):
-        await provider.review(Operation.anchor_self_review, {})
+    with pytest.raises(ValueError, match="embed"):
+        await provider.review(Operation.embed, {})
 
 
 async def test_generate_always_raises_not_implemented() -> None:

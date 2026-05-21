@@ -17,7 +17,8 @@ from app.ai.prompts import get_prompt, registered_operations, render_prompt
 from app.ai.provider import Operation
 
 # The 5 Anthropic-side operations P5 ships prompts for, plus the
-# cross-family ``grade_review`` prompt P6 adds.
+# cross-family ``grade_review`` prompt P6 adds, plus the cross-family
+# ``anchor_self_review`` prompt P8 adds.
 _REGISTERED_OPERATIONS: list[Operation] = [
     Operation.generation,
     Operation.grading,
@@ -25,11 +26,11 @@ _REGISTERED_OPERATIONS: list[Operation] = [
     Operation.learning_material,
     Operation.pill_proposal,
     Operation.grade_review,
+    Operation.anchor_self_review,
 ]
 
 # Operations whose prompts are deferred to a later phase.
 _DEFERRED_OPERATIONS: list[Operation] = [
-    Operation.anchor_self_review,  # P8 / P11
     Operation.embed,  # P9 (no prompt — embedding has no template)
 ]
 
@@ -37,10 +38,11 @@ _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
 
 
 def test_registry_holds_exactly_the_shipped_ops() -> None:
-    """The registry holds the 5 Anthropic-side operations plus the
-    cross-family ``grade_review`` op P6 adds. Adding anchor_self_review
-    or embed before P8/P9 would silently let production code call an
-    unimplemented review() / embed() path on those ops."""
+    """The registry holds the 5 Anthropic-side operations plus the two
+    cross-family review ops (``grade_review`` from P6,
+    ``anchor_self_review`` from P8). Adding ``embed`` before P9 would
+    silently let production code call an unimplemented ``embed()`` path
+    via the prompt-lookup seam."""
     assert registered_operations() == frozenset(_REGISTERED_OPERATIONS)
 
 
@@ -85,9 +87,10 @@ def test_every_p5_template_documents_a_json_output_contract(
 @pytest.mark.parametrize("op", _DEFERRED_OPERATIONS)
 def test_deferred_op_lookup_raises_with_phase_pointer(op: Operation) -> None:
     """Calling :func:`get_prompt` for a deferred op raises ``KeyError``
-    with a clear "P8/P9" pointer in the message — a defensive guard so
-    a later-phase wiring failure points at the right phase to fix."""
-    with pytest.raises(KeyError, match=r"P[89]"):
+    with a clear "P9" pointer in the message — a defensive guard so a
+    later-phase wiring failure points at the right phase to fix.
+    After P8, ``embed`` is the only remaining deferred op."""
+    with pytest.raises(KeyError, match=r"P9"):
         get_prompt(op)
 
 
