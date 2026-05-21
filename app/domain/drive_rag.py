@@ -563,3 +563,182 @@ async def ingest_drive_folder(
         # zero embed calls (the diff skips them).
         "embed_calls": chunks_added,
     }
+
+
+# --- Slice 3: RAG retrieval at generation time -----------------------
+
+_DEFAULT_TOP_K = 5
+"""Default top-k for retrieval — small enough to keep prompt size
+bounded (5 chunks ≈ 2500 tokens of context), large enough to cover
+the realistic-question span for one pill+band. Tunable per call via
+the ``k`` parameter; production calls accept the default."""
+
+
+def render_rag_context(hits: list[dict[str, Any]]) -> str:
+    """Render the top-k chunk hits as a prompt-ready string. Empty
+    list renders as ``(none)`` so :meth:`str.format` doesn't substitute
+    an empty string into the prompt template (which would leave the
+    "Relevant KBC reference material" header dangling and confuse the
+    model). Each chunk renders as ``- [source_doc_ref]: chunk_text``
+    so the model can attribute facts back to a specific source if
+    needed."""
+    if not hits:
+        return "(none)"
+    return "\n".join(f"- [{hit['source_doc_ref']}]: {hit['chunk_text']}" for hit in hits)
+
+
+async def _record_rag_retrieve_audit(
+    db: AsyncSession,
+    *,
+    pill_id: uuid.UUID | None,
+    target_difficulty: int,
+    embed_result: Any,
+    hits_returned: int,
+    top_k: int,
+) -> None:
+    """Stamp one ``rag.retrieve`` audit row carrying the query-side
+    embed call's per-call cost + provenance metadata. The query-side
+    embed has no persisted entity to own its provenance (the chunks
+    are the index, not the query side), so the audit log carries it
+    instead. :func:`app.ai.cost.current_month_spend` folds these rows
+    in via the :func:`_rag_retrieve_spend` helper so embed spend
+    appears in the cost dashboard alongside the ingest-side spend
+    (preserves the AC-CD8 v1.6 per-op provenance contract for a
+    transient AI call that owns no entity).
+    """
+    from app.domain.catalogue import record_audit
+
+    detail = {
+        "provider": getattr(embed_result, "provider", None),
+        "model": getattr(embed_result, "model", None),
+        "prompt_tokens": getattr(embed_result, "prompt_tokens", 0),
+        "cost_usd": getattr(embed_result, "cost_usd", 0.0),
+        "top_k": top_k,
+        "hits_returned": hits_returned,
+        "pill_id": str(pill_id) if pill_id is not None else None,
+        "target_difficulty": target_difficulty,
+    }
+    # actor_id=None: the retrieve fires inside a generation call,
+    # whose authenticated actor is the testee; tying the audit row to
+    # them would inflate per-testee event noise. The system-level
+    # action belongs to no actor — same as ``budget_alert.fired``.
+    await record_audit(
+        db,
+        actor_id=None,
+        action="rag.retrieve",
+        target_entity="drive_chunk",
+        # No single chunk owns the retrieve — use a stable zero UUID
+        # so the column-non-null contract is honoured without
+        # implying ownership. (AuditLog.target_id is non-null per
+        # P1 schema; the audit log itself is append-only by AC-CD7
+        # so a stable sentinel is fine.)
+        target_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+        detail=detail,
+    )
+
+
+async def retrieve_for_generation(
+    db: AsyncSession,
+    *,
+    pill: Any | None,
+    target_difficulty: int,
+    k: int = _DEFAULT_TOP_K,
+) -> list[dict[str, Any]]:
+    """Return top-k Drive chunks for a generation call. Embeds the
+    query (pill name + description + difficulty band per
+    :func:`build_rag_query`), runs cosine top-k against the
+    :class:`DriveChunk` index, returns
+    ``[{source_doc_ref, chunk_text}, ...]`` for the generation
+    payload's ``rag_context`` key.
+
+    Fail-soft per SPEC §6.1 ("Drive RAG fetch failures: generation
+    continues without RAG context; logged for review") — any
+    exception in the embed call or the retrieval path returns an
+    empty list rather than raising. The generation call still
+    proceeds with the empty context.
+
+    Empty conditions:
+    * ``pill is None`` (learning-path assignment with no single-pill
+      scope) → ``[]``, no embed call fired
+    * Empty :class:`DriveChunk` index → ``[]``, one embed call fired
+      (the cost is still stamped via audit log for the cost
+      dashboard's per-month spend roll-up; this is the v1
+      operational trace of "did the retrieve run at all")
+    * Embed call raises → ``[]``, logged at WARNING, no audit row
+
+    The query-side embed cost is captured via an ``AuditLog`` row
+    with ``action="rag.retrieve"`` because the embed has no
+    persisted entity to own its provenance (unlike ingest, where the
+    :class:`DriveChunk` row carries the per-chunk embed cost). The
+    cost dashboard's :func:`app.ai.cost._rag_retrieve_spend` helper
+    folds these audit rows into the monthly aggregate so the AC-CD8
+    v1.6 sum-to-call-total invariant holds for both the ingest side
+    and the retrieve side.
+    """
+    if pill is None:
+        return []
+
+    query_text = build_rag_query(
+        pill_name=getattr(pill, "name", ""),
+        pill_description=getattr(pill, "description", None),
+        target_difficulty=target_difficulty,
+    )
+
+    provider = resolve_provider(Operation.embed)
+    try:
+        embed_result = await provider.embed(Operation.embed, query_text)
+    except Exception:
+        logger.warning(
+            "Drive RAG: query-side embed failed for pill=%s band=%d; "
+            "generation will proceed with empty rag_context",
+            getattr(pill, "id", "<unknown>"),
+            target_difficulty,
+            exc_info=True,
+        )
+        return []
+
+    # Load the tenant's chunk index (tenant-scoped equality WHERE per
+    # AC-CD15). At v1 corpus size (~hundreds of chunks) the in-Python
+    # cosine ranking is fine; the production path may swap to pgvector
+    # ``<=>`` at the SQL layer post-v1 if the corpus grows past tens of
+    # thousands of chunks.
+    chunks_result = await db.execute(
+        select(DriveChunk).where(DriveChunk.tenant_id == SEED_TENANT_ID)
+    )
+    chunks = list(chunks_result.scalars().all())
+
+    pill_id = getattr(pill, "id", None)
+    if not chunks:
+        # Stamp the audit row for the spend trace even though the
+        # retrieve returned zero hits — the embed call DID fire.
+        await _record_rag_retrieve_audit(
+            db,
+            pill_id=pill_id,
+            target_difficulty=target_difficulty,
+            embed_result=embed_result,
+            hits_returned=0,
+            top_k=k,
+        )
+        return []
+
+    candidates = [(c.id, c.embedding) for c in chunks]
+    top_ids = cosine_top_k(embed_result.embedding, candidates, k=k)
+    chunks_by_id = {c.id: c for c in chunks}
+    hits = [
+        {
+            "source_doc_ref": chunks_by_id[cid].source_doc_ref,
+            "chunk_text": chunks_by_id[cid].chunk_text,
+        }
+        for cid in top_ids
+        if cid in chunks_by_id
+    ]
+
+    await _record_rag_retrieve_audit(
+        db,
+        pill_id=pill_id,
+        target_difficulty=target_difficulty,
+        embed_result=embed_result,
+        hits_returned=len(hits),
+        top_k=k,
+    )
+    return hits

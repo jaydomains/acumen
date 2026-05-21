@@ -363,8 +363,14 @@ class RecordingProvider:
         from app.ai.provider import EmbedResult as _EmbedResult
 
         self.calls.append(("embed", operation, {"text": text}))
+        # Non-zero vector so the Slice 3 cosine ranking actually
+        # produces hits in tests — a zero-vector query would
+        # short-circuit ``cosine_top_k`` (defensive guard against
+        # NaN scores) and tests asserting non-empty rag_context
+        # would fail spuriously. ``0.1`` is arbitrary; the only
+        # constraint is non-zero so the norm is finite.
         return _EmbedResult(
-            embedding=[0.0] * 1536,
+            embedding=[0.1] * 1536,
             provider=self.provider_label,
             model="text-embedding-3-small",
             prompt_tokens=self.prompt_tokens,

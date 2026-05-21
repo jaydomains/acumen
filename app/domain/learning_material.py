@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import maybe_fire_budget_alert, record_provenance
 from app.ai.provider import Operation, resolve_provider
+from app.domain.drive_rag import render_rag_context, retrieve_for_generation
 from app.models import (
     SEED_TENANT_ID,
     LearningMaterial,
@@ -102,11 +103,22 @@ async def generate_for_weakness(
         test_override=test_override,
     )
     severity = await _severity_for(db, weakness_report.id, pill_id)
+    # P9 Slice 3 — Drive RAG context per AC-D22 / SPEC §6.4 ("retrieved
+    # Drive RAG chunks per AC-D22"). The severity rounds to an int band
+    # for the retrieval query — severity is a 0-1 float; multiplying by
+    # the AC-D9 ten-band scale puts it in the same range the chunks
+    # were indexed against. Empty Drive index → empty hits → "(none)"
+    # via render_rag_context — the prompt template stays well-formed.
+    target_difficulty = max(1, min(10, int(round((severity or 0.0) * 10))))
+    rag_hits = await retrieve_for_generation(
+        db, pill=pill, target_difficulty=target_difficulty
+    )
     payload = {
         "pill_name": pill.name,
         "pill_description": pill.description or "",
         "severity": severity,
         "wrong_questions": wrong_questions or [],
+        "rag_context": render_rag_context(rag_hits),
     }
     result = await provider.generate(Operation.learning_material, payload)
     explainer_text = str(result.content.get("explainer", "")).strip()

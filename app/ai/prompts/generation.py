@@ -3,16 +3,29 @@
 Generates a question set against a Test spec. Per-Testee mode; benchmark
 mode uses the same prompt with a single-question count (SPEC §6.1 — the
 benchmark sequential carve-out is a *scheduling* concern, not a prompt
-concern). RAG context (AC-D22) and anchor exemplars (AC-D20) are wired
-into the payload in P9 / P8 respectively; P5 ships without them.
+concern).
 
-Payload keys consumed (P5):
-    test_name, target_difficulty, question_count, attempt_id
+Payload keys consumed (P5 → P9):
+    test_name, target_difficulty, question_count, attempt_id, rag_context
 
 The ``attempt_id`` key is consumed by :class:`~app.ai.provider.StubAIProvider`
 for deterministic seeding when the dev/local fallback path runs; the
 real :class:`~app.ai.anthropic.AnthropicProvider` ignores extra payload
 keys (``str.format`` silently skips them).
+
+**P9 / v1.1.0** (AC-D22): the payload now carries ``rag_context`` — a
+pre-rendered string of top-k Drive chunks the generation call should
+draw KBC-specific material from. The retrieval helper is
+:func:`app.domain.drive_rag.retrieve_for_generation`. Empty / missing
+``rag_context`` renders as ``(none)`` so the prompt stays well-formed
+when the Drive index is empty (day-one deployment or learning-path
+assignments where the call site doesn't have a pill to query for).
+
+Anchor exemplars (AC-D20) — note: P8 chose AC-D27 effective_difficulty
+triangulation over in-context exemplar injection. The spec §6.1
+"anchor questions as in-context calibration exemplars" wording is
+superseded by the calibration math; the prompt deliberately does NOT
+re-introduce exemplar injection at P9.
 
 Output JSON contract:
     {"questions": [{"type": str, "config": dict,
@@ -21,7 +34,7 @@ Output JSON contract:
 
 from __future__ import annotations
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 TEMPLATE = """\
 You are an expert assessment author producing a calibrated question set
@@ -31,10 +44,16 @@ Test: {test_name}
 Target difficulty band (1-10): {target_difficulty}
 Number of questions to produce: {question_count}
 
+Relevant KBC reference material from the Drive index (may be empty):
+{rag_context}
+
 Produce questions that are:
 - Answerable from the test's domain (not trivia adjacent to it).
 - Calibrated to the difficulty band (cross-reference standards for the
   band; do not drift up or down).
+- Grounded in the KBC reference material above where it is relevant
+  (do not invent facts beyond it; if it is empty, fall back to general
+  domain knowledge).
 - Free of trick framing, ambiguous wording, or unstated assumptions.
 - Varied across runs (different surface form, examples, framings).
 

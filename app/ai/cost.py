@@ -229,6 +229,48 @@ async def _pill_proposal_spend(
     return total, by_provider, by_model
 
 
+async def _rag_retrieve_spend(
+    db: AsyncSession, *, tenant_id: uuid.UUID, since: datetime
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Sum the query-side embed cost stamped in ``AuditLog`` rows
+    with ``action="rag.retrieve"`` (AC-D22 / P9 Slice 3).
+
+    The retrieve-time embed call has no persisted entity to own its
+    provenance — the :class:`DriveChunk` rows carry the *ingest*-side
+    embed cost, but the *retrieve*-side embed (one per generation
+    call that has a pill scope) is transient. The AC-CD8 v1.6 contract
+    requires per-op provenance somewhere; we stamp it on an audit row
+    keyed at ``action="rag.retrieve"`` and fold the rows into the
+    monthly aggregate here so the cost dashboard's sum-to-call-total
+    invariant holds across both ingest and retrieve.
+
+    Mirrors :func:`_pill_proposal_spend`'s shape — the same audit-log
+    fold pattern. Returns ``(total, by_provider, by_model)``.
+    """
+    from app.models import AuditLog
+
+    result = await db.execute(select(AuditLog).where(AuditLog.tenant_id == tenant_id))
+    total = 0.0
+    by_provider: dict[str, float] = {}
+    by_model: dict[str, float] = {}
+    for row in result.scalars().all():
+        if row.action != "rag.retrieve":
+            continue
+        created_at = getattr(row, "created_at", None)
+        if created_at is None or created_at < since:
+            continue
+        detail = row.detail or {}
+        cost = detail.get("cost_usd")
+        if cost is None:
+            continue
+        total += cost
+        provider = detail.get("provider") or "(unknown)"
+        model_name = detail.get("model") or "(unknown)"
+        by_provider[provider] = by_provider.get(provider, 0.0) + cost
+        by_model[model_name] = by_model.get(model_name, 0.0) + cost
+    return total, by_provider, by_model
+
+
 async def current_month_spend(
     db: AsyncSession,
     *,
@@ -298,6 +340,17 @@ async def current_month_spend(
 
     # Pill proposals live in processing_tasks.payload, not on a mixin.
     sub_total, sub_provider, sub_model = await _pill_proposal_spend(
+        db, tenant_id=tenant_id, since=since
+    )
+    total += sub_total
+    for p, c in sub_provider.items():
+        by_provider[p] = by_provider.get(p, 0.0) + c
+    for m, c in sub_model.items():
+        by_model[m] = by_model.get(m, 0.0) + c
+
+    # RAG-retrieve query embeds live in audit_log.detail (no owning
+    # entity to carry provenance; AC-CD8 v1.6 routing audit row).
+    sub_total, sub_provider, sub_model = await _rag_retrieve_spend(
         db, tenant_id=tenant_id, since=since
     )
     total += sub_total
