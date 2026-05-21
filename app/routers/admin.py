@@ -180,7 +180,16 @@ async def anchors_generate(
     (Slice 4 resolve actions); P11 ships idempotent top-up.
 
     Audit-logged at ``anchors.bootstrap`` so a fat-fingered re-run
-    that hits the 409 still records the operator + timestamp."""
+    that hits the 409 still records the operator + timestamp.
+
+    **HTTP timeout warning** (Gitar PR-#20 Slice 2 finding #2): the
+    synchronous call can emit up to 360 sequential AI calls per pill
+    at default ``anchor_pool_size_per_band = 20`` over a 3-band pill,
+    well beyond typical reverse-proxy / ASGI timeouts. For production
+    use against real pools, wrap this through the P11 Celery task
+    (the same wrapper hosting the AC-D23 cross-pill orchestrator).
+    See :func:`app.domain.calibration.generate_anchor_pool_for_pill`
+    for the workaround pattern until P11 lands."""
     result = await generate_anchor_pool_for_pill(db, pill_id)
     await record_audit(
         db,

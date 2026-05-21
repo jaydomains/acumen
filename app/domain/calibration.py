@@ -242,9 +242,22 @@ async def _existing_anchors(
     db: AsyncSession, pill_id: uuid.UUID
 ) -> AnchorQuestion | None:
     """First :class:`AnchorQuestion` row for ``pill_id`` if any exist —
-    the re-bootstrap guard. Equality-only walk per AC-CD15."""
+    the re-bootstrap guard. Equality-only walk per AC-CD15.
+
+    ``.limit(1)`` is load-bearing: a successful bootstrap leaves
+    20+ rows per pill, and a bare
+    ``select(...).where(pill_id == ...).scalar_one_or_none()``
+    would raise :class:`MultipleResultsFound` on the second
+    bootstrap call instead of cleanly surfacing the 409 the guard
+    is meant to return (Gitar PR-#20 Slice 2 finding #1). The
+    integration harness's :class:`CatalogueFakeSession`
+    ``scalar_one_or_none`` silently returns the first match, so the
+    bug only surfaces under real SQLAlchemy strict-mode; keep the
+    ``.limit(1)`` defensively even if a future test pattern would
+    otherwise pass without it.
+    """
     result = await db.execute(
-        select(AnchorQuestion).where(AnchorQuestion.pill_id == pill_id)
+        select(AnchorQuestion).where(AnchorQuestion.pill_id == pill_id).limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -432,6 +445,21 @@ async def generate_anchor_pool_for_pill(
     Re-bootstrap is rejected with ``APIError(409, "anchors_exist")`` if
     any rows already exist for the pill (see the cost-amplification
     note above for the P8↔P11 split rationale).
+
+    **Operational note — production HTTP timeout risk.** At default
+    ``anchor_pool_size_per_band = 20`` × the worst-case 6 calls/slot,
+    a 3-band pill emits up to 360 sequential ``await`` AI calls. At
+    typical 2–5 s LLM latencies that's 12–30 minutes — beyond default
+    reverse-proxy + ASGI timeouts (Gitar PR-#20 Slice 2 finding #2).
+    The synchronous admin endpoint is for dev/test and small pools;
+    **production at the default pool size MUST run this through the
+    P11 Celery task wrapper** (the same wrapper that hosts the
+    AC-D23 cross-pill bootstrap orchestrator). Until P11 lands, an
+    operator running a real-data bootstrap should either temporarily
+    drop ``anchor_pool_size_per_band`` (e.g. to 5) on the
+    ``system_settings`` row or narrow ``pill.available_difficulty_min/max``
+    before triggering, then restore after the call returns. Either
+    workaround is reversible; neither requires code changes.
 
     Returns telemetry:
         {
