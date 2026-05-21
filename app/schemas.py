@@ -487,6 +487,15 @@ class AttemptView(_Base):
     pause_reason: str | None = None
     watermark: str | None
     questions: list[dict] | None
+    # AC-D25 v1.8 / AC-CD10 v1.8: ``POST /v1/attempts`` for per-Testee
+    # mode returns the Q1 question payload here so the FE renders Q1
+    # immediately (sub-3-s target per ROADMAP P10 done-when) while it
+    # opens the SSE stream for Q2..N. NULL on:
+    #   * frozen / hand-authored / benchmark POST responses (Q1 is
+    #     part of the snapshot or generated on first ``next`` call)
+    #   * GET responses (the FE re-fetches via SSE replay rather
+    #     than via the view payload)
+    q1: dict | None = None
 
 
 class BenchmarkNextResponse(_Base):

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import attempts as attempt_domain
 from app.domain import tests as test_domain
-from app.models import AppUser, Attempt, Test, get_db
+from app.models import AppUser, Attempt, Test, TestMode, get_db
 from app.permissions import (
     ROLE_ADMINISTRATOR,
     APIError,
@@ -67,7 +67,29 @@ async def start_attempt(
     )
     await db.commit()
     view = await attempt_domain.view_attempt(db, attempt, test)
-    return AttemptView(**view)
+    # AC-D25 v1.8 / AC-CD10 v1.8: per-Testee POST surfaces the Q1
+    # payload alongside the standard AttemptView so the FE renders Q1
+    # immediately (~3-s after click) while opening the SSE stream for
+    # Q2..N. Q1 is the only persisted per-Testee question at this
+    # point; it lives in ``view["questions"]`` after the presentation
+    # shuffle. We extract it via ``attempt_position == 1`` (the
+    # snapshot-anchor-only contract guarantees Q1 is the sole row
+    # with ``attempt_position`` set at attempt-start time). For
+    # non-per-Testee modes ``q1`` stays ``None``.
+    q1 = None
+    if test.mode == TestMode.per_testee:
+        q1 = _find_q1_in_view(view)
+    return AttemptView(q1=q1, **view)
+
+
+def _find_q1_in_view(view: dict[str, object]) -> dict[str, object] | None:
+    questions = view.get("questions")
+    if not isinstance(questions, list):
+        return None
+    for q in questions:
+        if isinstance(q, dict) and q.get("attempt_position") == 1:
+            return q
+    return None
 
 
 @router.get("/{attempt_id}")

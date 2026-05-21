@@ -79,13 +79,18 @@ def test_per_testee_start_invokes_generation_with_provenance(
     cat_session: CatalogueFakeSession,
     recording_provider: RecordingProvider,
 ) -> None:
-    """P5 done-when criterion: "a spec produces a generated set"."""
+    """P5 done-when criterion ("a spec produces a generated set"),
+    rewritten for P10 / AC-D25 v1.8 — per-Testee streaming. Q1 is the
+    only generation call at POST time (``question_count=1``); the
+    persisted Question carries 1:1 ``record_provenance`` (full per-call
+    cost, not the pre-P10 1:N share). Q2..N stream over the SSE
+    endpoint (Slice 4)."""
     seed_system_settings(cat_session)
     t = _testee(cat_session)
     test = _per_testee_test(cat_session)
     _start(cat_client, t, test.id)
 
-    # Exactly one generation call was made.
+    # Exactly one synchronous generation call was made (Q1).
     gen_calls = recording_provider.calls_for(Operation.generation)
     assert len(gen_calls) == 1
     _, _, payload = gen_calls[0]
@@ -93,24 +98,25 @@ def test_per_testee_start_invokes_generation_with_provenance(
     # Payload shape carries the test spec the prompt template needs.
     assert payload["test_name"] == "Lifting Operations Diagnostic"
     assert payload["target_difficulty"] == 7
-    assert payload["question_count"] == 5
+    # P10 / SPEC §6.1 v1.8 — per-question call pattern.
+    assert payload["question_count"] == 1
     assert "attempt_id" in payload  # for stub determinism
 
-    # Two Question rows persisted (the default canned response has 2).
+    # Exactly Q1 persisted at POST time (attempt_position=1); Q2..N
+    # arrive via the SSE endpoint in Slice 4.
     questions = cat_session.store.get(Question, [])
     attempt_questions = [q for q in questions if q.attempt_id is not None]
-    assert len(attempt_questions) == 2
+    assert len(attempt_questions) == 1
+    q1 = attempt_questions[0]
+    assert q1.attempt_position == 1
 
-    # Each Question row carries full provenance metadata.
-    for q in attempt_questions:
-        assert q.ai_provider == "anthropic"  # recording provider label
-        assert q.ai_model == "claude-sonnet-4-6"
-        assert q.ai_prompt_version == "1.0.0-recording"
-        # Tokens divided across 2 questions: 100 // 2 = 50, 50 // 2 = 25.
-        assert q.ai_prompt_tokens == 50
-        assert q.ai_completion_tokens == 25
-        # Cost divided across 2: 0.001 / 2 = 0.0005.
-        assert q.ai_cost_usd == pytest.approx(0.0005)
+    # Q1 carries full 1:1 provenance — not the pre-P10 1:N share.
+    assert q1.ai_provider == "anthropic"
+    assert q1.ai_model == "claude-sonnet-4-6"
+    assert q1.ai_prompt_version == "1.0.0-recording"
+    assert q1.ai_prompt_tokens == 100
+    assert q1.ai_completion_tokens == 50
+    assert q1.ai_cost_usd == pytest.approx(0.001)
 
 
 def test_per_testee_start_cost_dashboard_contract(
@@ -119,8 +125,13 @@ def test_per_testee_start_cost_dashboard_contract(
     recording_provider: RecordingProvider,
 ) -> None:
     """Sum of ``ai_cost_usd`` across the produced Question rows MUST
-    recover the call's total cost — the cost dashboard's per-attempt
-    aggregation depends on this (AC-D18)."""
+    recover the per-call costs — the cost dashboard's per-attempt
+    aggregation depends on this (AC-D18). P10 / AC-D25 v1.8 changes
+    the shape: pre-P10, one batch call (cost C) produced N rows each
+    stamped C/N (1:N share). With per-Testee streaming, each per-
+    question call (cost C each) produces one row stamped C (1:1).
+    Slice 3 only persists Q1 here (cost C); the SSE handler persists
+    Q2..N each at cost C in Slice 4."""
     seed_system_settings(cat_session)
     t = _testee(cat_session)
     test = _per_testee_test(cat_session)
@@ -129,9 +140,10 @@ def test_per_testee_start_cost_dashboard_contract(
     attempt_questions = [
         q for q in cat_session.store.get(Question, []) if q.attempt_id is not None
     ]
-    total = sum(q.ai_cost_usd or 0.0 for q in attempt_questions)
-    # The RecordingProvider call cost (0.001 USD), reconstructed.
-    assert total == pytest.approx(0.001)
+    # Q1 only at this point; Q2..N arrive via SSE.
+    assert len(attempt_questions) == 1
+    # Q1's stamped cost equals the RecordingProvider's per-call cost.
+    assert attempt_questions[0].ai_cost_usd == pytest.approx(0.001)
 
 
 def test_per_testee_uses_per_op_provider_override(
@@ -166,16 +178,20 @@ def test_per_testee_uses_per_op_provider_override(
     assert len(recording_provider.calls_for(Operation.generation)) == 1
 
 
-def test_per_testee_start_skips_malformed_specs(
+def test_per_testee_start_takes_first_question_from_provider_response(
     cat_client: TestClient,
     cat_session: CatalogueFakeSession,
     recording_provider: RecordingProvider,
 ) -> None:
-    """A malformed spec (bad type / missing key / non-dict) must NOT
-    crash ``start_attempt`` — it's skipped and the remaining valid
-    specs persist. The share_count is computed over the valid set so
-    the cost-dashboard invariant still holds (Gitar PR-#16 Slice 2
-    finding #1)."""
+    """P10 / SPEC §6.1 v1.8 — per-question call pattern. The pre-P10
+    ``test_per_testee_start_skips_malformed_specs`` "skip malformed,
+    keep valid" semantic is retired by the per-question contract:
+    each generation call requests ``question_count=1`` and returns
+    exactly one question; multi-spec defensive parsing no longer
+    applies. If the provider returns multiple specs, the orchestrator
+    takes ``questions[0]`` (the first valid spec is Q1; trailing
+    items in the array are ignored — providers should honour
+    ``question_count=1`` and return one element)."""
     recording_provider.set_response(
         Operation.generation,
         {
@@ -185,9 +201,8 @@ def test_per_testee_start_skips_malformed_specs(
                     "assigned_difficulty": 5,
                     "config": {"prompt": "p", "options": ["a"], "correct": 0},
                 },
-                {"type": "not_a_real_type", "config": {}, "assigned_difficulty": 5},
-                {"type": "true_false"},  # missing config + difficulty
-                "not even a dict",  # outright wrong shape
+                # Trailing entries get ignored under the per-question
+                # contract — not a defensive-skip path.
                 {
                     "type": "true_false",
                     "assigned_difficulty": 4,
@@ -201,17 +216,15 @@ def test_per_testee_start_skips_malformed_specs(
     test = _per_testee_test(cat_session)
     _start(cat_client, t, test.id)
 
-    # Only the 2 valid specs persisted; the 3 malformed entries skipped.
+    # Exactly Q1 persisted; the trailing TF spec is ignored.
     questions = [
         q for q in cat_session.store.get(Question, []) if q.attempt_id is not None
     ]
-    assert len(questions) == 2
-
-    # Cost dashboard invariant: SUM over the 2 valid rows equals the
-    # full call cost (0.001), divided over 2 = 0.0005 each.
-    for q in questions:
-        assert q.ai_cost_usd == pytest.approx(0.0005)
-    assert sum(q.ai_cost_usd or 0.0 for q in questions) == pytest.approx(0.001)
+    assert len(questions) == 1
+    assert questions[0].type.value == "multiple_choice"
+    assert questions[0].attempt_position == 1
+    # 1:1 provenance — full per-call cost, not the pre-P10 1:N share.
+    assert questions[0].ai_cost_usd == pytest.approx(0.001)
 
 
 def test_per_testee_stub_fallback_when_no_anthropic_key(
@@ -227,11 +240,14 @@ def test_per_testee_stub_fallback_when_no_anthropic_key(
     response = _start(cat_client, t, test.id)
     assert response["sequence_number"] == 1
 
-    # The stub's deterministic set persists with stub provenance.
+    # P10 / AC-D25 v1.8 — stub still returns 2 deterministic items
+    # but the per-question pattern takes only the first as Q1; the
+    # second is dropped (the SSE handler in Slice 4 will issue a
+    # fresh call for Q2). Q1 persists with stub provenance.
     questions = [
         q for q in cat_session.store.get(Question, []) if q.attempt_id is not None
     ]
-    assert len(questions) == 2
-    for q in questions:
-        assert q.ai_provider == "stub"
-        assert q.ai_cost_usd == 0.0
+    assert len(questions) == 1
+    assert questions[0].ai_provider == "stub"
+    assert questions[0].ai_cost_usd == 0.0
+    assert questions[0].attempt_position == 1
