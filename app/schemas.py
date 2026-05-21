@@ -522,6 +522,32 @@ class SweepResult(_Base):
     escalations_sent: int
 
 
+class AnchorBandSummary(_Base):
+    """One row of :class:`AnchorBootstrapResult.per_band_summary` —
+    counts produced for one (pill, band) slot of the AC-D23 bootstrap."""
+
+    band: int
+    generated: int
+    excluded: int
+
+
+class AnchorBootstrapResult(_Base):
+    """Telemetry returned by one anchor-pool bootstrap action (AC-D23
+    bootstrap #1). Surfaced by ``POST /v1/admin/pills/{pill_id}/anchors/generate``;
+    the body matches what the P11 bootstrap script will emit on every
+    cross-pill orchestration pass so dashboards stay aligned.
+
+    Cost-amplification note: per-pill totals scale as
+    ``slots * 2`` (best case) to ``slots * 6`` (worst case) where
+    ``slots = anchor_pool_size_per_band * len(supported_bands)``."""
+
+    anchors_generated: int
+    anchors_excluded: int
+    total_generation_calls: int
+    total_self_review_calls: int
+    per_band_summary: list[AnchorBandSummary]
+
+
 class GradeReviewReconcileResult(_Base):
     """Counts returned by one pass of the §8.9 grade-review reconcile
     sweep (AC-D19 v1.6 / AC-CD11 v1.7). Exposed via the admin trigger

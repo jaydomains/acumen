@@ -309,6 +309,14 @@ class RecordingProvider:
         """Register / replace the canned content for an operation."""
         self.responses[operation] = content
 
+    def set_response_fn(self, operation: Any, fn: Any) -> None:
+        """Register a callable response for an operation. The callable
+        receives the call's payload dict and returns the content dict;
+        useful when the response shape depends on the input (e.g. the
+        P8 anchor self-review needs the reviewer to echo each item's
+        ``anchor_question_id`` per the AC-D23 prompt contract)."""
+        self.responses[operation] = fn
+
     def calls_for(self, operation: Any) -> list[tuple[str, Any, dict[str, Any]]]:
         """All recorded calls for a given operation enum value."""
         return [c for c in self.calls if c[1] == operation]
@@ -324,20 +332,32 @@ class RecordingProvider:
             cost_usd=self.cost_usd,
         )
 
+    def _resolve_content(
+        self, operation: Any, payload: dict[str, Any], default: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Look up the canned content for ``operation``. If the
+        registered value is callable (``set_response_fn``), invoke it
+        with the payload to produce the content; otherwise treat it as
+        a static dict."""
+        cached = self.responses.get(operation, default)
+        if callable(cached):
+            return cached(payload)
+        return cached
+
     async def generate(self, operation: Any, payload: dict[str, Any]) -> Any:
         self.calls.append(("generate", operation, dict(payload)))
-        return self._result(self.responses.get(operation, {}))
+        return self._result(self._resolve_content(operation, payload, {}))
 
     async def grade(self, operation: Any, payload: dict[str, Any]) -> Any:
         self.calls.append(("grade", operation, dict(payload)))
         # Sensible default if the test didn't register a grading response.
         default = {"score": 1.0, "verdict": "full", "reasoning": "recording-default"}
-        return self._result(self.responses.get(operation, default))
+        return self._result(self._resolve_content(operation, payload, default))
 
     async def review(self, operation: Any, payload: dict[str, Any]) -> Any:
         self.calls.append(("review", operation, dict(payload)))
         default = {"verdict": "confirmed", "reasoning": "recording-default"}
-        return self._result(self.responses.get(operation, default))
+        return self._result(self._resolve_content(operation, payload, default))
 
     async def embed(self, operation: Any, text: str) -> Any:
         from app.ai.provider import EmbedResult as _EmbedResult

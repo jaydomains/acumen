@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import engagement as engagement_domain
+from app.domain.calibration import generate_anchor_pool_for_pill
+from app.domain.catalogue import record_audit
 from app.domain.grade_review import (
     list_flagged_reviews,
     reconcile_pending_grade_reviews,
@@ -30,6 +32,8 @@ from app.domain.loop import (
 from app.models import AppUser, get_db
 from app.permissions import ROLE_ADMINISTRATOR, require_role
 from app.schemas import (
+    AnchorBandSummary,
+    AnchorBootstrapResult,
     EngagementWidgetItem,
     EngagementWidgetResponse,
     FlaggedGradeReviewItem,
@@ -155,6 +159,50 @@ async def loop_queue_approve(
     result = await approve_admin_queue(db, weakness_report_id, admin.id)
     await db.commit()
     return LoopApproveResult(**result)
+
+
+# --- P8 anchor calibration (AC-D23 bootstrap) -------------------------
+
+
+@router.post("/pills/{pill_id}/anchors/generate", status_code=201)
+async def anchors_generate(
+    pill_id: uuid.UUID,
+    admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AnchorBootstrapResult:
+    """Bootstrap the anchor pool for one pill (AC-D23 bootstrap #1).
+
+    Generates ``system_settings.anchor_pool_size_per_band`` anchors per
+    band in ``pill.available_difficulty_min .. max``. Each anchor passes
+    a cross-family self-review (AC-D23) and regenerates up to 3 times
+    before being written as ``excluded`` for admin attention. Returns
+    409 ``anchors_exist`` on re-run — drain the flagged queue first
+    (Slice 4 resolve actions); P11 ships idempotent top-up.
+
+    Audit-logged at ``anchors.bootstrap`` so a fat-fingered re-run
+    that hits the 409 still records the operator + timestamp."""
+    result = await generate_anchor_pool_for_pill(db, pill_id)
+    await record_audit(
+        db,
+        actor_id=admin.id,
+        action="anchors.bootstrap",
+        target_entity="pill",
+        target_id=pill_id,
+        detail={
+            "anchors_generated": result["anchors_generated"],
+            "anchors_excluded": result["anchors_excluded"],
+            "total_generation_calls": result["total_generation_calls"],
+            "total_self_review_calls": result["total_self_review_calls"],
+        },
+    )
+    await db.commit()
+    return AnchorBootstrapResult(
+        anchors_generated=result["anchors_generated"],
+        anchors_excluded=result["anchors_excluded"],
+        total_generation_calls=result["total_generation_calls"],
+        total_self_review_calls=result["total_self_review_calls"],
+        per_band_summary=[AnchorBandSummary(**row) for row in result["per_band_summary"]],
+    )
 
 
 @router.post("/loop/queue/{weakness_report_id}/reject", status_code=201)
