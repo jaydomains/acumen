@@ -157,19 +157,29 @@ async def _generate_position(
             try:
                 gen_result = await provider.generate(Operation.generation, payload)
                 spec = _extract_single_question_spec(gen_result.content)
-                async with session_factory() as sess:
-                    question = Question(
-                        tenant_id=tenant_id,
-                        attempt_id=attempt_id,
-                        type=QuestionType(spec["type"]),
-                        config=spec["config"],
-                        assigned_difficulty=spec["assigned_difficulty"],
-                        realism_flag_count=0,
-                        attempt_position=position,
-                    )
-                    record_provenance(question, gen_result)
-                    sess.add(question)
-                    await sess.commit()
+                question = Question(
+                    tenant_id=tenant_id,
+                    attempt_id=attempt_id,
+                    type=QuestionType(spec["type"]),
+                    config=spec["config"],
+                    assigned_difficulty=spec["assigned_difficulty"],
+                    realism_flag_count=0,
+                    attempt_position=position,
+                )
+                record_provenance(question, gen_result)
+                # Shield the persistence step from outer cancellation so
+                # an SSE disconnect mid-commit does not lose work the
+                # provider has already paid for. The shielded inner
+                # commits to its own short-lived session (from
+                # session_factory) and the row survives in the DB;
+                # reconnect replays it. Without the shield, a cancel
+                # arriving between ``sess.add`` and ``sess.commit``
+                # would roll back the partial work and the position
+                # would be re-orchestrated needlessly on the next SSE
+                # open (Gitar PR-#23 Slice 2 finding #1 root cause —
+                # the orchestrator's cancellation contract relies on
+                # in-flight persistence surviving disconnect).
+                await asyncio.shield(_persist_question(session_factory, question))
                 slot.question_id = question.id
                 slot.status = GenerationStatus.done
                 return slot
@@ -195,6 +205,17 @@ async def _generate_position(
         slot.status = GenerationStatus.failed
         slot.error = str(last_error) if last_error is not None else "unknown"
         return slot
+
+
+async def _persist_question(session_factory: SessionFactory, question: Question) -> None:
+    """Open a fresh session, add the Question row, commit. Factored
+    out as a separate coroutine so ``asyncio.shield`` can wrap the
+    full add+commit sequence as one atomic unit — wrapping just
+    ``sess.commit()`` would still leave a cancel-window between
+    ``sess.add`` and ``commit``."""
+    async with session_factory() as sess:
+        sess.add(question)
+        await sess.commit()
 
 
 def _extract_single_question_spec(content: dict[str, Any]) -> dict[str, Any]:
@@ -305,19 +326,55 @@ async def stream_attempt_questions(
         # partial progress. Anything still running beyond the grace
         # is cancelled and its work is lost (the next SSE open will
         # re-orchestrate the unfilled position).
+        #
+        # Cancellation correctness (Gitar PR-#23 Slice 2 finding #1):
+        # if the outer task is cancelled (SSE disconnect), Python
+        # 3.11+ keeps the cancel request "sticky" — the next ``await``
+        # in this finally re-raises ``CancelledError`` before the
+        # cleanup runs, which would leak ``still_pending`` tasks and
+        # produce stray Question rows. ``Task.uncancel()`` clears the
+        # request while cleanup runs; the cancellation is restored
+        # below so callers (the SSE handler) still see the disconnect.
         if pending:
-            done_in_grace, still_pending = await asyncio.wait(
-                pending, timeout=grace_seconds
-            )
+            current = asyncio.current_task()
+            cancellations = current.cancelling() if current is not None else 0
+            if cancellations and current is not None:
+                for _ in range(cancellations):
+                    current.uncancel()
+            done_in_grace: set[asyncio.Task[GenerationSlot]] = set()
+            still_pending: set[asyncio.Task[GenerationSlot]] = pending
+            try:
+                done_in_grace, still_pending = await asyncio.wait(
+                    pending, timeout=grace_seconds
+                )
+            except BaseException:  # noqa: BLE001 — incl. CancelledError
+                # The cleanup wait was interrupted (e.g. a second
+                # cancel arrived after uncancel above). Best-effort:
+                # partition pending tasks by current done-state so
+                # subsequent code can still account for completions
+                # and cancel the rest.
+                done_in_grace = {t for t in pending if t.done()}
+                still_pending = pending - done_in_grace
             for task in done_in_grace:
                 try:
                     slot = task.result()
-                except Exception:  # noqa: BLE001
+                except BaseException:  # noqa: BLE001 — incl. CancelledError
+                    # A per-task body cancelled externally during the
+                    # grace window raises CancelledError from
+                    # ``.result()`` — BaseException, not Exception.
+                    # Catching the broad class here is intentional:
+                    # this is terminal-state aggregation, not an
+                    # error path we want to surface.
                     continue
                 if slot.status == GenerationStatus.done:
                     completed_positions.append(slot.position)
             for task in still_pending:
                 task.cancel()
+            if cancellations and current is not None:
+                # Restore the suppressed cancellation so the SSE
+                # handler still observes the disconnect.
+                for _ in range(cancellations):
+                    current.cancel()
 
     if failed_slot is not None:
         # Late import: the constant lives on the attempts module so the

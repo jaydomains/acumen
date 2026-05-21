@@ -15,6 +15,7 @@ Zero-DB / zero-network (AC-CD15) — the socket guard in
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -648,3 +649,87 @@ async def test_provider_returns_empty_questions_array_treated_as_failure() -> No
         )
     assert len(provider.calls) == 2  # original + retry
     assert len(pause_fn.calls) == 1
+
+
+async def test_externally_cancelled_jit_task_does_not_leak_still_pending() -> None:
+    """Gitar PR-#23 Slice 2 finding #1 — ``except Exception`` in the
+    finally cleanup did NOT catch ``CancelledError`` (Python 3.9+
+    ``CancelledError`` inherits from ``BaseException``, not
+    ``Exception``). If a per-task body was cancelled externally during
+    the grace window, ``task.result()`` raised ``CancelledError``,
+    escaped the handler, and skipped the
+    ``for task in still_pending: task.cancel()`` cleanup below —
+    leaving JIT tasks running indefinitely in the event loop.
+
+    Regression: cancel one spawned JIT task externally, then cancel
+    the consumer. After the orchestrator's finally runs, every
+    ``jit-q*`` task in the event loop must be done (success, failed,
+    or cancelled) — no leftover pending tasks.
+    """
+    attempt_id = uuid.uuid4()
+    forever = asyncio.Event()  # never set
+
+    async def blocker(payload: dict[str, Any]) -> dict[str, Any]:
+        await forever.wait()
+        return _default_question_payload(payload)
+
+    provider = FakeProvider(responder=blocker)
+    factory = FakeSessionFactory()
+    pause_fn = RecordingPauseFn()
+
+    consumer = asyncio.create_task(
+        _drain(
+            stream_attempt_questions(
+                attempt_id=attempt_id,
+                tenant_id=uuid.uuid4(),
+                positions=[2, 3, 4],
+                payload_base=_payload_base(attempt_id),
+                provider=provider,
+                semaphore=asyncio.Semaphore(5),
+                session_factory=factory,
+                pause_fn=pause_fn,
+                grace_seconds=0.1,
+            )
+        )
+    )
+    # Let the orchestrator spawn its per-position tasks and reach the
+    # blocker await.
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+    jit_tasks = [
+        t
+        for t in asyncio.all_tasks()
+        if t.get_name().startswith("jit-q") and not t.done()
+    ]
+    assert len(jit_tasks) == 3, "orchestrator should have spawned 3 JIT tasks"
+
+    # Externally cancel ONE JIT task BEFORE cancelling the consumer.
+    # The orchestrator's ``asyncio.wait`` will see this task in
+    # ``done_in_grace``; calling ``.result()`` on it raises
+    # ``CancelledError`` — the path that the buggy ``except Exception``
+    # failed to handle.
+    jit_tasks[0].cancel()
+    # Let the cancellation propagate.
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    # Cancel the consumer; the orchestrator's finally runs.
+    consumer.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await consumer
+
+    # Allow grace + a tick for still_pending tasks to receive their
+    # cancellation and the cancellation to propagate through the
+    # blocker await.
+    await asyncio.sleep(0.2)
+
+    leftover = [
+        t
+        for t in asyncio.all_tasks()
+        if t.get_name().startswith("jit-q") and not t.done()
+    ]
+    assert leftover == [], (
+        f"orchestrator leaked {len(leftover)} JIT tasks; "
+        "still_pending.cancel() did not fire"
+    )
