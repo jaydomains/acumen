@@ -120,6 +120,13 @@ class UserResponse(_Base):
     created_at: datetime
 
 
+class UserUpdate(_Base):
+    # Email is identity (AC-D2). Create-then-deactivate is the v1 pattern
+    # for an email change; that's why ``email`` is intentionally absent.
+    name: Annotated[str, Field(min_length=1, max_length=255)] | None = None
+    role: Role | None = None
+
+
 # --- Catalogue (P3): Subjects / Pills / Paths / Groups ----------------
 # CODE_SPEC §5: collections return {"data": [...], "meta": {...}} with
 # cursor pagination; the error envelope is the APIError handler.
