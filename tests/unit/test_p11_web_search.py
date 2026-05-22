@@ -45,11 +45,15 @@ async def test_tavily_missing_api_key_fails_fast_without_retry(
 
     assert "web_search_api_key" in str(exc.value)
     # If tenacity were retrying, elapsed would be > 1 s (the
-    # wait_exponential min). Fast-fail keeps it well under 0.5 s
-    # even on a slow CI runner.
-    assert elapsed < 0.5, (
+    # ``wait_exponential(min=1)`` sleeps for at least one second
+    # between attempts; with 3 attempts the total would be > 2 s).
+    # Bound at 0.9 s — strict enough to catch a re-broken retry
+    # predicate, loose enough to absorb cold CI runner import
+    # overhead. The fix-fast path also skips the ``tavily`` import
+    # by checking the API key first in ``_get_client``.
+    assert elapsed < 0.9, (
         f"missing-key path should fail fast; took {elapsed:.3f}s "
-        f"(retry predicate likely re-broken)"
+        f"(retry predicate likely re-broken — wait_exponential min=1)"
     )
 
 

@@ -121,10 +121,16 @@ class TavilyWebSearch:
         """Lazy build the Tavily client from
         ``Settings.web_search_api_key``. Cached for the life of the
         provider instance — the singleton in this module keeps one
-        client per process."""
+        client per process.
+
+        Settings are checked **before** the ``tavily`` import so a
+        missing-API-key misconfiguration fail-fasts without paying the
+        ~hundreds-of-ms cost of importing ``tavily`` and its
+        dependency tree (CI cold-start observation; the timing
+        assertion in ``tests/unit/test_p11_web_search.py`` depends on
+        this ordering)."""
         if self._client is not None:
             return self._client
-        from tavily import TavilyClient
 
         from app.config import get_settings
 
@@ -135,6 +141,8 @@ class TavilyWebSearch:
                 "in the environment. Set it before calling search(), or "
                 "use the _FakeWebSearch seam in tests (AC-CD15)."
             )
+        from tavily import TavilyClient
+
         self._client = TavilyClient(api_key=settings.web_search_api_key)
         return self._client
 
