@@ -197,6 +197,13 @@ def cost_budget_sweep_task() -> dict[str, object]:
 
     async def _run() -> dict[str, object]:
         async with _session_factory()() as session:
+            # v1 is single-tenant per AC-CD3 ("one acumen Postgres
+            # schema; tenant_id is on every scoped table from day one
+            # but v1 is single-tenant; RLS is a port seam, not built
+            # in v1"). Every other wrapper's domain callable also
+            # scopes to SEED_TENANT_ID; the SiteMesh port adds the
+            # tenant-iteration loop here when RLS / multi-tenancy
+            # lands (Gitar PR-#24 Slice 2 informational finding).
             fired = await maybe_fire_budget_alert(session, tenant_id=SEED_TENANT_ID)
             await session.commit()
         return {"thresholds_fired": list(fired)}
