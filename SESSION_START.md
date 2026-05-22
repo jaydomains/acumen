@@ -353,13 +353,6 @@ merged as doc-only clarifications; v1.6 consolidated the pre-build
 spec-audit; v1.7 closed AC-CD11; v1.8 closes AC-CD10. **2 phases
 remain.** Next session starts at ROADMAP **P10 — JIT streaming
 generation (per-Testee)** — the AC-CD10 gate is closed, so P10
-builds against the locked contract directly. *(The footer below
-still reads "v1.2 document set" — deliberate deferral per the
-header-only precedent from PR-011/PR-013/PR-014/PR-017; a future
-SESSION_START hardening PR will sweep it together with the stale
-DECISIONS and CODE_SPEC footers. See
-`handovers/PR-014-v1.6-spec-audit-consolidation.md`,
-`handovers/PR-017-v1.7-ac-cd11-gate-closure.md`, and this PR's
-handover.)*
+builds against the locked contract directly.
 
-*End of SESSION_START. Paired with the v1.2 document set.*
+*End of SESSION_START. Paired with the v1.8 document set.*

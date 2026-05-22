@@ -1,7 +1,7 @@
 # CODE_SPEC — Acumen technical specification & stack lock (canonical)
 
-> **Companion to** `SPEC.md` (functional, v1.2) and `DECISIONS.md`
-> (product anchors AC-D1–AC-D27, v1.2). This document is the canonical
+> **Companion to** `SPEC.md` (functional, v1.8) and `DECISIONS.md`
+> (product anchors AC-D1–AC-D27, v1.8). This document is the canonical
 > **technical** specification and stack lock.
 >
 > **Authority:** the codebase is the source of truth. Target-state items
@@ -734,5 +734,5 @@ AC-CD8. **Confidence:** confident default (per user).
 
 ---
 
-*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.4
-and `DECISIONS.md` v1.4. One open technical anchor: AC-CD11 (P6 gate).*
+*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.8
+and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8).*
