@@ -73,10 +73,13 @@ jobs:
       - name: alembic upgrade head (greenfield)
         run: alembic upgrade head
       - name: alembic current is head
+        # Just look for the ``(head)`` marker so the check stays
+        # correct across future migrations — alembic only annotates
+        # the head revision that way.
         run: |
           out=$(alembic current 2>&1)
           echo "$out"
-          echo "$out" | grep -q '0007_p10_question_position (head)'
+          echo "$out" | grep -q '(head)'
       - name: alembic downgrade base (reversibility, AC-CD3)
         run: alembic downgrade base
       - name: alembic upgrade head (round-trip)

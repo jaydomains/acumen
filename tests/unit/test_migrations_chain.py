@@ -22,7 +22,9 @@ step (``.github/workflows/ci.yml``).
 from __future__ import annotations
 
 import importlib.util
+import io
 import re
+import tokenize
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -47,6 +49,20 @@ _CREATE_INDEX_RE = re.compile(
 )
 
 
+def _strip_python_comments(src: str) -> str:
+    """Strip Python ``#`` line-tail comments via ``tokenize`` so a
+    ``#`` inside a string literal is preserved. Naive ``line.split('#')``
+    would clip SQL DDL that happened to contain ``#`` inside an
+    f-string.
+    """
+    out = []
+    for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+        if tok.type == tokenize.COMMENT:
+            continue
+        out.append(tok)
+    return tokenize.untokenize(out)
+
+
 def _parse_additions(path: Path) -> Iterator[tuple[str, str, str]]:
     """Yield ``(kind, table, name)`` for every ADD COLUMN / ADD
     CONSTRAINT / CREATE INDEX in *path*'s ``upgrade()`` SQL strings.
@@ -54,9 +70,7 @@ def _parse_additions(path: Path) -> Iterator[tuple[str, str, str]]:
     leak.
     """
     src = path.read_text()
-    # Strip Python ``#`` line-tail comments — they sometimes describe
-    # the SQL ("# 0003: ...") and should not parse as DDL.
-    src_no_comments = "\n".join(line.split("#", 1)[0] for line in src.splitlines())
+    src_no_comments = _strip_python_comments(src)
     # Collapse adjacent string-literal concatenations so a SQL string
     # split across ``"abc " f"def"`` continuation reads as one. The
     # alembic migrations use this pattern (e.g. 0004's CREATE INDEX).
