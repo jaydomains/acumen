@@ -446,11 +446,38 @@ def _stamp_anchor_pair(
     return question, anchor
 
 
+async def _live_anchor_counts_by_band(
+    db: AsyncSession, pill_id: uuid.UUID
+) -> dict[int, int]:
+    """Per-band count of live (``excluded=False``) anchors for a pill.
+
+    P11 / AC-D23: the bootstrap orchestrator's idempotent top-up mode
+    computes per-band deficits against this, so a re-run on a pill
+    already at quota is a counter-zero no-op. Excluded anchors
+    (``excluded=True``) do NOT count — they don't carry weight in the
+    draw, so the deficit math has to ignore them.
+    """
+    result = await db.execute(
+        select(AnchorQuestion).where(
+            AnchorQuestion.pill_id == pill_id,
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    counts: dict[int, int] = {}
+    for row in result.scalars().all():
+        if getattr(row, "excluded", False):
+            continue
+        band = int(row.assigned_difficulty)
+        counts[band] = counts.get(band, 0) + 1
+    return counts
+
+
 async def generate_anchor_pool_for_pill(
     db: AsyncSession,
     pill_id: uuid.UUID,
     *,
     supported_bands: Sequence[int] | None = None,
+    top_up: bool = False,
 ) -> dict[str, Any]:
     """Bootstrap a pill's anchor pool (AC-D23 #1).
 
@@ -463,9 +490,17 @@ async def generate_anchor_pool_for_pill(
     ``excluded_reason='self_review_3_fails: <reviewer reasoning>'`` so
     the admin can resolve via the Slice 4 queue.
 
-    Re-bootstrap is rejected with ``APIError(409, "anchors_exist")`` if
-    any rows already exist for the pill (see the cost-amplification
-    note above for the P8↔P11 split rationale).
+    Two modes:
+
+    * ``top_up=False`` (default — the existing admin-endpoint contract):
+      re-bootstrap raises ``APIError(409, "anchors_exist")`` if any
+      anchors already exist for the pill.
+    * ``top_up=True`` (P11 / AC-D23 idempotent orchestrator path):
+      compute per-band live-anchor counts (excluding ``excluded=True``
+      rows), generate only the deficit to reach
+      ``anchor_pool_size_per_band`` per band. A pill already at quota
+      is a counter-zero no-op. Existing live anchors are NOT touched
+      (their calibration history stays intact).
 
     **Operational note — production HTTP timeout risk.** At default
     ``anchor_pool_size_per_band = 20`` × the worst-case 6 calls/slot,
@@ -493,17 +528,23 @@ async def generate_anchor_pool_for_pill(
               ...
           ]
         }
+
+    In ``top_up=True`` mode the per-band ``generated`` count reflects
+    only the newly-generated anchors for that pass; existing live
+    anchors are not double-counted. The bootstrap orchestrator's
+    outer telemetry rolls up the per-pill counters.
     """
     pill = await _load_pill(db, pill_id)
     if pill is None:
         raise APIError(404, "pill_not_found", "pill not found")
-    if await _existing_anchors(db, pill_id) is not None:
+    if not top_up and await _existing_anchors(db, pill_id) is not None:
         raise APIError(
             409,
             "anchors_exist",
             "Anchor pool already exists for this pill. Drain the "
             "flagged queue via /v1/admin/anchors/{id}/resolve before "
-            "re-bootstrapping (P11 ships idempotent top-up).",
+            "re-bootstrapping, or call with top_up=True via the "
+            "AC-D23 bootstrap orchestrator.",
         )
 
     settings = await _load_settings(db)
@@ -513,6 +554,13 @@ async def generate_anchor_pool_for_pill(
         configured = getattr(settings, "anchor_pool_size_per_band", None)
         if configured is not None:
             pool_size = int(configured)
+
+    # Top-up mode: compute per-band deficits. Existing live anchors
+    # are NOT touched; only the shortfall is generated. A pill already
+    # at quota is a counter-zero no-op (AC-CD7 idempotency contract).
+    live_by_band: dict[int, int] = (
+        await _live_anchor_counts_by_band(db, pill_id) if top_up else {}
+    )
 
     provider = resolve_provider(Operation.generation, system_settings=settings)
     reviewer = resolve_provider(Operation.anchor_self_review, system_settings=settings)
@@ -546,8 +594,13 @@ async def generate_anchor_pool_for_pill(
     for band in bands:
         band_generated = 0
         band_excluded = 0
+        # Top-up deficit: pool_size - live anchors already present at
+        # this band (excluded rows don't count). For non-top-up mode
+        # live_by_band is empty → deficit == pool_size.
+        already_present = live_by_band.get(band, 0)
+        slots_to_fill = max(0, pool_size - already_present)
         rag_context = render_rag_context(rag_hits_by_band[band])
-        for _slot in range(pool_size):
+        for _slot in range(slots_to_fill):
             anchor_id = uuid.uuid4()
             last_gen_result: Any | None = None
             last_spec: dict[str, Any] | None = None
