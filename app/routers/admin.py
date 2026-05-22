@@ -34,6 +34,7 @@ from app.domain.loop import (
     list_admin_queue,
     reject_admin_queue,
 )
+from app.domain.safety_links import check_safety_links
 from app.models import AppUser, get_db
 from app.permissions import ROLE_ADMINISTRATOR, require_role
 from app.schemas import (
@@ -55,6 +56,7 @@ from app.schemas import (
     LoopQueueItem,
     LoopQueueListResponse,
     LoopRejectResult,
+    SafetyLinkCheckResult,
     SweepResult,
 )
 
@@ -293,3 +295,34 @@ async def anchors_resolve(
     )
     await db.commit()
     return AnchorResolveResult(**result)
+
+
+# --- P11 Slice 3 — safety-link monthly check (AC-D21) ----------------
+
+
+@router.post("/safety-links/check", status_code=201)
+async def safety_links_check(
+    admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> SafetyLinkCheckResult:
+    """Run one pass of the AC-D21 monthly safety-link verification
+    sweep synchronously and return the counts. Identical body to the
+    P11 ``safety_links.check`` Celery beat task on a monthly schedule;
+    the admin trigger gives operators a manual lever for on-demand
+    verification after curating new safety pills (mirrors the P6
+    grade-review reconcile + P8 calibration sweep precedent).
+
+    Audit-logged at ``safety_links.check`` so a re-run records the
+    operator + timestamp + telemetry counters for the operational
+    trail."""
+    telemetry = await check_safety_links(db)
+    await record_audit(
+        db,
+        actor_id=admin.id,
+        action="safety_links.check",
+        target_entity="system_settings",
+        target_id=admin.tenant_id,
+        detail=telemetry,
+    )
+    await db.commit()
+    return SafetyLinkCheckResult(**telemetry)

@@ -815,3 +815,24 @@ class DriveIndexStatus(_Base):
     chunks: int
     files: int
     last_indexed_at: datetime | None
+
+
+class SafetyLinkCheckResult(_Base):
+    """Telemetry returned by one safety-link verification sweep
+    (AC-D21 / P11 Slice 3). Same body shape the monthly beat task
+    emits on every scheduled run.
+
+    * ``links_checked`` — total ``PillSafetyLink`` rows iterated.
+    * ``links_broken_replaced`` — count of replacement links added
+      by the best-effort top-up curation pass on pills whose cached
+      URLs failed.
+    * ``links_drift_flagged`` — count of links whose SHA-256
+      content_hash changed since the last check; admin audit-row
+      written, no AI call (AC-CD8 v1.6 operation enum constraint).
+    * ``links_unchanged`` — count of links that returned 200 + a
+      matching content_hash."""
+
+    links_checked: int
+    links_broken_replaced: int
+    links_drift_flagged: int
+    links_unchanged: int
