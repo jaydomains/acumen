@@ -248,16 +248,16 @@ def test_anchor_draw_writes_two_attempt_anchor_rows(
     assert len(anchors_written) == 2
     assert all(row.score is None for row in anchors_written)
 
-    # Snapshot carries the 2 anchors + the 2 per_testee questions (the
-    # default RecordingProvider returns 2 questions per generation
-    # call), in that order.
+    # P10 / AC-D25 v1.8 — snapshot for per-Testee mode is anchors-
+    # only; per-Testee Question rows live in the DB ordered by
+    # ``attempt_position`` (fetched live on ``view_attempt``). Snapshot
+    # carries the 2 drawn anchors only.
     attempts = cat_session.store.get(Attempt, [])
     attempt = next(a for a in attempts if a.id == attempt_id)
     snapshot_ids = {q["question_id"] for q in attempt.question_snapshot["questions"]}
     drawn_ids = {str(row.anchor_question_id) for row in anchors_written}
-    assert drawn_ids.issubset(snapshot_ids)
-    # 2 per_testee + 2 anchors = 4 snapshot entries.
-    assert len(attempt.question_snapshot["questions"]) == 4
+    assert snapshot_ids == drawn_ids
+    assert len(attempt.question_snapshot["questions"]) == 2
 
 
 # --- Resume stability -------------------------------------------------

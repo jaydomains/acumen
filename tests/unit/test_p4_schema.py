@@ -44,6 +44,21 @@ def test_attempt_sequence_unique_constraint_present() -> None:
             return
 
 
+def test_question_attempt_position_unique_constraint_present() -> None:
+    # P10 / AC-D25 v1.8 / AC-CD10 v1.8: streamed-arrival order anchor.
+    # Postgres treats multiple NULLs as distinct under UNIQUE, so the
+    # constraint excludes unfilled slots (test_id-owned + pill_id-owned
+    # rows stay at NULL) without a partial-index WHERE clause.
+    constraints = _table("question").constraints
+    names = {c.name for c in constraints if c.name}
+    assert "uq_question_attempt_position" in names
+    for c in constraints:
+        if c.name == "uq_question_attempt_position":
+            cols = {col.name for col in c.columns}
+            assert cols == {"attempt_id", "attempt_position"}
+            return
+
+
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "alembic", *args],

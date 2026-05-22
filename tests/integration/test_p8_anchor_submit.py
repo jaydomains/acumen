@@ -392,7 +392,12 @@ def test_fresh_question_delta_with_no_pool_falls_through_to_assigned(
     nothing) and per_testee questions resolve to bare
     ``assigned_difficulty``. The competence estimate matches what
     P7 produced before Slice 3 — Slice 3 is strictly additive for
-    attempts without anchors."""
+    attempts without anchors.
+
+    P10 / AC-D25 v1.8 — per-Testee Question rows live in the DB
+    keyed by ``attempt_id`` + ``attempt_position``, not in the
+    snapshot (anchors-only). We fetch the rows directly to drive
+    autosave / submit for the test."""
     seed_system_settings(cat_session)
     admin = _admin(cat_session)
     testee = _testee(cat_session)
@@ -403,16 +408,17 @@ def test_fresh_question_delta_with_no_pool_falls_through_to_assigned(
     _assignee(cat_session, assignment=assignment, testee=testee)
 
     started = _start(cat_client, testee, test=test, assignment=assignment)
-    snapshot = next(
-        a for a in cat_session.store.get(Attempt, []) if str(a.id) == started["id"]
-    ).question_snapshot["questions"]
-    for entry in snapshot:
+    attempt_id = uuid.UUID(started["id"])
+    per_testee_rows = [
+        q for q in cat_session.store.get(Question, []) if q.attempt_id == attempt_id
+    ]
+    for q in per_testee_rows:
         _autosave(
             cat_client,
             testee,
             started["id"],
-            entry["question_id"],
-            {"choice": entry["config"]["correct"]},
+            str(q.id),
+            {"choice": q.config["correct"]},
         )
     assert _submit(cat_client, testee, started["id"]).status_code == 200
 
@@ -433,7 +439,10 @@ def test_submit_p7_baseline_competence_unchanged_for_non_per_testee(
     (test_p7_loop already pins the 6.0 worked-fixture for a frozen-
     mode attempt at score 1.0; that suite still passes in the full
     sweep but a one-liner reassertion here catches future drift
-    inside the per_testee branch specifically)."""
+    inside the per_testee branch specifically).
+
+    P10 / AC-D25 v1.8 — per-Testee Question rows live in the DB,
+    not in the snapshot (anchors-only). Iterate DB rows directly."""
     seed_system_settings(cat_session)
     admin = _admin(cat_session)
     testee = _testee(cat_session)
@@ -444,16 +453,17 @@ def test_submit_p7_baseline_competence_unchanged_for_non_per_testee(
     _assignee(cat_session, assignment=assignment, testee=testee)
 
     started = _start(cat_client, testee, test=test, assignment=assignment)
-    snapshot = next(
-        a for a in cat_session.store.get(Attempt, []) if str(a.id) == started["id"]
-    ).question_snapshot["questions"]
-    for entry in snapshot:
+    attempt_id = uuid.UUID(started["id"])
+    per_testee_rows = [
+        q for q in cat_session.store.get(Question, []) if q.attempt_id == attempt_id
+    ]
+    for q in per_testee_rows:
         _autosave(
             cat_client,
             testee,
             started["id"],
-            entry["question_id"],
-            {"choice": entry["config"]["correct"]},
+            str(q.id),
+            {"choice": q.config["correct"]},
         )
     assert _submit(cat_client, testee, started["id"]).status_code == 200
 

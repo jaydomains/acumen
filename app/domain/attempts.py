@@ -47,7 +47,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.cost import (
     maybe_fire_budget_alert,
     record_provenance,
-    record_provenance_share,
 )
 from app.ai.provider import Operation, resolve_provider
 from app.domain._scoring import outcome_for as _outcome_for
@@ -151,6 +150,121 @@ _SEQUENCE_RETRY_LIMIT = 5
 _RATE_EXEMPT_ORIGINS = frozenset(
     {AttemptOrigin.assignment_driven, AttemptOrigin.loop_driven}
 )
+
+# Pause-event reason vocabulary (P10 / AC-D25 v1.8 / AC-CD10 v1.8). User-
+# initiated pauses leave ``reason=None`` (the existing AC-D11 path);
+# system pauses stamp a constant so the resume UI can render "retry /
+# abandon" instead of the plain resume affordance. New reasons extend
+# here without a migration — VARCHAR(255) on the column matches the P8
+# ``excluded_reason`` constant-prefix-plus-detail-suffix shape.
+PAUSE_REASON_GENERATION_FAILED = "generation_failed"
+
+# Per-Testee streaming positions (P10 / AC-D25 v1.8 / AC-CD10 v1.8).
+# Q1 is the synchronous first-question slot persisted inside
+# ``start_attempt`` (sub-3-s target per ROADMAP P10 done-when); Q2..N
+# stream concurrently via ``app/domain/streaming.py`` under the SSE
+# handler's lifetime. Both share the constraint that ``attempt_position``
+# values are unique per ``attempt_id`` (migration 0007 enforces).
+_Q1_POSITION = 1
+
+
+async def pause_attempt_from_streaming(
+    session_factory: Any, attempt_id: uuid.UUID, reason: str
+) -> None:
+    """Production AC-D11 system-pause invocation for the SSE handler's
+    ``stream_attempt_questions`` orchestrator (P10 / AC-D25 v1.8 /
+    AC-CD10 v1.8). Opens a fresh short-lived session, loads the
+    Attempt + Test, calls ``pause_attempt(..., system=True,
+    reason=reason)``. The session is short-lived so the pause commits
+    independently of the SSE request session (which closes when the
+    handler returns); the pause survives so the Testee sees the
+    "retry / abandon" UI on resume.
+
+    Signature matches ``app.domain.streaming.PauseFn``
+    (``Callable[[uuid.UUID, str], Awaitable[None]]``) once
+    ``session_factory`` is partial-applied — the SSE handler wires
+    this in.
+    """
+    async with session_factory() as sess:
+        attempt = await get_attempt(sess, attempt_id)
+        if attempt is None:
+            _log.warning(
+                "streaming pause: attempt %s no longer exists; skipping",
+                attempt_id,
+            )
+            return
+        # Defer the import to avoid a circular import between
+        # ``app.domain.attempts`` and ``app.domain.tests`` (tests
+        # imports the catalogue layer which transitively imports
+        # this module).
+        from app.domain.tests import get_test
+
+        test = await get_test(sess, attempt.test_id)
+        if test is None:
+            _log.warning(
+                "streaming pause: attempt %s's test no longer exists; skipping",
+                attempt_id,
+            )
+            return
+        await pause_attempt(sess, attempt, test, system=True, reason=reason)
+        await sess.commit()
+
+
+async def _generate_q1_sync(
+    provider: Any, *, attempt: Attempt, payload: dict[str, Any]
+) -> Question:
+    """Synchronous Q1 generation with one orchestration-layer retry
+    above tenacity's HTTP retries in ``app/ai/anthropic.py::_invoke``
+    (P10 / AC-D25 v1.8). On second failure raises
+    ``APIError(503, "q1_generation_failed", ...)``; the router does not
+    call ``db.commit`` so the surrounding transaction rolls back,
+    Q1's Question row never persists, the Attempt row never persists,
+    and the Testee's rate-limit budget is not consumed.
+
+    Mirrors the per-Q-N retry loop in
+    ``app/domain/streaming.py::_generate_position`` but without the
+    semaphore (Q1 runs in the request thread, not under the buffer
+    cap) and without pause-on-failure (Q1 has no preceding state to
+    preserve; failure cancels attempt start entirely).
+    """
+    from app.domain.streaming import _extract_single_question_spec
+
+    last_error: Exception | None = None
+    for attempt_no in (1, 2):
+        try:
+            gen_result = await provider.generate(Operation.generation, payload)
+            spec = _extract_single_question_spec(gen_result.content)
+            question = Question(
+                tenant_id=SEED_TENANT_ID,
+                attempt_id=attempt.id,
+                type=QuestionType(spec["type"]),
+                config=spec["config"],
+                assigned_difficulty=spec["assigned_difficulty"],
+                realism_flag_count=0,
+                attempt_position=_Q1_POSITION,
+            )
+            record_provenance(question, gen_result)
+            return question
+        except Exception as exc:  # noqa: BLE001 — orchestrator policy
+            last_error = exc
+            if attempt_no == 1:
+                _log.info(
+                    "JIT Q1 generation failed (attempt 1/2); retrying once",
+                    extra={"attempt_id": str(attempt.id)},
+                )
+                continue
+            _log.warning(
+                "JIT Q1 generation failed after orchestration-layer retry; "
+                "raising q1_generation_failed",
+                extra={"attempt_id": str(attempt.id), "error": str(exc)},
+            )
+    raise APIError(
+        503,
+        "q1_generation_failed",
+        "Could not generate the first question after one retry. "
+        "Please try starting the attempt again.",
+    ) from last_error
+
 
 # Origins that REQUIRE an ``assignment_id`` (AC-D26 v1.4). Self-initiated
 # attempts never carry one.
@@ -413,6 +527,13 @@ def _present_one(
         "id": str(qid),
         "type": qtype,
         "question_group_id": q.get("question_group_id"),
+        # P10 / AC-D25 v1.8: ``attempt_position`` propagates through
+        # the presentation so the router can identify Q1 (position 1)
+        # for the POST response's ``q1`` field, and the SSE handler
+        # can identify which positions are already filled on
+        # reconnect-replay. NULL for snapshot-only sources (anchor
+        # questions, frozen / hand-authored test questions).
+        "attempt_position": q.get("attempt_position"),
         "config": out,
     }
 
@@ -427,6 +548,12 @@ def _snapshot_from_questions(questions: list[Question]) -> list[dict[str, Any]]:
             "question_group_id": (
                 str(q.question_group_id) if q.question_group_id else None
             ),
+            # P10 / AC-D25 v1.8: per-Testee streamed rows carry
+            # ``attempt_position``; anchor + frozen rows have NULL
+            # here. ``_present_one`` propagates this to the view so
+            # the router can identify Q1 (position 1) for the POST
+            # response's ``q1`` field.
+            "attempt_position": q.attempt_position,
         }
         for q in questions
     ]
@@ -596,89 +723,82 @@ async def start_attempt(
         src = sorted(result.scalars().all(), key=lambda q: (q.created_at, str(q.id)))
         attempt.question_snapshot = {"questions": _snapshot_from_questions(src)}
     elif test.mode == TestMode.per_testee:
-        # P5 Slice 2 — replaces P4's ``_stub_generate`` deterministic
-        # placeholder with the resolved Anthropic provider call. Per AI
-        # call produces N Question rows (one per generated question);
-        # ``record_provenance_share`` divides cost + tokens evenly
-        # across the N rows so the cost dashboard's per-attempt
-        # aggregation sums to the call total (AC-D18). Provider, model,
-        # and prompt_version are full per-call values replicated on
-        # every row.
+        # P10 / AC-D25 v1.8 / AC-CD10 v1.8 — per-Testee streaming. Q1
+        # generates synchronously here (~3-s budget per ROADMAP P10
+        # done-when); Q2..N stream over the SSE endpoint via the
+        # orchestrator in ``app/domain/streaming.py`` (Slice 4).
         #
-        # P9 Slice 3 — folds Drive RAG context into the payload per
-        # AC-D22. When the assignment has a single pill scope, the
-        # retrieve helper embeds a query (pill name + description +
-        # difficulty band) and returns top-k chunks; the prompt's
-        # ``rag_context`` placeholder receives the rendered block.
-        # Learning-path assignments (no single pill) and self-initiated
-        # attempts get an empty rag_context so the prompt template
-        # renders cleanly with the "(none)" sentinel.
+        # Anchor draw runs BEFORE Q1 (flipped from the pre-P10 order)
+        # so the snapshot is immutable across the streaming lifetime —
+        # only the per-Testee Question rows accumulate via SSE-spawned
+        # tasks; the snapshot holds anchors only. ``view_attempt`` for
+        # per-Testee fetches the per-Testee Question rows from the DB
+        # ordered by ``attempt_position`` and merges them with the
+        # snapshot anchors. The draw is cheap (DB read + Python sort
+        # + ``random.sample`` with ``shuffle_seed``); no AI call, no
+        # vector query — sub-millisecond at v1 scale.
+        #
+        # RAG context + low-realism negative examples are computed
+        # ONCE here at attempt start per SPEC §6.1 v1.8 and reused
+        # unchanged across the per-question calls (Q1 here, Q2..N in
+        # the SSE handler). The shared payload lives in
+        # ``attempt.question_snapshot`` so the SSE handler reads the
+        # same context the Q1 call used — guaranteeing prompt
+        # consistency across the attempt.
         target_difficulty = int(round(test.target_difficulty or 5))
         rag_pill = await _load_pill_for_assignment(db, assignment_id)
         rag_hits = await retrieve_for_generation(
             db, pill=rag_pill, target_difficulty=target_difficulty
         )
-        # P9 Slice 4 — low-realism negative-examples per AC-D22. The
-        # pool is per-pill, so a learning-path assignment (rag_pill is
-        # None) sees ``(none)``; same fallthrough as the rag_context
-        # block above.
         low_realism = (
             await list_low_realism_questions_for_pill(db, pill_id=rag_pill.id)
             if rag_pill is not None
             else []
         )
         provider = resolve_provider(Operation.generation, system_settings=settings)
-        gen_result = await provider.generate(
-            Operation.generation,
-            {
-                "test_name": test.name,
-                "target_difficulty": test.target_difficulty or 5,
-                "question_count": _GENERATION_DEFAULT_QUESTION_COUNT,
-                "attempt_id": str(attempt.id),
-                "rag_context": render_rag_context(rag_hits),
-                "low_realism_negative_examples": render_low_realism_examples(low_realism),
-            },
-        )
-        generated = gen_result.content.get("questions") or []
-        # Defensive: skip malformed specs rather than crash the attempt.
-        # Matches the AI-grading path's defensive posture below — a
-        # single bad spec must not block a testee from starting.
-        # Provenance is shared across VALID questions only so the cost
-        # dashboard's sum-to-call-total invariant holds (Gitar PR-#16
-        # Slice 2 finding #1).
-        valid_questions: list[Question] = []
-        for spec in generated:
-            try:
-                question = Question(
-                    tenant_id=SEED_TENANT_ID,
-                    attempt_id=attempt.id,
-                    type=QuestionType(spec["type"]),
-                    config=spec["config"],
-                    assigned_difficulty=spec["assigned_difficulty"],
-                    realism_flag_count=0,
-                )
-            except (KeyError, ValueError, TypeError):
-                continue
-            valid_questions.append(question)
-        share_count = max(1, len(valid_questions))
-        for question in valid_questions:
-            record_provenance_share(question, gen_result, share_count=share_count)
-            db.add(question)
-        await db.flush()
-        # P8 Slice 3 — anchor draw. Adds up to 2 :class:`AttemptAnchor`
-        # rows + folds the matching anchor :class:`Question` rows into
-        # the snapshot so the Testee sees them inline with the
-        # per_testee items (AC-D20 / AC-D27). No-ops for learning-path
-        # assignments (assignment.pill_id is None) and for empty pools
-        # (pill has no anchors generated yet).
+        rag_context_rendered = render_rag_context(rag_hits)
+        low_realism_rendered = render_low_realism_examples(low_realism)
+        payload_base = {
+            "test_name": test.name,
+            "target_difficulty": test.target_difficulty or 5,
+            "attempt_id": str(attempt.id),
+            "rag_context": rag_context_rendered,
+            "low_realism_negative_examples": low_realism_rendered,
+        }
+
+        # Anchor draw FIRST — produces anchor Question rows
+        # (pill_id-owned, ``attempt_position=NULL`` per SPEC §5 v1.8)
+        # and AttemptAnchor join rows. Returns the Question rows so
+        # we can fold them into the snapshot.
         anchor_questions = await draw_anchors_for_attempt(
             db, attempt=attempt, test=test, assignment_id=assignment_id
         )
         await db.flush()
-        per_testee_questions = await _attempt_questions(db, attempt.id)
         attempt.question_snapshot = {
-            "questions": _snapshot_from_questions(per_testee_questions + anchor_questions)
+            "questions": _snapshot_from_questions(anchor_questions),
+            # Persist the shared per-question payload so the SSE
+            # handler can reconstruct it for Q2..N without re-running
+            # the RAG retrieve (avoids cost amplification + ensures
+            # context consistency across the attempt).
+            "streaming_payload_base": payload_base,
+            # Total per-Testee question count for the attempt; the SSE
+            # handler computes the unfilled position set as
+            # [Q1_POSITION+1, ..., total_question_count] minus the
+            # positions already persisted.
+            "total_question_count": _GENERATION_DEFAULT_QUESTION_COUNT,
         }
+
+        # Q1: synchronous, single-question call with one orchestration-
+        # layer retry above tenacity's HTTP retries (AC-D25 v1.8). On
+        # second failure raise a typed 503 — the entire transaction
+        # rolls back so no Attempt persists and the Testee's rate-limit
+        # budget is not consumed.
+        q1_payload = {**payload_base, "question_count": 1}
+        q1_question = await _generate_q1_sync(
+            provider, attempt=attempt, payload=q1_payload
+        )
+        db.add(q1_question)
+        await db.flush()
     else:  # benchmark — sequential, no upfront set
         attempt.question_snapshot = {"questions": []}
 
@@ -773,16 +893,42 @@ async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[s
             {
                 "paused": True,
                 "pause_seconds_remaining": max(0, remaining),
+                "pause_reason": paused.reason,
                 "watermark": str(attempt.testee_id),
                 "questions": None,
             }
         )
         return base
     snapshot = (attempt.question_snapshot or {}).get("questions", [])
+    if test.mode == TestMode.per_testee:
+        # P10 / AC-D25 v1.8: per-Testee Question rows have
+        # ``attempt_position`` and live in the DB (not the snapshot —
+        # the snapshot holds anchors only). On view / resume we fetch
+        # the per-Testee rows ordered by position and merge them with
+        # the snapshot anchors before the standard presentation
+        # shuffle. The FakeSession harness has no ORDER BY support
+        # (AC-CD15); the Python-side sort by ``attempt_position`` is
+        # cheap at v1 scale (≤10 rows per attempt) and matches the
+        # existing pattern in ``_attempt_questions``.
+        per_testee_rows = await _attempt_questions(db, attempt.id)
+        per_testee_rows_sorted = sorted(
+            per_testee_rows,
+            key=lambda q: (
+                # NULL ``attempt_position`` is unexpected for per-Testee
+                # rows (Q1 is always 1, Q2..N are 2..N at enqueue
+                # time) but defensive-sorting unknown positions to the
+                # end preserves stable ordering during partial-failure
+                # debugging.
+                q.attempt_position if q.attempt_position is not None else 10**9,
+                str(q.id),
+            ),
+        )
+        snapshot = _snapshot_from_questions(per_testee_rows_sorted) + snapshot
     base.update(
         {
             "paused": False,
             "pause_seconds_remaining": None,
+            "pause_reason": None,
             "watermark": str(attempt.testee_id),
             "questions": presented_questions(
                 snapshot,
@@ -836,15 +982,37 @@ def _pause_blocked_reason(test: Test) -> str | None:
     return None
 
 
-async def pause_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> None:
+async def pause_attempt(
+    db: AsyncSession,
+    attempt: Attempt,
+    test: Test,
+    *,
+    system: bool = False,
+    reason: str | None = None,
+) -> None:
+    """Pause an in-progress attempt.
+
+    User-initiated pauses (``system=False``, the AC-D11 path) honour the
+    pause_blocked + allowance + already_paused guards and increment
+    ``attempt.pauses_used``. System-initiated pauses (``system=True``,
+    the P10 single-Q-N-generation-failure path per AC-D25 v1.8) bypass
+    pause_blocked / pause_allowance (operational, not user-quota) and
+    do not increment ``pauses_used``, but still error on
+    ``already_paused`` — a system pause coalesces with an existing user
+    pause rather than double-writing. ``reason`` is persisted on the
+    new ``AttemptPauseEvent.reason`` column; the resume UI reads the
+    most-recent pause event's reason to decide "retry / abandon" vs
+    the plain resume affordance.
+    """
     if attempt.submitted_at is not None:
         raise APIError(409, "attempt_submitted", "This attempt is already submitted.")
-    blocked = _pause_blocked_reason(test)
-    if blocked is not None:
-        raise APIError(409, "pause_not_allowed", blocked)
+    if not system:
+        blocked = _pause_blocked_reason(test)
+        if blocked is not None:
+            raise APIError(409, "pause_not_allowed", blocked)
     if await _settle_pause(db, attempt, test) is not None:
         raise APIError(409, "already_paused", "This attempt is already paused.")
-    if attempt.pauses_used >= (test.pause_allowance or 0):
+    if not system and attempt.pauses_used >= (test.pause_allowance or 0):
         raise APIError(409, "pause_allowance_exhausted", "No pauses remaining.")
     db.add(
         AttemptPauseEvent(
@@ -852,9 +1020,11 @@ async def pause_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> None:
             attempt_id=attempt.id,
             started_at=now_utc(),
             auto_resumed=False,
+            reason=reason,
         )
     )
-    attempt.pauses_used += 1
+    if not system:
+        attempt.pauses_used += 1
     await db.flush()
 
 

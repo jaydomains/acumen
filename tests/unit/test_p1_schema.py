@@ -124,6 +124,22 @@ def test_key_columns_present() -> None:
     assert "shuffle_seed" in attempt
     assert "question_snapshot" in attempt
 
+    # AC-D25 v1.8 / AC-CD10 v1.8 (P10): per-Testee Q-N ordering anchor
+    # via migration 0007. Nullable for ``test_id``-owned (frozen) and
+    # ``pill_id``-owned (anchor-pool) rows per SPEC §5 v1.8.
+    question = _table("question").c
+    assert "attempt_position" in question
+    assert question["attempt_position"].nullable is True
+
+    # AC-D25 v1.8 / AC-CD10 v1.8 (P10): pause-event reason via migration
+    # 0007. NULL for user pauses (AC-D11); non-NULL for system pauses
+    # (the streaming orchestrator's single-failure path).
+    pause = _table("attempt_pause_event").c
+    assert "reason" in pause
+    assert pause["reason"].nullable is True
+    assert isinstance(pause["reason"].type, String)
+    assert pause["reason"].type.length == 255
+
     # AC-D24 / AC-D11 on test.
     test = _table("test").c
     for c in (
@@ -244,3 +260,29 @@ def test_migration_0006_drive_chunk_provenance_round_trip() -> None:
         "DROP COLUMN ai_cost_usd",
     ):
         assert column in down.stdout
+
+
+def test_migration_0007_question_position_round_trip() -> None:
+    # P10 additive: ``question.attempt_position`` + unique constraint on
+    # ``(attempt_id, attempt_position)`` + ``attempt_pause_event.reason``.
+    # Reversible per AC-CD3.
+    up = _alembic(
+        "upgrade",
+        "0006_p9_drive_chunk_provenance:0007_p10_question_position",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "ADD COLUMN attempt_position" in up.stdout
+    assert "uq_question_attempt_position" in up.stdout
+    assert "UNIQUE (attempt_id, attempt_position)" in up.stdout
+    assert "ADD COLUMN reason VARCHAR(255)" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0007_p10_question_position:0006_p9_drive_chunk_provenance",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP COLUMN attempt_position" in down.stdout
+    assert "DROP CONSTRAINT uq_question_attempt_position" in down.stdout
+    assert "DROP COLUMN reason" in down.stdout

@@ -206,16 +206,28 @@ def test_frozen_attempt_snapshots_questions(
 def test_per_testee_attempt_generates_stub_questions(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:
+    """P10 / AC-D25 v1.8 — per-Testee POST returns only Q1
+    synchronously; the stub returns 2 questions in its response but
+    the per-question pattern (``question_count=1``) takes only the
+    first. Q2..N stream over the SSE endpoint (Slice 4); the FE
+    fetches them there, not from this response."""
     seed_system_settings(cat_session)
     t = _testee(cat_session)
     test = _new_test(cat_session, mode=TestMode.per_testee)
     r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
     assert r.status_code == 201, r.text
-    questions = r.json()["questions"]
-    # Stub generator emits two deterministic items (MCQ + TF).
-    assert len(questions) == 2
-    types = {q["type"] for q in questions}
-    assert "multiple_choice" in types and "true_false" in types
+    body = r.json()
+    questions = body["questions"]
+    # Exactly Q1 is persisted at POST time (assigned_position=1); no
+    # anchors get drawn for self-initiated attempts (no assignment).
+    assert len(questions) == 1
+    assert questions[0]["type"] in {"multiple_choice", "true_false"}
+    assert questions[0]["attempt_position"] == 1
+    # AC-D25 v1.8: POST response surfaces Q1 as a top-level field so
+    # the FE renders immediately while opening SSE for Q2..N.
+    assert body["q1"] is not None
+    assert body["q1"]["attempt_position"] == 1
+    assert body["q1"]["id"] == questions[0]["id"]
 
 
 def test_benchmark_attempt_starts_with_empty_snapshot(
