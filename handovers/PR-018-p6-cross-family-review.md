@@ -384,6 +384,25 @@ Slice 1 review: no findings. Slice 3 review: no findings.
   `review_pending` server-side gate so the UX can render the right
   state; the visible-preliminary affordance itself is frontend
   territory.
+- **Per-feature router layout (AC-CD2 / CODE_SPEC §3) vs
+  admin-consolidation reality.** Surfaced by the PR-026 verification
+  audit. PR-018 landed P6 cross-family review by populating
+  `app/domain/grade_review.py` (submit-path + reconcile) and adding the
+  admin flag queue + per-row override + reconcile-trigger endpoints to
+  `app/routers/admin.py` — *not* to the AC-CD2-mandated per-feature
+  stub at `app/routers/review.py`. The CODE_SPEC §3 layout anticipates
+  one router per domain (review, grading, loop, competency); the v1
+  implementation concentrates admin surfaces in `admin.py` and leaves
+  the per-feature stubs unmounted. PR-026 retains the stubs as
+  RESERVED port seams (docstrings parallel to `internal.py`) to keep
+  the structure-gate contract intact without forcing a spec amendment.
+  A future v1.x decision either (a) amends AC-CD2 / §3 to reflect the
+  admin-consolidation pattern, or (b) populates the per-feature
+  routers as thin pass-throughs — most likely for Testee-facing
+  surfaces (e.g. "show me my review verdict", "list my pending
+  follow-ups", "show me my per-pill competence_estimate"). Not
+  blocking; flagged here so the next layout audit doesn't relitigate
+  it from scratch.
 
 ## Build state vs spec
 
