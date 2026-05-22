@@ -30,3 +30,54 @@ jobs:
         run: mypy app
       - name: Pytest
         run: pytest -q
+
+  migration-chain:
+    # Greenfield Alembic ``upgrade head`` against a real Postgres —
+    # the pytest suite runs alembic in ``--sql`` offline mode (zero-DB
+    # per AC-CD15) and so cannot detect chain breakage from one
+    # migration emitting a column the next migration tries to add.
+    # This job is that backstop and matches the local ``docker compose
+    # exec acumen alembic upgrade head`` first-time-setup story.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: acumen
+          POSTGRES_PASSWORD: acumen
+          POSTGRES_DB: acumen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U acumen -d acumen"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_MIGRATION_URL: postgresql+psycopg://acumen:acumen@127.0.0.1:5432/acumen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install deps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Apply init.sql (vector extension + acumen schema)
+        run: |
+          PGPASSWORD=acumen psql -h 127.0.0.1 -U acumen -d acumen \
+            -f infra/postgres/init.sql
+      - name: alembic upgrade head (greenfield)
+        run: alembic upgrade head
+      - name: alembic current is head
+        run: |
+          out=$(alembic current 2>&1)
+          echo "$out"
+          echo "$out" | grep -q '0007_p10_question_position (head)'
+      - name: alembic downgrade base (reversibility, AC-CD3)
+        run: alembic downgrade base
+      - name: alembic upgrade head (round-trip)
+        run: alembic upgrade head
