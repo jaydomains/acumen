@@ -54,3 +54,27 @@ async def auto_tag_safety(
         return True
     haystack = f"{name} {description or ''}".lower()
     return any(keyword in haystack for keyword in await _safety_keywords(db))
+
+
+# --- P11 Slice 2 placeholder for the safety_links.check beat task ----
+# The full implementation (web search + httpx fetch + SHA-256 drift
+# audit) lands in Slice 3. The stub is wired in Slice 2 so the
+# ``safety_links.check`` Celery wrapper and the beat-schedule entry
+# can land together with the rest of the §8.9 cron set; tests skip
+# the empty path. AC-CD7 idempotency contract holds — re-running this
+# is a counter-zero no-op until Slice 3 fills the body.
+
+
+async def check_safety_links(db: AsyncSession) -> dict[str, int]:
+    """Monthly safety-link verification sweep (AC-D21). **Stub at
+    Slice 2; real implementation lands in Slice 3.**
+
+    Returns the v1.x telemetry shape so the Celery wrapper + admin
+    trigger see a stable contract across the slice boundary.
+    """
+    return {
+        "links_checked": 0,
+        "links_broken_replaced": 0,
+        "links_drift_flagged": 0,
+        "links_unchanged": 0,
+    }
