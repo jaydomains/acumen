@@ -291,7 +291,7 @@ work from the DECISIONS formulas, flag any ambiguity before coding.
 - **Drive RAG — AC-D22 (AC-CD9), `app/domain/drive_rag.py`.** IVFFlat,
   `text-embedding-3-small` (1536-dim), diff-based daily ingest, embedding
   spend tracked to **OpenAI**.
-- **Cross-family review — AC-D19 (AC-CD11), `app/routers/review.py`.**
+- **Cross-family review — AC-D19 (AC-CD11), `app/domain/grade_review.py`.**
   Synchronous pre-stamp OpenAI review, **batched per attempt with a
   60-second hard ceiling** (AC-CD11 v1.7); fail-soft `pending` +
   reconcile cron on ceiling-exceeded or provider-unavailable. Closed
@@ -310,9 +310,9 @@ plan-mode gate as a residual ambiguity in the §10 prose body — was
 **closed at v1.8**: in-process `asyncio.gather` + `Semaphore`,
 `question.attempt_position` column, single-Q-N-retry then AC-D11
 pause. AC-D25's Implications were realigned in the same change. See
-`CODE_SPEC.md` §10 / §18 AC-CD10 and `DECISIONS.md` AC-D25 v1.8. P6
-builds (already shipped at PR-018) and P10 builds against locked
-text; no live drift question remains.
+`CODE_SPEC.md` §10 / §18 AC-CD10 and `DECISIONS.md` AC-D25 v1.8. P6 builds (shipped at PR-018), P10
+builds (shipped at PR-023), and P11 builds (shipped at PR-024)
+all landed against locked text; no live drift question remains.
 
 ## Paste-ready session-start script
 
@@ -345,14 +345,16 @@ streaming execution model locked as in-process `asyncio.gather` +
 path; Question gains an attempt-scoped `attempt_position` column for
 stable streamed-arrival ordering; single-Q-N-generation-failure
 policy locked as one orchestration-layer retry then AC-D11 pause;
-AC-D25 Implications realigned in the same change). **P0–P9 landed**
-(P0–P5 foundation through AI provider layer; P6 Cross-family review
-at PR-018; P7 Adaptive loop at PR-019; P8 Anchor calibration at
-PR-020; P9 Drive RAG + realism feedback at PR-021). v1.4 / v1.5
-merged as doc-only clarifications; v1.6 consolidated the pre-build
-spec-audit; v1.7 closed AC-CD11; v1.8 closes AC-CD10. **2 phases
-remain.** Next session starts at ROADMAP **P10 — JIT streaming
-generation (per-Testee)** — the AC-CD10 gate is closed, so P10
-builds against the locked contract directly.
+AC-D25 Implications realigned in the same change). **P0–P11
+landed** (P0–P5 foundation through AI provider layer; P6
+Cross-family review at PR-018; P7 Adaptive loop at PR-019; P8
+Anchor calibration at PR-020; P9 Drive RAG + realism feedback at
+PR-021; P10 JIT streaming generation at PR-023; P11 Bootstrap,
+safety links, crons, cost, comms at PR-024). v1.4 / v1.5 merged
+as doc-only clarifications; v1.6 consolidated the pre-build
+spec-audit; v1.7 closed AC-CD11; v1.8 closed AC-CD10. **No
+remaining phases — v1 implementation complete.** Next session
+starts with the post-build hardening / observability sweep
+(formerly the conditional P12 in `ROADMAP.md:200`).
 
 *End of SESSION_START. Paired with the v1.8 document set.*

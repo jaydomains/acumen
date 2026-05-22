@@ -103,8 +103,10 @@ on every `review()` call — at minimum `latency_ms`, `success` (bool),
 **Done-when:** an AI-graded response carries confirmed/flagged before
 the result displays for the within-60-s batched path; over-ceiling or
 provider-down yields a preliminary result page with `pending` rows;
-the reconcile cron picks them up; `app/routers/review.py` enforces the
-60-s submit deadline.
+the reconcile cron picks them up; `app/domain/grade_review.py`
+enforces the 60-s submit deadline via
+`GRADE_REVIEW_SUBMIT_CEILING_SECONDS = 60.0` (line 85) wrapped in
+`asyncio.wait_for` (line 324, inside `_review_ai_grades`).
 **Anchors:** AC-D19; AC-CD11.
 **Risks:** the 60-s ceiling is a single tunable — instrument it so a
 future tuning pass has the data to widen or tighten. Partial-batch
