@@ -87,6 +87,7 @@ eventual port is mechanical. Acumen-only additions carry a rationale.
 | `google-auth` | `>=2.33` | Acumen: Drive service-account auth |
 | `argon2-cffi` | `>=23.1` | Acumen: password hashing (AC-D10) |
 | `tenacity` | `>=8.5,<9.0` | Acumen: retry/backoff on external AI + Drive calls |
+| `reportlab` | `>=4.0,<5.0` | Acumen: attempt-result PDF export (SPEC §3, P11). Pure-Python (no Dockerfile system deps); spec defers library choice. |
 | `pytest` / `pytest-asyncio` | `>=8.0` / `>=0.23` | Acumen: test layer (dev) |
 
 Pins live in `requirements.txt` (HTTP) and `requirements-worker.txt`

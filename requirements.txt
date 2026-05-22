@@ -27,3 +27,4 @@ google-api-python-client>=2.140
 google-auth>=2.33
 argon2-cffi>=23.1
 tenacity>=8.5,<9.0
+reportlab>=4.0,<5.0
