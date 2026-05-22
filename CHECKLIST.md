@@ -84,9 +84,9 @@
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
 | **AC-CD11 latency rule resolved (gate)** | P6 | AC-CD11 | `CODE_SPEC.md` | built | `CODE_SPEC.md` §18 AC-CD11 v1.7; `DECISIONS.md` AC-D19 v1.7; `SPEC.md` §6.6 / §4.8 v1.7 |
-| Synchronous OpenAI review before stamp | P6 | AC-D19 | `app/routers/review.py` | missing | |
-| Fail-soft "review pending" + reconcile cron | P6 | AC-D19 | `app/domain/`,`app/beat_schedule.py` | missing | |
-| Admin flag queue | P6 | AC-D19 | `app/routers/admin.py` | missing | |
+| Synchronous OpenAI review before stamp | P6 | AC-D19 | `app/domain/grade_review.py`, `app/routers/admin.py` | built | `tests/integration/test_p6_grade_review_submit.py::test_submit_writes_grade_review_rows_for_each_ai_grade` (one batched OpenAI review call per submit, GradeReview rows confirmed with provenance per AC-D18); `app/domain/grade_review.py:85` `GRADE_REVIEW_SUBMIT_CEILING_SECONDS = 60.0`; `app/domain/grade_review.py:324` `asyncio.wait_for` inside `_review_ai_grades` |
+| Fail-soft "review pending" + reconcile cron | P6 | AC-D19 | `app/domain/grade_review.py`, `app/beat_schedule.py`, `app/worker.py` | built | `tests/integration/test_p6_grade_review_reconcile.py::test_reconcile_flags_pending_when_provider_returns_flagged`; `app/beat_schedule.py` `grade_review.reconcile` entry (5-min crontab); `app/worker.py:60-87` `reconcile_grade_reviews_task` |
+| Admin flag queue | P6 | AC-D19 | `app/routers/admin.py` | built | `tests/integration/test_p6_admin_flag_queue.py::test_list_flagged_returns_unresolved_only`; `tests/integration/test_p6_admin_reconcile_endpoint.py` (returns-counts, zero-counts, forbidden-for-non-admin) |
 
 ## P7 — Adaptive loop, competence, integrity
 

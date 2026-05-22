@@ -693,7 +693,7 @@ rate-limit load by N and complicates partial-failure UX (some
 confirmed, some pending across the same attempt) without buying
 meaningful headroom at the typical 3–5-AI-graded-response attempt
 size.
-**Implications:** `app/routers/review.py` (planned at P6) calls
+**Implications:** `app/domain/grade_review.py` (`_review_ai_grades`) calls
 `AIProvider.review()` once per attempt with the full AI-graded
 response list, wrapping it in a 60-s timeout/deadline; the timeout
 raises the same fail-soft branch as a provider error. The §8 cron
