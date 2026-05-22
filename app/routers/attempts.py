@@ -30,8 +30,9 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any, cast
 
+import anyio
 from fastapi import APIRouter, Depends, Header, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +40,7 @@ from app.ai.provider import Operation, resolve_provider
 from app.config import get_settings
 from app.domain import attempts as attempt_domain
 from app.domain import tests as test_domain
+from app.domain.pdf import render_attempt_pdf
 from app.domain.streaming import (
     GenerationFailedError,
     GenerationSlot,
@@ -57,6 +59,7 @@ from app.permissions import (
     ROLE_ADMINISTRATOR,
     APIError,
     get_privacy_acked_user,
+    load_user_by_id,
 )
 from app.schemas import (
     AttemptResultResponse,
@@ -231,6 +234,56 @@ async def attempt_result(
     attempt, test = await _load(db, user, attempt_id)
     result = await attempt_domain.result_view(db, attempt, test)
     return AttemptResultResponse(**result)
+
+
+@router.get("/{attempt_id}/export.pdf")
+async def attempt_export_pdf(
+    attempt_id: uuid.UUID,
+    user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """P11 attempt-result PDF export (SPEC §3:136).
+
+    Returns the attempt's graded result as a single-file PDF.
+    Owner-testee or admin only (the standard ``_load`` ownership
+    gate). Requires the attempt to be submitted (422
+    ``attempt_not_submitted`` otherwise); the PDF is a result
+    document, not an in-progress snapshot.
+    """
+    attempt, test = await _load(db, user, attempt_id)
+    if attempt.submitted_at is None:
+        raise APIError(
+            422,
+            "attempt_not_submitted",
+            "PDF export is only available for submitted attempts.",
+        )
+    view = await attempt_domain.view_attempt(db, attempt, test)
+    result = await attempt_domain.result_view(db, attempt, test)
+    testee = await load_user_by_id(db, attempt.testee_id)
+    testee_email = testee.email if testee is not None else "—"
+    # ReportLab is sync-only and CPU-bound; running it inline in this
+    # async handler would block the event loop for the render duration
+    # (multi-question attempts can take seconds). Offload to a thread
+    # pool via ``anyio.to_thread.run_sync`` — same pattern as
+    # ``app/domain/drive_source.py`` for Drive's blocking
+    # ``googleapiclient`` calls (Gitar PR-#24 Slice 1 finding #2).
+    pdf_bytes = await anyio.to_thread.run_sync(
+        lambda: render_attempt_pdf(
+            view,
+            result,
+            test_name=test.name,
+            testee_email=testee_email,
+        )
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="acumen-attempt-{attempt_id}.pdf"'
+            ),
+        },
+    )
 
 
 @router.get("/{attempt_id}/stream")

@@ -815,3 +815,60 @@ class DriveIndexStatus(_Base):
     chunks: int
     files: int
     last_indexed_at: datetime | None
+
+
+class SafetyLinkCheckResult(_Base):
+    """Telemetry returned by one safety-link verification sweep
+    (AC-D21 / P11 Slice 3). Same body shape the monthly beat task
+    emits on every scheduled run.
+
+    * ``links_checked`` — total ``PillSafetyLink`` rows iterated.
+    * ``links_broken_replaced`` — count of replacement links added
+      by the best-effort top-up curation pass on pills whose cached
+      URLs failed.
+    * ``links_drift_flagged`` — count of links whose SHA-256
+      content_hash changed since the last check; admin audit-row
+      written, no AI call (AC-CD8 v1.6 operation enum constraint).
+    * ``links_unchanged`` — count of links that returned 200 + a
+      matching content_hash."""
+
+    links_checked: int
+    links_broken_replaced: int
+    links_drift_flagged: int
+    links_unchanged: int
+
+
+class BootstrapRunResult(_Base):
+    """Telemetry returned by one execution of the AC-D23 bootstrap
+    orchestrator (P11 Slice 4). Aggregates per-step counters across
+    the four AC-D23 actions; a second run on a fresh population
+    surfaces all-zero counters (the idempotency contract).
+
+    Fields:
+
+    * ``pills_processed`` — count of active (non-retired) pills the
+      run touched for anchor top-up.
+    * ``anchors_generated`` / ``anchors_excluded`` — anchor pool
+      diff from this run (zero on a quota-clean re-run).
+    * ``safety_pills_curated`` / ``safety_links_added`` — link
+      curation diff from this run (zero on a quota-clean re-run).
+    * ``drive_step_ran`` — False when ``drive_folder_id`` is unset
+      (the operator can re-run after configuring without re-triggering
+      the rest of the bootstrap).
+    * ``drive_files_*`` — Drive ingest diff; zero across all four
+      when no folder change since last ingest.
+    * ``duration_seconds`` — wall-clock for the orchestrator run; the
+      operator's primary signal for "did this finish in a sane
+      time window"."""
+
+    pills_processed: int
+    anchors_generated: int
+    anchors_excluded: int
+    safety_pills_curated: int
+    safety_links_added: int
+    drive_step_ran: bool
+    drive_files_seen: int
+    drive_files_changed: int
+    drive_files_added: int
+    drive_files_deleted: int
+    duration_seconds: float

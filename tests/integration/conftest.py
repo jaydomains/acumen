@@ -558,3 +558,74 @@ def fake_drive(monkeypatch: pytest.MonkeyPatch) -> _FakeDrive:
     fake = _FakeDrive()
     monkeypatch.setattr("app.domain.drive_source._GOOGLE_DRIVE", fake)
     return fake
+
+
+# --- P11 Slice 3 web search harness ----------------------------------
+# ``_FakeWebSearch`` substitutes the module-level
+# :func:`app.domain.web_search.get_web_search_source` singleton via
+# monkeypatch. Tests opt in via the ``fake_web_search`` fixture; the
+# production seam (``TavilyWebSearch``) is never reached and the
+# Tavily API-key env var stays unset (AC-CD15 — no network in tests).
+# Tests register canned results via ``set_results(query, results)`` or
+# the catch-all ``set_default_results(results)``.
+
+
+class _FakeWebSearch:
+    """In-memory :class:`~app.domain.web_search.WebSearchSource`
+    stand-in. Mirrors the :class:`_FakeDrive` shape (per-query canned
+    results + a call log). The ``links_drift_flagged`` /
+    ``links_broken_replaced`` paths in
+    :func:`~app.domain.safety_links.check_safety_links` exercise the
+    same seam by triggering best-effort top-up curation; the fake
+    serves the same canned list each time, so the cron test can
+    assert deterministic outcomes."""
+
+    def __init__(self) -> None:
+        from app.domain.web_search import WebSearchResult as _WebSearchResult
+
+        self._WebSearchResult = _WebSearchResult
+        self._per_query: dict[str, list[Any]] = {}
+        self._default: list[Any] = []
+        self.search_calls: list[tuple[str, int]] = []
+
+    def set_default_results(self, results: list[Any]) -> None:
+        """Set the result list returned for any query that lacks a
+        specific override. Most tests use only this — the cron and
+        curation paths don't care about query specifics, only the
+        shape of the response."""
+        self._default = list(results)
+
+    def set_results(self, query: str, results: list[Any]) -> None:
+        """Override results for an exact-match query string. Used
+        when a test exercises the per-query mapping explicitly."""
+        self._per_query[query] = list(results)
+
+    def make_result(
+        self,
+        *,
+        url: str,
+        title: str = "Reference",
+        snippet: str = "",
+        source: str = "example.com",
+    ) -> Any:
+        """Construct a :class:`WebSearchResult` so tests don't need to
+        import the dataclass directly."""
+        return self._WebSearchResult(url=url, title=title, snippet=snippet, source=source)
+
+    async def search(self, query: str, *, max_results: int = 5) -> list[Any]:
+        self.search_calls.append((query, max_results))
+        results = self._per_query.get(query, self._default)
+        return list(results)[:max_results]
+
+
+@pytest.fixture
+def fake_web_search(monkeypatch: pytest.MonkeyPatch) -> _FakeWebSearch:
+    """Substitute the :class:`_FakeWebSearch` for the module-level
+    :func:`app.domain.web_search.get_web_search_source` singleton.
+    Tests that exercise safety-link curation or the monthly check
+    opt in via this fixture; tests that don't would fall through to
+    ``TavilyWebSearch`` which would crash on the empty API-key env
+    var (AC-CD15 fail-safe — no network from test paths)."""
+    fake = _FakeWebSearch()
+    monkeypatch.setattr("app.domain.web_search._TAVILY", fake)
+    return fake

@@ -1,7 +1,152 @@
 """Autonomous bootstrap — idempotent anchor/link/index population (AC-D23).
 
-Anchor self-review cross-family per AC-D19 pattern. CODE_SPEC §8,
-AC-CD7. (pending P11)
+P11 / AC-D23. One operator command pre-populates calibration scaffolding
+and content before the first Testee touches the system. The run
+executes in four steps per AC-D23::
+
+  1. For every active pill, top-up the anchor question pool per
+     supported band (AC-D20). Existing live anchors are not touched;
+     only the deficit is generated. Each new anchor passes through
+     AI self-review (AC-D19 cross-family pattern) inline.
+
+  2. Self-review is integrated into step 1 — no separate sweep.
+
+  3. For every safety-tagged pill, ensure the curated external
+     link set per AC-D21 is at quota. Calls into
+     :func:`~app.domain.safety_links.curate_links_for_pill`.
+
+  4. Embed and index whatever documents are present in the
+     designated Drive folder per AC-D22. Calls into
+     :func:`~app.domain.drive_rag.ingest_drive_folder`. Skipped
+     when ``system_settings.drive_folder_id`` is unset — surfaces
+     in the operator's telemetry rather than crashing.
+
+**Idempotency contract (AC-CD7).** Re-running on an already-populated
+deployment returns near-zero counters: anchor top-up's quota gate
+short-circuits, link curation skips pills at quota + dedupes URLs,
+Drive ingest's content_hash diff yields zero changes. A re-run after
+adding one pill increments only the affected pill's counters.
+
+The orchestrator is admin-triggered (``POST /v1/admin/bootstrap/run``);
+it is NOT in the beat schedule per AC-CD7 ("idempotent enqueued job").
+At v1 scale (≤30 pills, ≤30 safety-tagged) the synchronous admin
+endpoint is acceptable; the Celery task wrapper (one off-cron task)
+is the production path for large datasets.
 """
 
 from __future__ import annotations
+
+import logging
+import time
+from typing import Any
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domain.calibration import generate_anchor_pool_for_pill
+from app.domain.drive_rag import ingest_drive_folder
+from app.domain.safety_links import curate_links_for_pill
+from app.models import SEED_TENANT_ID, Pill
+from app.permissions import APIError
+
+logger = logging.getLogger(__name__)
+
+
+async def _active_pills(db: AsyncSession) -> list[Pill]:
+    """Return every active (non-retired) pill in the tenant. AC-D14:
+    retired pills are hidden from active flows + retained for audit;
+    they don't get bootstrap touch."""
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return [p for p in result.scalars().all() if p.retired_at is None]
+
+
+async def run_bootstrap(
+    db: AsyncSession,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Execute the AC-D23 bootstrap orchestrator once. Idempotent.
+
+    Returns aggregate telemetry across the four steps so the
+    operator's admin trigger response (and the Celery task return
+    value) carries one envelope. The ``http_client`` parameter is
+    plumbed through to :func:`curate_links_for_pill` for AC-CD15
+    zero-network testability; production passes ``None`` and the
+    callee opens fresh clients per request.
+
+    Returns::
+
+        {
+          "pills_processed":      <int>,   # active pills walked
+          "anchors_generated":    <int>,   # NEW anchors (top-up)
+          "anchors_excluded":     <int>,   # 3-fail anchors flagged
+          "safety_pills_curated": <int>,   # pills with link adds
+          "safety_links_added":   <int>,   # individual link rows
+          "drive_step_ran":       <bool>,  # False = drive_folder_id unset
+          "drive_files_seen":     <int>,
+          "drive_files_changed":  <int>,
+          "drive_files_added":    <int>,
+          "drive_files_deleted":  <int>,
+          "duration_seconds":     <float>,
+        }
+    """
+    started = time.monotonic()
+
+    # Step 1: anchor top-up across every active pill. Each pill's
+    # generator handles the per-band deficit math internally; pills
+    # at quota are counter-zero no-ops.
+    anchors_generated = 0
+    anchors_excluded = 0
+    pills_processed = 0
+    pills = await _active_pills(db)
+    for pill in pills:
+        result = await generate_anchor_pool_for_pill(db, pill.id, top_up=True)
+        anchors_generated += int(result.get("anchors_generated", 0))
+        anchors_excluded += int(result.get("anchors_excluded", 0))
+        pills_processed += 1
+
+    # Step 3: safety-link curation for every safety pill below quota.
+    # ``curate_links_for_pill`` is itself idempotent + URL-dedupes.
+    safety_pills_curated = 0
+    safety_links_added = 0
+    for pill in pills:
+        if not pill.safety_relevant:
+            continue
+        link_result = await curate_links_for_pill(db, pill.id, http_client=http_client)
+        added = int(link_result.get("links_added", 0))
+        if added > 0:
+            safety_pills_curated += 1
+            safety_links_added += added
+
+    # Step 4: Drive RAG ingest (one call, content_hash-diff inside).
+    # Skipped when drive_folder_id is unset — the operator gets a
+    # ``drive_step_ran: False`` signal instead of a 409 mid-bootstrap.
+    drive_step_ran = False
+    drive_telemetry: dict[str, int] = {}
+    try:
+        drive_telemetry = await ingest_drive_folder(db)
+        drive_step_ran = True
+    except APIError as exc:
+        if exc.code != "drive_folder_unconfigured":
+            raise
+        logger.info(
+            "Bootstrap: skipping Drive RAG ingest — system_settings."
+            "drive_folder_id is unset. Operator should configure it "
+            "to enable AC-D22 / AC-D23 step 4."
+        )
+
+    duration = time.monotonic() - started
+    return {
+        "pills_processed": pills_processed,
+        "anchors_generated": anchors_generated,
+        "anchors_excluded": anchors_excluded,
+        "safety_pills_curated": safety_pills_curated,
+        "safety_links_added": safety_links_added,
+        "drive_step_ran": drive_step_ran,
+        "drive_files_seen": int(drive_telemetry.get("files_seen", 0)),
+        "drive_files_changed": int(drive_telemetry.get("files_changed", 0)),
+        "drive_files_added": int(drive_telemetry.get("files_added", 0)),
+        "drive_files_deleted": int(drive_telemetry.get("files_deleted", 0)),
+        "duration_seconds": duration,
+    }
