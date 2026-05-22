@@ -699,4 +699,4 @@ where `testee_anchor_delta = mean( anchor_effective_difficulty_j − assigned_di
 
 ---
 
-*End of Acumen decisions anchor log. 27 decisions locked (AC-D1–AC-D27); 6 amendments applied in v1.1, 3 in v1.2 plus new AC-D27. Status: v1.2. Paired with `SPEC.md` v1.2.*
+*End of Acumen decisions anchor log. 27 decisions locked (AC-D1–AC-D27); 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27. Status: v1.8. Paired with `SPEC.md` v1.8.*

@@ -1,7 +1,7 @@
 # CODE_SPEC — Acumen technical specification & stack lock (canonical)
 
-> **Companion to** `SPEC.md` (functional, v1.2) and `DECISIONS.md`
-> (product anchors AC-D1–AC-D27, v1.2). This document is the canonical
+> **Companion to** `SPEC.md` (functional, v1.8) and `DECISIONS.md`
+> (product anchors AC-D1–AC-D27, v1.8). This document is the canonical
 > **technical** specification and stack lock.
 >
 > **Authority:** the codebase is the source of truth. Target-state items
@@ -213,6 +213,29 @@ corpus grows. Anchored as **AC-CD3** (schema/migration) and **AC-CD4**
 `anchor_calibration_confidence_threshold` (20),
 `anchor_calibration_prior_weight` (20), `drive_folder_id`,
 `embedding_model` (default `text-embedding-3-small`).
+
+**Intentionally outside `system_settings` (v1.8 dispositions).** Some
+behavioural knobs surfaced across P6–P10 remain code constants or
+env-defaults rather than `system_settings` columns. The policy: a knob
+migrates to `system_settings` when an operational signal surfaces
+(operator-tuning request, repeated incident, telemetry-driven threshold
+sweep). Until then it stays put — schema stays minimal, default lives
+where it was authored. The snapshot below is the v1.8 default
+disposition, not a binding promise.
+
+| Knob / semantic | Current home | Default | Anchor | Disposition (v1.8) |
+|---|---|---|---|---|
+| `GRADE_REVIEW_RECONCILE_INTERVAL_MINUTES` | code constant (`app/domain/grade_review.py`) | 5 | AC-D19 v1.6 / AC-CD11 v1.7 | keep — reconcile cadence; product (5 × 10 = 50 min) is the operator-visible SLA, not the individual knobs |
+| `GRADE_REVIEW_MAX_RETRY_ATTEMPTS` | code constant (`app/domain/grade_review.py`) | 10 | AC-D19 v1.6 / AC-CD11 v1.7 | keep — SLA factor pair with the above |
+| `GRADE_REVIEW_SUBMIT_CEILING_SECONDS` | code constant (`app/domain/grade_review.py`) | 60.0 | AC-CD11 v1.7 | keep — hard latency ceiling; in-code comment notes promotion conditional on real telemetry |
+| `_FLAG_RATIO_EXCLUSION_THRESHOLD` | code constant (`app/domain/drive_rag.py`, module-private) | 0.6 | AC-D22 | keep — P9 anchor-exclusion threshold; same defensive-deviation family as `_WELL_BELOW_DIFFICULTY_THRESHOLD` |
+| `jit_buffer_size` | env-default (`app/config.py`, Pydantic Settings) | 3 | AC-D25 v1.8 / AC-CD10 | keep — already env-tunable without redeploy |
+| `jit_buffer_max` | env-default (`app/config.py`) | 5 | AC-D25 v1.8 / AC-CD10 | keep — env-tunable ceiling |
+| `jit_persist_grace_seconds` | env-default (`app/config.py`) | 10 | AC-CD10 v1.8 | keep — SSE cancellation grace; orchestrator-cleanup implementation choice |
+| `accept_reviewer` pessimistic-zero semantic | P6 implementation (`app/domain/grade_review.py`) | n/a | AC-D19 v1.6 | keep — admin action documented in AC-D19; the phrase "pessimistic zero" stays uncodified in the anchor until an operator questions the zeroing behaviour |
+
+Migration of any row is a follow-up doc-only AC-D / AC-CD amendment
+plus the corresponding Alembic migration.
 
 ---
 
@@ -734,5 +757,5 @@ AC-CD8. **Confidence:** confident default (per user).
 
 ---
 
-*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.4
-and `DECISIONS.md` v1.4. One open technical anchor: AC-CD11 (P6 gate).*
+*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.8
+and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8).*

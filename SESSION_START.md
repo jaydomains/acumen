@@ -38,20 +38,25 @@ are *documented, not built* in v1.
   phase. One prompt → one branch → one squash PR → one phase.
 - **No commits to main.** Every change lands via PR.
 - **One PR per phase.** Each ROADMAP phase closes with its own PR.
-- **Per-slice review pauses are binding.** When a plan declares slices
-  with a review pause (commit → push → wait for Gitar / explicit user
-  go-ahead), that pause is non-negotiable: do **not** batch all slices
-  through to the end "because it's faster". The pause exists to catch a
-  wrong foundational decision before later slices build on it.
-  Collapsing slices into one pass is a plan deviation requiring explicit
-  user approval first, not an execution detail. (Reinforced after P3 /
-  PR-008, where all three slices ran in one pass — clean by luck, not
-  process.)
-- **Multi-slice phases pause for Gitar review at each slice boundary.**
-  After each slice commits and pushes, the session waits for explicit
-  user confirmation that Gitar is clean before starting the next slice.
-  No exceptions. The pause-for-Gitar pattern preserves slice-level
-  review quality that the consolidated PR diff loses.
+- **Multi-slice phases auto-continue by default when each slice's Gitar
+  review (or equivalent) returns clean.** A multi-slice plan does not
+  block on explicit user confirmation between slices in the default
+  path: commit → push → if Gitar green, the next slice starts. Binding
+  per-slice pauses are the **declared carve-out**, opted into either
+  (a) by the user at the session opener ("execute with binding pauses"
+  / "review before Slice N"), or (b) inside the plan itself for slices
+  whose foundational decision warrants a pre-Slice-N review — pattern
+  flips, schema migrations, security-sensitive boundaries, anything
+  that later slices build on irreversibly. The safety net stays
+  available on declaration; the cost of the default flip is one round
+  of trust in the slice-boundary review. Rationale: P3/PR-008 ("clean
+  by luck, not process") motivated the original binding rule; P9 / P10
+  / P11 then ran with consistently clean Gitar reviews where the
+  binding pause added latency without catching anything, so the
+  default inverts and the binding pause becomes opt-in. Collapsing
+  slices *when an explicit binding pause has been declared* is still a
+  plan deviation requiring explicit user approval first, not an
+  execution detail.
 - **Handover at PR close.** Authored *before* merge, copied from
   `HANDOVER_TEMPLATE.md` into `handovers/PR-<id>-<slug>.md`. Handovers are
   immutable once written (except where confidentiality/privacy/legal
@@ -80,10 +85,61 @@ are *documented, not built* in v1.
   PR-008 pattern.)
 - **Anchor discipline.** Product/functional decisions are `AC-D{n}` in
   `SPEC.md`/`DECISIONS.md`; code-shape/technical decisions are `AC-CD{n}`
-  in `CODE_SPEC.md`. Anchor *identifiers are immutable*; an anchor body
-  may be revised in place with the change explained inside the body — the
-  v1.1 and v1.2 amendments (e.g. AC-D9, AC-D19, AC-D25) are the canonical
-  examples of how to amend without renumbering.
+  in `CODE_SPEC.md`. Anchor *identifiers are immutable*; the body is
+  revised in place with the change explained inside the body. Two
+  distinct revision patterns:
+    - **AC-D amendment pattern** — a Decision anchor is amended in
+      place when the underlying product/functional rule shifts. The
+      anchor body still reads as a single authoritative text after the
+      amendment; the change rationale is captured inside the body.
+      Canonical examples: AC-D9 (v1.1/v1.2 — `competence_estimate`
+      float, full IRT-style formula); AC-D19 (v1.1/v1.3/v1.6/v1.7 —
+      cross-family synchronous review through batched / 60-s-ceiling
+      contract); AC-D25 (v1.2/v1.8 — benchmark carve-out, then
+      `asyncio.gather` / Semaphore lock-in).
+    - **AC-CD anchor closure pattern** — a Coverage-Decision (technical
+      / pre-build) anchor carries an explicit gate that the build must
+      meet. Once the build meets the gate, the anchor body is amended
+      in place to record the gate-closure decision (mode/contract
+      locked, latency ceilings, ordering columns, single-failure
+      policy, etc.) and the anchor status moves from *deferred* to
+      *resolved*. Canonical examples: AC-CD11 closed at v1.7 (batched
+      per attempt, 60-s hard ceiling, over-ceiling routes to the
+      reconcile cron); AC-CD10 closed at v1.8 (in-process
+      `asyncio.gather` + `Semaphore`, `question.attempt_position`,
+      single-Q-N-retry then AC-D11 pause).
+- **In-body override pattern.** When a canonical doc's authored prose
+  body and a mirror reference elsewhere (e.g. a `CODE_SPEC.md` tree
+  comment, a `SESSION_START.md` version pairing, a `CHECKLIST.md`
+  evidence row, a beat-schedule layout comment) disagree, the canonical
+  authored prose wins. Sweep mirror references to match the authored
+  text; do **not** edit the authored prose to match a stale mirror.
+  This is distinct from the `docs/`-vs-root canonicalness rule at the
+  top of this file — that rule is about doc location; this rule is
+  about body-vs-mirror within or across the canonical root docs.
+  Reinforced by the PR-014 six→seven crons sweep (authored §8 prose
+  was the truth; the phase-table mirror, the §8.9 layout comment, and
+  the ROADMAP/CHECKLIST mirrors were swept to match) and by the v1.7
+  AC-CD11-closure header pass.
+- **Audit pattern.** When the user requests an audit — a consistency
+  sweep, drift check, cron count, broken-link scan, version-pairing
+  scan — the audit pattern is: (a) **bias toward false-positive** —
+  surface anything ambiguous; do not silently filter findings the
+  auditor judges to be noise; (b) **read-only output** — produce a
+  findings list with file/line citations, do not auto-edit the doc
+  during the audit; (c) **the user triages** — they decide which
+  findings are real and which are noise and authorise any
+  follow-on edits. This protects authored prose from silent edits made
+  under audit cover, and keeps the audit/edit decisions in the user's
+  hands.
+- **Prescriptive-checks lesson (reviewer mode).** When entering
+  reviewer mode (Gitar review, code review, security review), do
+  **not** pre-load a "things to watch" checklist before reading the
+  diff. Pre-loaded checklists bias review toward the enumerated items
+  and miss what the diff actually does — a class of error that prior
+  reviewer sessions repeatedly surfaced. Read the diff cold; let the
+  findings emerge from what's there. A checklist is a sanity net
+  *after* the cold read, not a frame *before* it.
 - **Doc hygiene.** No `TBD`; no trailing "etc."; no "or"-framed
   requirements in `CODE_SPEC.md`. CHECKLIST rows tick only with real
   Evidence (a test path, command, or artifact).
@@ -297,13 +353,6 @@ merged as doc-only clarifications; v1.6 consolidated the pre-build
 spec-audit; v1.7 closed AC-CD11; v1.8 closes AC-CD10. **2 phases
 remain.** Next session starts at ROADMAP **P10 — JIT streaming
 generation (per-Testee)** — the AC-CD10 gate is closed, so P10
-builds against the locked contract directly. *(The footer below
-still reads "v1.2 document set" — deliberate deferral per the
-header-only precedent from PR-011/PR-013/PR-014/PR-017; a future
-SESSION_START hardening PR will sweep it together with the stale
-DECISIONS and CODE_SPEC footers. See
-`handovers/PR-014-v1.6-spec-audit-consolidation.md`,
-`handovers/PR-017-v1.7-ac-cd11-gate-closure.md`, and this PR's
-handover.)*
+builds against the locked contract directly.
 
-*End of SESSION_START. Paired with the v1.2 document set.*
+*End of SESSION_START. Paired with the v1.8 document set.*

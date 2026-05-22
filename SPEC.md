@@ -586,4 +586,4 @@ Items deferred to v1.x are tracked separately. None block v1 build.
 
 ---
 
-*End of Acumen specification. Status: v1.6. Paired with `DECISIONS.md` v1.6 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 amendments plus new AC-D27).*
+*End of Acumen specification. Status: v1.8. Paired with `DECISIONS.md` v1.8 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate).*
