@@ -456,6 +456,14 @@ async def _live_anchor_counts_by_band(
     already at quota is a counter-zero no-op. Excluded anchors
     (``excluded=True``) do NOT count — they don't carry weight in the
     draw, so the deficit math has to ignore them.
+
+    Iterates in Python because the FakeSession harness has no
+    aggregate ``COUNT`` / ``GROUP BY`` (AC-CD15). At v1 scale (≤30
+    pills × pool_size 20 × ≤6 bands ≈ 3600 max rows per call) the
+    in-memory walk is well under 1 ms. Profile + push down into
+    ``func.count() + group_by()`` if the deployment ever outgrows
+    this (mirrors :func:`app.ai.cost._spend_for_table`'s same
+    deferral — Gitar PR-#24 Slice 4 informational finding).
     """
     result = await db.execute(
         select(AnchorQuestion).where(
