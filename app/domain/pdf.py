@@ -29,6 +29,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import escapeOnce
 from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
@@ -64,11 +65,21 @@ def _question_prompt(presented_q: dict[str, Any]) -> str:
     Presented questions carry a ``config`` dict with shape that varies
     by question type (MCQ has ``options``, T/F has ``correct``, etc.);
     every type carries ``prompt`` per SPEC §6.1. Falls back to the
-    type name if a malformed row slips through."""
+    type name if a malformed row slips through.
+
+    The returned string is **XML-escaped via ReportLab's ``escapeOnce``**:
+    ``Paragraph`` interprets a subset of XML/HTML markup, so a prompt
+    containing ``<``, ``>``, or ``&`` (e.g. ``"x < 5"`` in a maths
+    rubric, or HTML-like content in a code question) would either
+    crash ``ParaParser`` or, in older ReportLab versions, expose a
+    CVE-2023-33733-class code-execution surface. Test authors and AI
+    generation are both upstream of this path, so the escape is
+    mandatory not defensive (Gitar PR-#24 Slice 1 finding #1).
+    """
     config = presented_q.get("config") or {}
     prompt = config.get("prompt")
     if isinstance(prompt, str) and prompt:
-        return prompt
+        return escapeOnce(prompt)
     return f"(question id {presented_q.get('id', 'unknown')})"
 
 
@@ -131,8 +142,11 @@ def render_attempt_pdf(
         textColor=colors.grey,
     )
 
+    # ``test_name`` is admin-supplied and flows into a ``Paragraph`` —
+    # escape for the same reason ``_question_prompt`` does (Gitar PR-#24
+    # Slice 1 finding #1).
     story: list[Any] = []
-    story.append(Paragraph(f"Acumen — {test_name}", title_style))
+    story.append(Paragraph(f"Acumen — {escapeOnce(test_name)}", title_style))
     story.append(Spacer(1, 4 * mm))
 
     header_rows = [

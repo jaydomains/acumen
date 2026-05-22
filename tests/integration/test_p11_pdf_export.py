@@ -281,3 +281,46 @@ def test_pdf_export_unauthenticated_returns_401(
     seed_system_settings(cat_session)
     r = cat_client.get(f"/v1/attempts/{uuid.uuid4()}/export.pdf")
     assert r.status_code == 401
+
+
+def test_pdf_export_escapes_xml_special_chars_in_prompt_and_test_name(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """A test name and a question prompt carrying ``<``, ``>``, ``&``
+    must NOT crash the ReportLab ``Paragraph`` parser (which interprets
+    a subset of XML/HTML markup). The renderer escapes via
+    ``reportlab.lib.utils.escapeOnce`` (Gitar PR-#24 Slice 1 finding
+    #1; CVE-2023-33733 class). Regression: without the escape, the
+    request 500s or worse."""
+    seed_system_settings(cat_session)
+    t = _testee(cat_session)
+    # Construct a test with XML-special chars in the name.
+    test = Test(
+        tenant_id=SEED_TENANT_ID,
+        name="Maths & symbols <test>",
+        mode=TestMode.frozen,
+        status=TestStatus.published,
+        visibility=TestVisibility.library,
+        timed=False,
+        timeout_behaviour=TimeoutBehaviour.auto_submit,
+        max_pause_duration_minutes=30,
+        target_difficulty=5,
+        randomise_question_order=True,
+        randomise_option_order=True,
+        pass_threshold=0.5,
+    )
+    cat_session.add(test)
+    q = _q(
+        cat_session,
+        test.id,
+        QuestionType.true_false,
+        # Prompt contains XML-special tokens: ``<``, ``>``, ``&``.
+        {"prompt": "Is x < 5 && y > 3 always true?", "correct": False},
+    )
+    started = _start(cat_client, t, test.id)
+    _autosave(cat_client, t, started["id"], str(q.id), {"answer": False})
+    _submit(cat_client, t, started["id"])
+
+    r = cat_client.get(f"/v1/attempts/{started['id']}/export.pdf", headers=bearer(t))
+    assert r.status_code == 200, r.text
+    assert r.content.startswith(b"%PDF-")

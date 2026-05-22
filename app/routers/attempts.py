@@ -30,6 +30,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any, cast
 
+import anyio
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
@@ -260,11 +261,19 @@ async def attempt_export_pdf(
     result = await attempt_domain.result_view(db, attempt, test)
     testee = await load_user_by_id(db, attempt.testee_id)
     testee_email = testee.email if testee is not None else "—"
-    pdf_bytes = render_attempt_pdf(
-        view,
-        result,
-        test_name=test.name,
-        testee_email=testee_email,
+    # ReportLab is sync-only and CPU-bound; running it inline in this
+    # async handler would block the event loop for the render duration
+    # (multi-question attempts can take seconds). Offload to a thread
+    # pool via ``anyio.to_thread.run_sync`` — same pattern as
+    # ``app/domain/drive_source.py`` for Drive's blocking
+    # ``googleapiclient`` calls (Gitar PR-#24 Slice 1 finding #2).
+    pdf_bytes = await anyio.to_thread.run_sync(
+        lambda: render_attempt_pdf(
+            view,
+            result,
+            test_name=test.name,
+            testee_email=testee_email,
+        )
     )
     return Response(
         content=pdf_bytes,
