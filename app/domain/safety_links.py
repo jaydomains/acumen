@@ -152,15 +152,19 @@ def _curation_query(pill: Pill) -> str:
     return f"{pill.name} safety training reference"
 
 
-async def _existing_link_count(db: AsyncSession, pill_id: uuid.UUID) -> int:
-    """Count of currently-cached safety links for ``pill_id``."""
+async def _existing_links_for(
+    db: AsyncSession, pill_id: uuid.UUID
+) -> list[PillSafetyLink]:
+    """All currently-cached safety links for ``pill_id`` (tenant-
+    scoped). Used by curation to compute both the count (for the
+    quota gate) and the URL set (for the dedupe gate)."""
     result = await db.execute(
         select(PillSafetyLink).where(
             PillSafetyLink.pill_id == pill_id,
             PillSafetyLink.tenant_id == SEED_TENANT_ID,
         )
     )
-    return sum(1 for _ in result.scalars().all())
+    return list(result.scalars().all())
 
 
 async def curate_links_for_pill(
@@ -196,10 +200,20 @@ async def curate_links_for_pill(
     if not pill.safety_relevant:
         return {"links_added": 0, "links_skipped": 0}
 
-    existing = await _existing_link_count(db, pill_id)
+    existing_rows = await _existing_links_for(db, pill_id)
+    existing = len(existing_rows)
     deficit = _TARGET_LINKS_PER_PILL - existing
     if deficit <= 0:
         return {"links_added": 0, "links_skipped": existing}
+
+    # URL-level dedupe set (Gitar PR-#24 Slice 3 finding #1): the
+    # broken-link path in ``check_safety_links`` keeps the failed row
+    # in place and calls back into this function for top-up; if the
+    # web search returns the same URL (host temporarily down) we'd
+    # otherwise insert a duplicate. The set is computed once here so
+    # the dedupe gate is O(1) per candidate URL across the per-search
+    # loop below.
+    existing_urls = {row.url for row in existing_rows}
 
     from app.domain.web_search import get_web_search_source
 
@@ -222,6 +236,11 @@ async def curate_links_for_pill(
     for result in results:
         if added + existing >= _MAX_LINKS_PER_PILL:
             break
+        if result.url in existing_urls:
+            # Already cached for this pill — skip silently so a
+            # transient-broken-then-recovered link doesn't accumulate
+            # duplicate rows on each monthly sweep.
+            continue
         status, content_hash = await _fetch_body_hash(result.url, client=http_client)
         if content_hash is None:
             skipped += 1
@@ -237,6 +256,7 @@ async def curate_links_for_pill(
                 content_hash=content_hash,
             )
         )
+        existing_urls.add(result.url)
         added += 1
     await record_audit(
         db,

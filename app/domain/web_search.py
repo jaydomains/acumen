@@ -32,12 +32,26 @@ from typing import Any, Protocol, runtime_checkable
 
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_retryable_tavily_error(exc: BaseException) -> bool:
+    """Tenacity predicate for the Tavily adapter. Retries transient
+    Tavily SDK failures (HTTP / quota / network — all subclasses of
+    :exc:`Exception`) but **not** local misconfiguration: a missing
+    ``web_search_api_key`` surfaces as :exc:`RuntimeError` from
+    :meth:`TavilyWebSearch._get_client` and is deterministic, so
+    burning ~3 s of exponential backoff before re-raising the same
+    error wastes the cron's budget (Gitar PR-#24 Slice 3 finding #2).
+    ``BaseException`` subclasses outside ``Exception`` (KeyboardInterrupt,
+    SystemExit, asyncio.CancelledError) also propagate immediately —
+    matches the standard tenacity convention."""
+    return isinstance(exc, Exception) and not isinstance(exc, RuntimeError)
 
 
 @dataclass(frozen=True)
@@ -92,9 +106,10 @@ class TavilyWebSearch:
     Tavily client object is built on first call only. The retry
     policy wraps :exc:`Exception` because Tavily's SDK surfaces a
     generic exception class for both HTTP and quota errors — tenacity
-    backs off all of them. Non-retryable misconfiguration
-    (missing API key) raises :exc:`RuntimeError` from
-    :meth:`_get_client` BEFORE the retry policy engages.
+    backs off all of them. The predicate **explicitly excludes
+    :exc:`RuntimeError`** so a missing-API-key misconfiguration
+    fail-fasts on the first call without burning ~3 s of exponential
+    backoff (Gitar PR-#24 Slice 3 finding #2).
     """
 
     name = "tavily"
@@ -127,7 +142,7 @@ class TavilyWebSearch:
         reraise=True,
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(_is_retryable_tavily_error),
     )
     async def search(self, query: str, *, max_results: int = 5) -> list[WebSearchResult]:
         """Return up to ``max_results`` authoritative web references

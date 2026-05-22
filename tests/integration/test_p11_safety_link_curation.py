@@ -400,6 +400,61 @@ async def test_check_safety_links_broken_triggers_top_up(
 
 
 @pytest.mark.asyncio
+async def test_curate_links_dedupes_against_existing_urls(
+    cat_session: CatalogueFakeSession,
+    fake_web_search: _FakeWebSearch,
+) -> None:
+    """A web-search result whose URL is already cached for the pill
+    is skipped without inserting a duplicate row. Regression for the
+    monthly-sweep duplicate-accumulation bug (Gitar PR-#24 Slice 3
+    finding #1): broken-link → top-up curation that returns the same
+    URL (host recovered) must not write a second row."""
+    seed_system_settings(cat_session)
+    subject = _subject(cat_session)
+    pill = _pill(
+        cat_session, name="Cathodic", safety_relevant=True, subject_id=subject.id
+    )
+    # One row already cached for this pill at the same URL the web
+    # search will return.
+    _safety_link(
+        cat_session,
+        pill_id=pill.id,
+        url="https://known.example/dup",
+        content_hash=_sha256(b"existing"),
+    )
+    fake_web_search.set_default_results(
+        [
+            # Same URL as the cached row.
+            fake_web_search.make_result(url="https://known.example/dup"),
+            # Two genuinely new URLs.
+            fake_web_search.make_result(url="https://new.example/a"),
+            fake_web_search.make_result(url="https://new.example/b"),
+        ]
+    )
+    bodies = {
+        "https://known.example/dup": (200, b"server back up"),
+        "https://new.example/a": (200, b"new content a"),
+        "https://new.example/b": (200, b"new content b"),
+    }
+    async with _http_client(bodies) as client:
+        result = await curate_links_for_pill(cat_session, pill.id, http_client=client)
+
+    # Only the two new URLs persist; the dup is skipped silently
+    # (not counted under ``links_skipped`` — that field is reserved
+    # for fetch failures so the operational signal stays unambiguous).
+    assert result == {"links_added": 2, "links_skipped": 0}
+    rows = [r for r in cat_session.store.get(PillSafetyLink, []) if r.pill_id == pill.id]
+    urls = sorted(r.url for r in rows)
+    assert urls == [
+        "https://known.example/dup",
+        "https://new.example/a",
+        "https://new.example/b",
+    ]
+    # No duplicate of the known URL persisted.
+    assert sum(1 for r in rows if r.url == "https://known.example/dup") == 1
+
+
+@pytest.mark.asyncio
 async def test_check_safety_links_empty_store_is_no_op(
     cat_session: CatalogueFakeSession,
     fake_web_search: _FakeWebSearch,
