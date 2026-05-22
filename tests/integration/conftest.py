@@ -31,6 +31,16 @@ class _Result:
             return None
         return self._rows[0]
 
+    # ``scalars().all()`` for the admin list-users path (PR closing the
+    # pre-frontend API-surface gap). Mirrors the catalogue ``_CatResult``
+    # shim; the P2 fake gains it once the auth seam grows a list
+    # endpoint. Same equality-only ``where`` parser still applies.
+    def scalars(self) -> _Result:
+        return self
+
+    def all(self) -> list[Any]:
+        return list(self._rows)
+
 
 class FakeSession:
     """In-memory session keyed by model class."""

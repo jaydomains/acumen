@@ -43,6 +43,7 @@ from app.schemas import (
     RefreshRequest,
     SetupConsumeRequest,
     TokenPair,
+    UserResponse,
 )
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -143,3 +144,12 @@ async def privacy_acknowledge(
     acked_at = await acknowledge_privacy(db, user)
     await db.commit()
     return PrivacyAckResponse(privacy_ack_at=acked_at)
+
+
+@router.get("/me")
+async def me(user: AppUser = Depends(get_active_user)) -> UserResponse:
+    # Pre-privacy-ack users still reach this endpoint so the frontend can
+    # render the privacy gate from the returned ``privacy_ack_at: null``;
+    # the deactivation gate (get_active_user) still rejects deactivated
+    # bearers with 403 account_deactivated.
+    return UserResponse.model_validate(user)
