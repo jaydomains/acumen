@@ -71,8 +71,12 @@ and the generated types must move together.
 
 - `src/app/` — App Router pages + a `/api/health` route handler used
   by the Docker healthcheck.
-- `src/lib/api/` — typed fetch wrapper (`client.ts`), error-envelope
-  parsing (`errors.ts`), and convenience type re-exports (`types.ts`).
+- `src/lib/api/` — typed runtime client (`client.ts`, wrapping
+  `openapi-fetch` with token attach + 401 refresh-retry + an
+  `unwrap()` helper that throws on the AC-CD6 error envelope),
+  error parsing (`errors.ts`), and convenience type re-exports
+  (`types.ts`). Callers use `await unwrap(client.GET(path))`;
+  responses are typed directly from the generated `paths`.
 - `src/lib/auth/` — token storage adapter (`storage.ts`), refresh
   coordinator (`refresh.ts`), and the React `AuthProvider` /
   `useAuth()` context (`context.tsx`).

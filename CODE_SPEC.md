@@ -795,15 +795,23 @@ mirror the backend's AC-CD1 exact-pin discipline.
   layered defense over the backend's uniform error envelope).
 - **Server-state cache:** **TanStack Query (React Query) v5**. Auth
   identity lives in a thin React Context; no Redux/Zustand.
-- **OpenAPI codegen:** **`openapi-typescript`** (types-only). A
-  hand-written ~100-line typed fetch wrapper at
-  `frontend/src/lib/api/client.ts` consumes the generated
-  `paths`/`components` types. The generator runs against a committed
-  snapshot at `frontend/openapi/schema.json` (regen with `pnpm
-  codegen:live` against a running backend); the snapshot keeps the
-  frontend CI build offline (AC-CD15 spirit). A CI step regenerates
-  against the committed snapshot and fails if the result drifts from
-  the committed `frontend/src/types/api.d.ts`.
+- **OpenAPI codegen + client:** **`openapi-typescript`** (types-only)
+  generates `paths` / `components` / `operations` from the OpenAPI
+  surface, and **`openapi-fetch`** (same author, library-grade
+  conditional types) consumes those types as the typed runtime client
+  at `frontend/src/lib/api/client.ts`. The client.ts file wraps
+  `openapi-fetch` with two cross-cutting concerns only: a custom
+  `fetch` that attaches the in-memory access token, and a 401
+  refresh-and-retry-once. An `unwrap()` helper throws an `ApiError`
+  (parsed from the AC-CD6 uniform error envelope) on a non-ok
+  response and returns the typed `data` on ok — so callers never
+  cast. The codegen runs against a committed snapshot at
+  `frontend/openapi/schema.json` (regen with `pnpm codegen:live`
+  against a running backend); the snapshot keeps the frontend CI
+  build offline (AC-CD15 spirit). A CI step regenerates against the
+  committed snapshot and fails if the result drifts from the
+  committed `frontend/src/types/api.d.ts`. The pairing is locked at
+  exact pins per the AC-CD1 mirror discipline.
 - **Testing:** **Vitest** for unit + smoke tests. Playwright (E2E)
   is intentionally not pinned — added by the PR that introduces the
   first E2E-worth flow.
@@ -888,10 +896,18 @@ the new `tests/unit/test_cors.py` it picks up automatically.
   Tailwind class strings and shadcn's Radix-primitive shape;
   alternative styling layers would force re-authoring every generated
   component.
-- **`openapi-typescript` types-only:** generated clients accrete API
-  drift between regenerations and force method-name churn; a thin
-  hand-written wrapper that consumes the generated types keeps the
-  developer-facing API stable across schema regenerations.
+- **`openapi-typescript` + `openapi-fetch`:** generator-method clients
+  accrete API drift between regenerations and force method-name churn,
+  so the codegen stays types-only. The runtime client is `openapi-fetch`
+  (same author as the type generator, library-grade conditional types
+  over `paths`) wrapped with the two cross-cutting concerns this
+  project needs — token attach and 401 refresh-and-retry — and an
+  `unwrap()` helper that maps the AC-CD6 error envelope onto a typed
+  `ApiError`. PR-032's initial Gitar review surfaced that a hand-rolled
+  wrapper returning `Promise<unknown>` defeated the point of the
+  codegen by forcing `as X` casts at every call site; adopting
+  `openapi-fetch` delivers the type safety the scaffold was set up to
+  provide without a second dependency on a generator.
 - **Memory + localStorage auth split:** balances the AC-CD5 "smallest
   correct auth" posture against the realistic v1 deployment threat
   model. Documented upgrade path makes the cookie flip a deliberate

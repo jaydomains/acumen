@@ -116,11 +116,13 @@
   `noImplicitOverride` + `exactOptionalPropertyTypes`, Tailwind v4,
   shadcn/ui (Radix-primitive source-copy install — reserved folder
   only in this PR), react-hook-form + zod, TanStack Query v5,
-  `openapi-typescript` (types-only) + hand-written ~100-line typed
-  fetch wrapper, Vitest, ESLint + Prettier. Every dep pinned exact
-  per AC-CD1's spirit. AC-CD19's body is self-contained: a fresh
-  contributor reading only AC-CD19 should know the full stack and
-  where it lives.
+  **`openapi-typescript` (types-only) + `openapi-fetch` (typed
+  runtime client)** wrapped with the project's token-attach +
+  401-refresh-and-retry concerns and an `unwrap()` helper over the
+  AC-CD6 error envelope, Vitest, ESLint + Prettier. Every dep pinned
+  exact per AC-CD1's spirit. AC-CD19's body is self-contained: a
+  fresh contributor reading only AC-CD19 should know the full stack
+  and where it lives.
 - **Auth storage: memory + localStorage split.** Access token in JS
   memory (cleared on reload — narrows XSS exfil window); refresh
   token in `localStorage` under `acumen.refresh_token` (persists
@@ -199,6 +201,26 @@
   `tailwindcss` and `@tailwindcss/postcss` to 4.3.0. The clean
   install with the bumped versions produced a green `next build`.
   Called out under "What was decided".
+- **Initial hand-rolled wrapper returned `Promise<unknown>` —
+  surfaced by Gitar review on PR-032, resolved before merge.**
+  The first cut of `frontend/src/lib/api/client.ts` typed the path
+  parameter against `paths` but returned `Promise<unknown>`,
+  forcing `as UserResponse` casts at every call site (one such
+  cast in `auth/context.tsx`). Gitar's review framed it as a
+  scaffold trade-off worth a follow-up, but per user direction the
+  scaffold being precedent-setting means the typed-client seam has
+  to deliver type safety from the start — deferring would force
+  every page-building PR to cast unsafely and then refactor.
+  **Resolved by adopting `openapi-fetch`** (same author as
+  `openapi-typescript`, library-grade conditional types over
+  `paths`, pinned exact) and amending AC-CD19 in place to record
+  the openapi-typescript + openapi-fetch pairing. The wrapper
+  retains only the two cross-cutting concerns the project needs
+  (token attach + 401 refresh-and-retry) plus an `unwrap()` helper
+  that maps the AC-CD6 error envelope onto a typed `ApiError`.
+  Callers now read `await unwrap(client.GET("/v1/auth/me"))` with
+  full type inference and no casts. The home page was updated to
+  match.
 
 ## Open questions deferred to a later phase
 

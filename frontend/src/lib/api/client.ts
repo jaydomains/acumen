@@ -1,95 +1,75 @@
 /**
- * Typed fetch wrapper over the backend's OpenAPI surface (AC-CD19).
+ * Typed API client (AC-CD19).
  *
- * The generated `paths` type at `@/types/api` is the source of truth
- * for endpoint URLs, methods, request bodies, and response shapes.
- * This wrapper is a thin adapter that:
+ * Wraps `openapi-fetch` with the project's two cross-cutting concerns:
+ *  - attach the in-memory access token to every outbound request,
+ *  - on a 401, dedup-refresh and re-issue the request once with the
+ *    new token.
  *
- *  - attaches the in-memory access token to every request,
- *  - parses the uniform error envelope into typed `ApiError` instances,
- *  - de-duplicates refresh on 401 via `refreshAccessToken`,
- *  - retries a single time after a successful refresh.
+ * Callers use `client.GET` / `client.POST` / `client.PATCH` /
+ * `client.DELETE` — endpoint paths, path/query params, request bodies,
+ * and response shapes are all typed directly from the generated
+ * `paths`. Wrap a call in `unwrap` to throw an `ApiError` on non-ok
+ * responses and receive the typed `data` on ok.
  *
- * Endpoints accept a path-template string typed against `paths`; the
- * caller passes `body` and `query` when the endpoint expects them.
+ *   const me = await unwrap(client.GET("/v1/auth/me"));
+ *   // me is typed as UserResponse — no cast needed.
  */
 
+import createClient from "openapi-fetch";
 import { config } from "@/lib/config";
 import { ApiError, parseError } from "@/lib/api/errors";
 import { getAccessToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
 import type { paths } from "@/types/api";
 
-type Method = "get" | "post" | "patch" | "delete";
-
-type RequestOptions = {
-  query?: Record<string, string | number | boolean | undefined>;
-  body?: unknown;
-  signal?: AbortSignal;
-};
-
-const buildUrl = (path: string, query?: RequestOptions["query"]): string => {
-  const url = new URL(`${config.apiBaseUrl}${path}`);
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined) url.searchParams.set(k, String(v));
-    }
-  }
-  return url.toString();
-};
-
-const doFetch = async (
-  method: Method,
-  url: string,
-  opts: RequestOptions,
-  bearer: string | null,
-): Promise<Response> => {
-  const headers: Record<string, string> = {};
-  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
-  if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
-
-  const init: RequestInit = { method: method.toUpperCase(), headers };
-  if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
-  if (opts.signal) init.signal = opts.signal;
-  return fetch(url, init);
-};
-
-const request = async <T>(
-  method: Method,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> => {
-  const url = buildUrl(path, opts.query);
-  let resp = await doFetch(method, url, opts, getAccessToken());
-
-  if (resp.status === 401) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
-      resp = await doFetch(method, url, opts, refreshed);
-    }
-  }
-
-  if (!resp.ok) throw await parseError(resp);
-  if (resp.status === 204) return undefined as T;
-
-  const text = await resp.text();
-  if (!text) return undefined as T;
-  return JSON.parse(text) as T;
+const buildHeaders = (init: RequestInit | undefined, token: string | null) => {
+  const headers = new Headers(init?.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return headers;
 };
 
 /**
- * Strongly-typed verb helpers. Each takes a path key from the generated
- * `paths` type so the URL string is checked at compile time.
+ * Custom fetch handed to openapi-fetch. Attaches the current in-memory
+ * access token; on a 401, kicks the dedup-refresh path and re-issues
+ * the original request once with the new token. openapi-fetch passes
+ * a string URL and a JSON-stringified body, so the retry can reuse
+ * `init` verbatim.
  */
-export const api = {
-  get: <P extends keyof paths>(path: P, opts?: RequestOptions): Promise<unknown> =>
-    request("get", path as string, opts),
-  post: <P extends keyof paths>(path: P, opts?: RequestOptions): Promise<unknown> =>
-    request("post", path as string, opts),
-  patch: <P extends keyof paths>(path: P, opts?: RequestOptions): Promise<unknown> =>
-    request("patch", path as string, opts),
-  delete: <P extends keyof paths>(path: P, opts?: RequestOptions): Promise<unknown> =>
-    request("delete", path as string, opts),
-} as const;
+const authRetryFetch: typeof fetch = async (input, init) => {
+  let response = await fetch(input, {
+    ...init,
+    headers: buildHeaders(init, getAccessToken()),
+  });
+
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      response = await fetch(input, {
+        ...init,
+        headers: buildHeaders(init, refreshed),
+      });
+    }
+  }
+  return response;
+};
+
+/** Typed openapi-fetch client. */
+export const client = createClient<paths>({
+  baseUrl: config.apiBaseUrl,
+  fetch: authRetryFetch,
+});
+
+/**
+ * Throw an `ApiError` (parsed from the uniform error envelope) on a
+ * non-ok response; otherwise return the typed `data`.
+ */
+export const unwrap = async <D, E>(
+  call: Promise<{ data?: D; error?: E; response: Response }>,
+): Promise<D> => {
+  const result = await call;
+  if (!result.response.ok) throw await parseError(result.response);
+  return result.data as D;
+};
 
 export { ApiError };

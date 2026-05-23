@@ -19,11 +19,12 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/context";
 import { config } from "@/lib/config";
-import { ApiError, api } from "@/lib/api/client";
+import { ApiError, client, unwrap } from "@/lib/api/client";
 
+type HealthPayload = { status: string; env: string };
 type HealthState =
   | { kind: "loading" }
-  | { kind: "ok"; payload: unknown }
+  | { kind: "ok"; payload: HealthPayload }
   | { kind: "error"; message: string };
 
 export default function HomePage() {
@@ -33,8 +34,8 @@ export default function HomePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const payload = await api.get("/healthz");
-        setHealth({ kind: "ok", payload });
+        const payload = await unwrap(client.GET("/healthz"));
+        setHealth({ kind: "ok", payload: payload as HealthPayload });
       } catch (err) {
         const message = err instanceof ApiError ? err.message : String(err);
         setHealth({ kind: "error", message });

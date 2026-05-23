@@ -18,7 +18,7 @@
  */
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, ApiError } from "@/lib/api/client";
+import { ApiError, client, unwrap } from "@/lib/api/client";
 import type { UserResponse } from "@/lib/api/types";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       try {
-        const me = (await api.get("/v1/auth/me")) as UserResponse;
+        const me = await unwrap(client.GET("/v1/auth/me"));
         if (!cancelled) {
           setUser(me);
           setStatus("authenticated");
@@ -80,7 +80,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     try {
-      await api.post("/v1/auth/logout");
+      await unwrap(client.POST("/v1/auth/logout"));
     } catch {
       /* logout is advisory; ignore failures */
     }
