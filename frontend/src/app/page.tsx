@@ -21,7 +21,7 @@ import { useAuth } from "@/lib/auth/context";
 import { config } from "@/lib/config";
 import { ApiError, client, unwrap } from "@/lib/api/client";
 
-type HealthPayload = { status: string; env: string };
+type HealthPayload = { [key: string]: string };
 type HealthState =
   | { kind: "loading" }
   | { kind: "ok"; payload: HealthPayload }
@@ -35,7 +35,7 @@ export default function HomePage() {
     void (async () => {
       try {
         const payload = await unwrap(client.GET("/healthz"));
-        setHealth({ kind: "ok", payload: payload as HealthPayload });
+        setHealth({ kind: "ok", payload });
       } catch (err) {
         const message = err instanceof ApiError ? err.message : String(err);
         setHealth({ kind: "error", message });

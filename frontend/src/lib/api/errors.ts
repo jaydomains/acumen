@@ -38,6 +38,17 @@ const isErrorBody = (value: unknown): value is ApiErrorBody => {
   return typeof e.code === "string" && typeof e.message === "string";
 };
 
+export const apiErrorFromBody = (
+  status: number,
+  statusText: string,
+  body: unknown,
+): ApiError => {
+  if (isErrorBody(body)) {
+    return new ApiError(status, body.error.code, body.error.message, body.error.detail);
+  }
+  return new ApiError(status, "unknown", `HTTP ${status} ${statusText}`, body);
+};
+
 export const parseError = async (resp: Response): Promise<ApiError> => {
   let body: unknown = null;
   try {
@@ -45,18 +56,5 @@ export const parseError = async (resp: Response): Promise<ApiError> => {
   } catch {
     /* no body or non-JSON; fall through */
   }
-  if (isErrorBody(body)) {
-    return new ApiError(
-      resp.status,
-      body.error.code,
-      body.error.message,
-      body.error.detail,
-    );
-  }
-  return new ApiError(
-    resp.status,
-    "unknown",
-    `HTTP ${resp.status} ${resp.statusText}`,
-    body,
-  );
+  return apiErrorFromBody(resp.status, resp.statusText, body);
 };

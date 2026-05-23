@@ -18,7 +18,7 @@
 
 import createClient from "openapi-fetch";
 import { config } from "@/lib/config";
-import { ApiError, parseError } from "@/lib/api/errors";
+import { ApiError, apiErrorFromBody } from "@/lib/api/errors";
 import { getAccessToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
 import type { paths } from "@/types/api";
@@ -63,12 +63,23 @@ export const client = createClient<paths>({
 /**
  * Throw an `ApiError` (parsed from the uniform error envelope) on a
  * non-ok response; otherwise return the typed `data`.
+ *
+ * openapi-fetch consumes the response body internally to populate
+ * `result.data` / `result.error`, so we MUST build the ApiError from
+ * the already-parsed `result.error` rather than re-reading
+ * `result.response` (whose body stream is exhausted).
  */
 export const unwrap = async <D, E>(
   call: Promise<{ data?: D; error?: E; response: Response }>,
 ): Promise<D> => {
   const result = await call;
-  if (!result.response.ok) throw await parseError(result.response);
+  if (!result.response.ok) {
+    throw apiErrorFromBody(
+      result.response.status,
+      result.response.statusText,
+      result.error,
+    );
+  }
   return result.data as D;
 };
 

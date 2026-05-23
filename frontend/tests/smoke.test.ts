@@ -14,7 +14,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from "@/lib/auth/storage";
-import { ApiError, parseError } from "@/lib/api/errors";
+import { ApiError, apiErrorFromBody, parseError } from "@/lib/api/errors";
 
 describe("auth/storage", () => {
   beforeEach(() => {
@@ -66,6 +66,27 @@ describe("api/errors", () => {
     const err = await parseError(resp);
     expect(err.code).toBe("unknown");
     expect(err.status).toBe(500);
+  });
+
+  it("apiErrorFromBody constructs an ApiError from an already-parsed envelope", () => {
+    // Path used by client.unwrap(): openapi-fetch has already consumed
+    // the response body into `result.error`, so we build the ApiError
+    // from the pre-parsed body rather than re-reading the response.
+    const body = {
+      error: { code: "invalid_credentials", message: "no", detail: { hint: "x" } },
+    };
+    const err = apiErrorFromBody(401, "Unauthorized", body);
+    expect(err.status).toBe(401);
+    expect(err.code).toBe("invalid_credentials");
+    expect(err.message).toBe("no");
+    expect(err.detail).toEqual({ hint: "x" });
+  });
+
+  it("apiErrorFromBody falls back to unknown-code on a non-enveloped body", () => {
+    const err = apiErrorFromBody(500, "Internal Server Error", "plain string");
+    expect(err.code).toBe("unknown");
+    expect(err.status).toBe(500);
+    expect(err.detail).toBe("plain string");
   });
 });
 
