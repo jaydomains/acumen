@@ -18,4 +18,7 @@ session and defines the required reading order and working discipline before
 any change is made. Per-PR handovers are recorded in `handovers/`, one file
 per PR, using `HANDOVER_TEMPLATE.md`.
 
+The frontend lives at `frontend/`; see `frontend/README.md` and
+`CODE_SPEC.md` AC-CD19 for the stack lock and dev workflow.
+
 This README is internal documentation, not a public-facing description.

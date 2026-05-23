@@ -84,6 +84,18 @@ class Settings(BaseSettings):
     # (P10 / AC-CD10 v1.8). Default ≈ one generation latency.
     jit_persist_grace_seconds: int = 10
 
+    # --- CORS (frontend origin allowlist, AC-CD19) ---
+    # Comma-separated list of allowed origins for the browser frontend.
+    # Tokens travel in the Authorization header (not cookies), so
+    # allow_credentials stays False at the middleware site — see
+    # ``app/main.py``. AC-CD19 documents the v1.x upgrade path to
+    # httpOnly cookies, which would flip this to credentialed mode.
+    cors_allowed_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+
     @field_validator("db_schema")
     @classmethod
     def _validate_db_schema(cls, v: str) -> str:
