@@ -116,7 +116,13 @@ def test_presentation_strips_correct_answers() -> None:
         randomise_option_order=False,
     )
     assert "correct" not in out[0]["config"]
-    assert out[0]["config"]["options"] == ["a", "b"]
+    # v1.x visual-ready option shape: legacy stored strings wrap into
+    # ``{text, image_url}`` dicts on the wire (see
+    # ``app.domain.attempts._wrap_option``).
+    assert out[0]["config"]["options"] == [
+        {"text": "a", "image_url": None},
+        {"text": "b", "image_url": None},
+    ]
 
 
 def test_block_internal_order_preserved() -> None:
@@ -191,4 +197,8 @@ def test_no_shuffle_when_toggles_are_off() -> None:
         snapshot[0]["question_id"],
         snapshot[1]["question_id"],
     ]
-    assert out[0]["config"]["options"] == ["x", "y", "z"]
+    assert out[0]["config"]["options"] == [
+        {"text": "x", "image_url": None},
+        {"text": "y", "image_url": None},
+        {"text": "z", "image_url": None},
+    ]

@@ -500,6 +500,22 @@ def presented_questions(
     return presented
 
 
+def _wrap_option(opt: Any) -> dict[str, Any]:
+    """Normalise an MCQ option into the v1.x-visual-ready shape
+    ``{text, image_url}``. Tolerates legacy ``str`` options (current
+    storage + AI generation) and already-wrapped dicts (forward-
+    compatible storage once v1.x visuals ship). The validator in
+    ``app/domain/tests.py`` accepts both shapes; presentation always
+    emits the dict form so the frontend codes against a single
+    contract."""
+    if isinstance(opt, dict):
+        return {
+            "text": str(opt.get("text", "")),
+            "image_url": opt.get("image_url"),
+        }
+    return {"text": str(opt), "image_url": None}
+
+
 def _present_one(
     q: dict[str, Any], seed: int, randomise_option_order: bool
 ) -> dict[str, Any]:
@@ -512,7 +528,7 @@ def _present_one(
         if randomise_option_order and options:
             perm = option_permutation(qid, seed, len(options))
             options = [options[i] for i in perm]
-        out["options"] = options
+        out["options"] = [_wrap_option(opt) for opt in options]
     elif qtype == QuestionType.matching.value:
         pairs = list(config.get("pairs", []))
         lefts = [p["left"] for p in pairs]
@@ -534,6 +550,13 @@ def _present_one(
         # reconnect-replay. NULL for snapshot-only sources (anchor
         # questions, frozen / hand-authored test questions).
         "attempt_position": q.get("attempt_position"),
+        # Forward-compatible v1.x visual fields, sourced from the
+        # question's ``config`` so future storage can populate them
+        # without further presentation changes. Always present, NULL
+        # today since neither AI generation nor admin authoring sets
+        # them yet.
+        "reference_image_url": config.get("reference_image_url"),
+        "reference_image_caption": config.get("reference_image_caption"),
         "config": out,
     }
 
