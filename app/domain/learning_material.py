@@ -355,6 +355,17 @@ async def generate_self_initiated(
         }
         result = await provider.generate(Operation.learning_material, payload)
         explainer_text = str(result.content.get("explainer", "")).strip()
+        if not explainer_text:
+            # The model returned valid JSON without an ``explainer`` key
+            # (or with an empty value). Fail fast — persisting an empty
+            # row would pollute the 30-day cohort cache and surface a
+            # blank UI to the next reader. The AI cost is lost from the
+            # ledger on this rare path; the request is retryable.
+            raise APIError(
+                502,
+                "ai_generation_failed",
+                "AI provider returned an empty explainer. Try again.",
+            )
         now = now_utc()
         material = LearningMaterial(
             tenant_id=SEED_TENANT_ID,

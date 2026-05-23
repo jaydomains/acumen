@@ -159,6 +159,32 @@ def test_self_initiated_happy_path_writes_ai_material_with_provenance(
     assert audit_row.detail["source"] == "ai_generated"
 
 
+def test_self_initiated_empty_explainer_response_returns_502(
+    cat_session: CatalogueFakeSession,
+    cat_client,
+    recording_provider: RecordingProvider,
+) -> None:
+    """The AI provider returns valid JSON without an ``explainer`` key
+    (or with an empty one). Fail fast with 502 ``ai_generation_failed``
+    — persisting an empty row would pollute the 30-day cohort cache and
+    surface a blank UI to the next reader. No row written, no audit
+    written; the request is retryable (Gitar PR-#31 finding)."""
+    seed_system_settings(cat_session)
+    pill = _seed_pill(cat_session)
+    user = cat_make_user(cat_session, email="t@kbc.com", role=p.ROLE_TESTEE)
+    recording_provider.set_response(Operation.learning_material, {"explainer": "   "})
+
+    response = cat_client.post(_ENDPOINT.format(pill_id=pill.id), headers=bearer(user))
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "ai_generation_failed"
+    # AI call happened but no LearningMaterial row was written, and no
+    # audit row recorded the (failed) serve.
+    assert len(recording_provider.calls_for(Operation.learning_material)) == 1
+    assert _learning_material_rows(cat_session) == []
+    assert "learning_material.self_request" not in _audit_actions(cat_session)
+
+
 # --- 2. cached cohort path ------------------------------------------
 
 
