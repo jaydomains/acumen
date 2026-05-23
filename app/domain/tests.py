@@ -266,6 +266,22 @@ async def unlock_campaign(db: AsyncSession, test: Test, *, actor_id: uuid.UUID) 
 # --- questions (frozen / hand-authored) -------------------------------
 
 
+def _valid_option(o: Any) -> bool:
+    """Accept either a legacy plain-string option or the v1.x-visual-
+    ready ``{text: str, image_url: str | None}`` object. Current AI
+    generation + admin authoring emit strings; future visual content
+    emits objects. ``_present_one`` in ``app/domain/attempts.py``
+    normalises both into the object shape on the wire."""
+    if isinstance(o, str):
+        return True
+    if isinstance(o, dict):
+        if not isinstance(o.get("text"), str):
+            return False
+        image_url = o.get("image_url")
+        return image_url is None or isinstance(image_url, str)
+    return False
+
+
 def validate_question_config(qtype: QuestionType, config: Any) -> None:
     """Single source of truth for question-config shape. Deterministic
     types (MCQ / true-false / matching) must be gradeable without AI
@@ -284,12 +300,13 @@ def validate_question_config(qtype: QuestionType, config: Any) -> None:
         if (
             not isinstance(options, list)
             or len(options) < 2
-            or not all(isinstance(o, str) for o in options)
+            or not all(_valid_option(o) for o in options)
         ):
             raise APIError(
                 422,
                 "invalid_question_config",
-                "multiple_choice needs >=2 string options.",
+                "multiple_choice needs >=2 options (each a string or "
+                "{text, image_url} object).",
             )
         if (
             not isinstance(correct, int)

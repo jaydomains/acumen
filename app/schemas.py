@@ -403,6 +403,16 @@ class QuestionUpdate(_Base):
     question_group_id: uuid.UUID | None = None
 
 
+class ChoiceResponse(_Base):
+    """Per-choice response shape. Documents the contract for OpenAPI consumers
+    (frontend TypeScript generation) — not used as a backend response field
+    directly since options live inside Question.config (an opaque JSONB blob).
+    """
+
+    text: str
+    image_url: str | None = None
+
+
 class QuestionResponse(_Base):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
@@ -412,6 +422,14 @@ class QuestionResponse(_Base):
     config: dict
     assigned_difficulty: int
     question_group_id: uuid.UUID | None
+    # Forward-compatible v1.x visual fields. The Question ORM has no
+    # column for these today; ``from_attributes=True`` falls back to the
+    # default (``None``) when the source attribute is missing, so admin
+    # GET responses serialise both as null without a DB migration. When
+    # v1.x visuals ship, the columns are added and these surface the
+    # stored values with no further router/schema change.
+    reference_image_url: str | None = None
+    reference_image_caption: str | None = None
     created_at: datetime
     updated_at: datetime
 
