@@ -15,8 +15,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain import catalogue
-from app.models import AppUser, get_db
+from app.domain import catalogue, learning_material
+from app.models import AppUser, LearningMaterialSource, get_db
 from app.permissions import (
     ROLE_ADMINISTRATOR,
     APIError,
@@ -24,6 +24,7 @@ from app.permissions import (
     require_role,
 )
 from app.schemas import (
+    LearningMaterialResponse,
     Page,
     PageMeta,
     PillCreate,
@@ -31,6 +32,7 @@ from app.schemas import (
     PillResponse,
     PillSafetyOverride,
     PillUpdate,
+    SafetyLinkResponse,
     SubjectCreate,
     SubjectResponse,
     SubjectUpdate,
@@ -238,6 +240,44 @@ async def override_pill_safety(
     )
     await db.commit()
     return PillResponse.model_validate(pill)
+
+
+# --- Testee self-directed learning material (AC-D8) -------------------
+# AC-D8 explicitly authorises Testees to "self-select pills to drive
+# their own learning" with "AI tests and learning material targeted at
+# those pills". The test-generation half has been wired since P5; this
+# endpoint closes the learning-material half. Domain layer owns the
+# cache window, the safety-pill branch (AC-D21 curated external links),
+# and audit-logging; this handler is router-thin.
+
+
+@router.post("/pills/{pill_id}/learning-material")
+async def request_pill_learning_material(
+    pill_id: uuid.UUID,
+    user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+    regenerate: bool = Query(default=False),
+) -> LearningMaterialResponse:
+    material, cached, links = await learning_material.generate_self_initiated(
+        db,
+        pill_id=pill_id,
+        testee_user=user,
+        regenerate=regenerate,
+    )
+    safety_links: list[SafetyLinkResponse] | None = None
+    if material.source == LearningMaterialSource.curated_safety_links:
+        safety_links = [SafetyLinkResponse.model_validate(r) for r in links]
+    await db.commit()
+    return LearningMaterialResponse(
+        id=material.id,
+        pill_id=material.pill_id,
+        source=material.source.value,
+        content=material.content,
+        safety_links=safety_links,
+        served_at=material.served_at,
+        created_at=material.created_at,
+        cached=cached,
+    )
 
 
 # --- Testee discovery (AC-D8) -----------------------------------------

@@ -281,6 +281,39 @@ class PillProposalResponse(_Base):
     created_at: datetime
 
 
+# --- Testee self-directed learning material (AC-D8 implementation) ----
+
+
+class SafetyLinkResponse(_Base):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    url: str
+    title: str | None
+    source: str | None
+    last_verified_at: datetime | None
+
+
+class LearningMaterialResponse(_Base):
+    """Response shape for the AC-D8 self-directed learning surface.
+
+    Polymorphic by ``source``: ``ai_generated`` rows carry the explainer
+    text in ``content``; ``curated_safety_links`` rows carry the
+    pill's authoritative external references in ``safety_links``
+    (AC-D21). Exactly one of the two payload fields is populated per
+    response — the response shape mirrors the underlying
+    :class:`~app.models.LearningMaterial.source` enum branch.
+    """
+
+    id: uuid.UUID
+    pill_id: uuid.UUID
+    source: str
+    content: str | None
+    safety_links: list[SafetyLinkResponse] | None = None
+    served_at: datetime | None
+    created_at: datetime
+    cached: bool
+
+
 # --- Tests / Questions (P4 Slice 1) -----------------------------------
 # AC-D5 four test modes; AC-D11 timing/pause matrix; AC-D13 benchmark
 # scope; AC-D17 forward-only edit; AC-D24 lock + shuffle toggles. The
