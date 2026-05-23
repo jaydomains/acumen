@@ -41,7 +41,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
     const resolve = async () => {
       if (!getAccessToken() && getRefreshToken()) {
-        await refreshAccessToken();
+        try {
+          await refreshAccessToken();
+        } catch (err) {
+          // Network failures during refresh would otherwise be invisible —
+          // surface them so connectivity issues are debuggable. The
+          // subsequent `/v1/auth/me` call still runs and drives the
+          // unauthenticated branch below.
+          // eslint-disable-next-line no-console
+          console.warn("auth/refresh failed:", err);
+        }
       }
       try {
         const me = (await api.get("/v1/auth/me")) as UserResponse;
