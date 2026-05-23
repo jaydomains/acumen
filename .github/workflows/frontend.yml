@@ -1,0 +1,43 @@
+name: frontend
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install deps (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Codegen drift check
+        # Regenerates the OpenAPI types from the committed schema
+        # snapshot and asserts the result matches the committed
+        # `src/types/api.d.ts`. AC-CD19: schema snapshot is the
+        # offline source of truth; live regeneration is the explicit
+        # opt-in via `pnpm codegen:live`.
+        run: pnpm codegen:check
+      - name: ESLint
+        run: pnpm lint
+      - name: Prettier
+        run: pnpm format:check
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Vitest
+        run: pnpm test --run
+      - name: Next.js build
+        run: pnpm build

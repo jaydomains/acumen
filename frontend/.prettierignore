@@ -1,0 +1,7 @@
+node_modules/
+.next/
+out/
+coverage/
+src/types/api.d.ts
+openapi/schema.json
+pnpm-lock.yaml

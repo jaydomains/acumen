@@ -10,6 +10,7 @@ permitted — they are wired starting P2.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 from app.config import get_settings
@@ -60,6 +61,22 @@ def create_app() -> FastAPI:
     # handler and these two routers are the standalone-auth surface;
     # ``register_exception_handlers`` lives in the AC-CD5 port seam.
     register_exception_handlers(app)
+
+    # Frontend CORS (AC-CD19). Allow-list is env-driven so deployments
+    # set the production origin explicitly; default covers local dev
+    # (Next.js at :3000 → FastAPI at :8000). allow_credentials stays
+    # False — tokens travel in the Authorization header, not cookies.
+    # The v1.x httpOnly-cookies upgrade path (documented in AC-CD19)
+    # would flip this to credentialed mode and require the origin list
+    # to be explicit (no wildcard).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins_list,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(auth.router)
     app.include_router(users.router)
 

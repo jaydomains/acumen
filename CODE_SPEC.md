@@ -763,7 +763,174 @@ env-default config, never hard-coded.
 **Implications:** `.env.example` documents each ID; resolution per
 AC-CD8. **Confidence:** confident default (per user).
 
+### AC-CD19 — Frontend stack lock & `frontend/` layout
+
+> Added in the PR-032 frontend scaffold. The frontend was unpinned at
+> the AC-CD1 through AC-CD18 close; the API contract (AC-CD6) was
+> always written as "the frontend spec consumes this contract". This
+> anchor codifies the consumer side. Self-contained: a fresh contributor
+> reading only AC-CD19 should know the full frontend stack and where it
+> lives. **Confidence:** confident default.
+
+**Decision:** the frontend is a single Next.js (App Router) application
+living at `frontend/` in the acumen repo. All choices are pinned and
+mirror the backend's AC-CD1 exact-pin discipline.
+
+- **Runtime:** Node 22 LTS, pinned via `.nvmrc` and `package.json`
+  `engines.node`. Package manager: **pnpm**, pinned via the
+  `packageManager` field; `.npmrc` carries `engine-strict=true` and
+  `save-exact=true`. `pnpm-lock.yaml` is committed.
+- **Framework:** **Next.js 15.x** (App Router), pinned exact. Build
+  uses `output: 'standalone'` for the Docker runner stage.
+- **Language:** **TypeScript** with `strict: true`,
+  `noUncheckedIndexedAccess: true`, `noImplicitOverride: true`,
+  `exactOptionalPropertyTypes: true`. Mirrors the backend mypy posture.
+- **Styling:** **Tailwind CSS 4.x**.
+- **Component library:** **shadcn/ui** (Radix-primitive source-copy
+  install). The scaffold reserves `frontend/src/components/ui/` but
+  copies no components in; future PRs run `pnpm dlx shadcn@latest add
+  <component>` as needed. No second component library may be added
+  without a CODE_SPEC amendment.
+- **Forms / validation:** `react-hook-form` + `zod` (client-side
+  layered defense over the backend's uniform error envelope).
+- **Server-state cache:** **TanStack Query (React Query) v5**. Auth
+  identity lives in a thin React Context; no Redux/Zustand.
+- **OpenAPI codegen + client:** **`openapi-typescript`** (types-only)
+  generates `paths` / `components` / `operations` from the OpenAPI
+  surface, and **`openapi-fetch`** (same author, library-grade
+  conditional types) consumes those types as the typed runtime client
+  at `frontend/src/lib/api/client.ts`. The client.ts file wraps
+  `openapi-fetch` with two cross-cutting concerns only: a custom
+  `fetch` that attaches the in-memory access token, and a 401
+  refresh-and-retry-once. An `unwrap()` helper throws an `ApiError`
+  (parsed from the AC-CD6 uniform error envelope) on a non-ok
+  response and returns the typed `data` on ok — so callers never
+  cast. The codegen runs against a committed snapshot at
+  `frontend/openapi/schema.json` (regen with `pnpm codegen:live`
+  against a running backend); the snapshot keeps the frontend CI
+  build offline (AC-CD15 spirit). A CI step regenerates against the
+  committed snapshot and fails if the result drifts from the
+  committed `frontend/src/types/api.d.ts`. The pairing is locked at
+  exact pins per the AC-CD1 mirror discipline.
+- **Testing:** **Vitest** for unit + smoke tests. Playwright (E2E)
+  is intentionally not pinned — added by the PR that introduces the
+  first E2E-worth flow.
+- **Lint / format:** **ESLint** (`next/core-web-vitals` +
+  `eslint-config-prettier`) and **Prettier**. CI runs both as separate
+  steps mirroring `ruff check` + `ruff format --check`.
+
+**Auth storage.** The backend's `/v1/auth/login` returns tokens in a
+JSON body (`TokenPair`); refresh tokens do not rotate on
+`/v1/auth/refresh`; revocation is via the deactivation gate, not a
+server-side blacklist. The frontend stores the **access token in JS
+memory only** (cleared on reload) and the **refresh token in
+`localStorage`** (key `acumen.refresh_token`). On a 401, a single
+de-duped refresh attempt fires; if refresh fails, identity is cleared
+and the user is routed to the login surface. The XSS exposure window
+for the access token is narrowed by memory-only storage and the 15-min
+access TTL; the refresh token is exposed to in-page XSS by virtue of
+`localStorage`. This is the accepted compromise for v1's
+internal-network deployment posture.
+
+**v1.x upgrade path (documented, not built).** When the threat model
+warrants — Acumen serving outside KBC's internal network, or any other
+shift that materially raises the XSS risk — auth flips to **httpOnly
+Secure SameSite=strict cookies for both tokens**, which requires
+coordinated backend + frontend changes: (a) `/v1/auth/login` and
+`/v1/auth/refresh` set cookies on the response instead of returning
+them in the body, (b) the CORS middleware moves to `allow_credentials=
+True` with an explicit (no-wildcard) origin allow-list, (c) CSRF
+protection is added (header-bearing CSRF token, double-submit cookie
+pattern), and (d) the frontend's `storage.ts` adapter is gutted in
+favour of the browser's automatic cookie attachment. The Auth Hub
+port (AC-CD5) is the natural seam to bundle this with.
+
+**CORS.** `app/main.py` installs FastAPI's `CORSMiddleware` after
+`register_exception_handlers`, with `allow_origins` driven by
+`Settings.cors_allowed_origins` (comma-separated env string,
+`CORS_ALLOWED_ORIGINS`, default `http://localhost:3000`). The
+middleware runs with `allow_credentials=False` while tokens travel in
+the `Authorization` header; the v1.x cookie upgrade above flips this.
+
+**Folder layout (`frontend/`).** Top-level: `package.json`,
+`pnpm-lock.yaml`, `tsconfig.json`, `next.config.ts`,
+`tailwind.config.ts`, `postcss.config.mjs`, `vitest.config.ts`,
+`.eslintrc.json`, `.prettierrc.json`, `.nvmrc`, `.npmrc`,
+`.env.example`, `.gitignore`, `Dockerfile`, `README.md`. App code under
+`src/app/` (App Router pages + a `/api/health` route used by the
+Docker healthcheck). Shared library under `src/lib/` (`api/`, `auth/`,
+`config.ts`, `query-client.ts`). Generated types under
+`src/types/api.d.ts` (committed). Components reserved at
+`src/components/ui/`. OpenAPI snapshot at `openapi/schema.json`,
+codegen script at `scripts/codegen.ts`. Tests at `tests/`.
+
+**Docker / compose.** A new service `acumen-frontend` in
+`docker-compose.yml` builds from `frontend/Dockerfile` (multi-stage:
+deps → builder → runner; Node 22 slim base; non-root `nextjs` user;
+standalone output), exposes `3000`, depends on `acumen` being healthy,
+and runs its own healthcheck against `/api/health`. The frontend's
+`API_BASE_URL` env var points at the `acumen` service inside the
+compose network; `NEXT_PUBLIC_API_BASE_URL` points at the externally-
+visible URL (default `http://localhost:8000`).
+
+**CI.** A new workflow file `.github/workflows/frontend.yml` runs in
+parallel with the existing `ci.yml`. Both gate merge. The frontend
+workflow runs (in order): `pnpm install --frozen-lockfile`, `pnpm
+codegen:check` (regenerates from the committed snapshot and asserts no
+drift), `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test
+--run`, `pnpm build`. The Python workflow stays untouched apart from
+the new `tests/unit/test_cors.py` it picks up automatically.
+
+**Rationale.**
+- **Next.js + App Router:** SiteMesh peerage (the user pinned this).
+  App Router is the Next.js-15 default; RSC support keeps future-page
+  options open without re-architecting.
+- **pnpm:** strict isolation (no phantom deps), deterministic
+  lockfile, smaller node_modules — mirrors the AC-CD1 pin-everything
+  spirit better than npm's looser defaults.
+- **TypeScript strict + extra flags:** parity with the backend's mypy
+  strict posture; the extra flags catch the classes of bug that the
+  OpenAPI generator can't (indexed-access undefined, override drift,
+  optional-vs-undefined sloppiness).
+- **Tailwind + shadcn/ui:** the AI-design-output pipeline assumes
+  Tailwind class strings and shadcn's Radix-primitive shape;
+  alternative styling layers would force re-authoring every generated
+  component.
+- **`openapi-typescript` + `openapi-fetch`:** generator-method clients
+  accrete API drift between regenerations and force method-name churn,
+  so the codegen stays types-only. The runtime client is `openapi-fetch`
+  (same author as the type generator, library-grade conditional types
+  over `paths`) wrapped with the two cross-cutting concerns this
+  project needs — token attach and 401 refresh-and-retry — and an
+  `unwrap()` helper that maps the AC-CD6 error envelope onto a typed
+  `ApiError`. PR-032's initial Gitar review surfaced that a hand-rolled
+  wrapper returning `Promise<unknown>` defeated the point of the
+  codegen by forcing `as X` casts at every call site; adopting
+  `openapi-fetch` delivers the type safety the scaffold was set up to
+  provide without a second dependency on a generator.
+- **Memory + localStorage auth split:** balances the AC-CD5 "smallest
+  correct auth" posture against the realistic v1 deployment threat
+  model. Documented upgrade path makes the cookie flip a deliberate
+  AC-CD5-paired exercise rather than a v1 over-engineer.
+
+**Implications.**
+- Adding a frontend dependency is an AC-CD19 decision (same gravity
+  as AC-CD1 for backend). Trivial dev-only additions may fold into
+  the phase handover per SESSION_START.md's structural-additions
+  carve-out; runtime / cross-cutting additions amend AC-CD19 in
+  place.
+- The `scripts/structure_gate.py` whitelist is backend-only and stays
+  that way. The `frontend/` directory's structure is enforced by the
+  frontend-side toolchain (TS path resolution + ESLint config), not
+  by a Python gate.
+- All frontend PR handovers use `HANDOVER_TEMPLATE.md` unchanged.
+- Image-rendering hooks (`reference_image_url`,
+  `reference_image_caption`, `ChoiceResponse.image_url`) are typed
+  through to component props but stay unrendered in v1; the v1.x
+  visual-content PR adds rendering without re-architecting the type
+  layer.
+
 ---
 
 *End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.8
-and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8).*
+and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception).*
