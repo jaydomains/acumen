@@ -130,7 +130,12 @@ class AnthropicProvider:
     # --- private --------------------------------------------------------
 
     async def _call(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
-        template, prompt_version = get_prompt(operation)
+        # ``_prompt_variant`` is metadata, not a prompt placeholder — pop
+        # it before render so it doesn't show up in the rendered prompt
+        # or pollute the format() unused-key set. Default ``"default"``
+        # keeps every existing caller's prompt selection unchanged.
+        variant = payload.pop("_prompt_variant", "default")
+        template, prompt_version = get_prompt(operation, variant=variant)
         model = resolve_model(operation)
         # ``render_prompt`` wraps str.format() with a clear error that
         # carries the operation + missing key + available keys — a

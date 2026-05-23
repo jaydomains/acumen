@@ -319,6 +319,14 @@ AI-provenance columns on `grade`, `grade_review`, `question`,
 `processing_tasks.payload` for pill proposals (SPEC §6 literal reading;
 broadens the earlier "every grade/question row" wording).
 
+The `learning_material` op carries two prompt variants in the registry
+(AC-D6 weakness-driven `default` + AC-D8 `self_initiated`); the domain
+layer (`app/domain/learning_material.py::generate_for_weakness` /
+`generate_self_initiated`) selects the variant via the `_prompt_variant`
+payload key the Anthropic provider pops before render, so the same
+provider entrypoint serves both pathways and each variant's version
+stamps independently on its produced rows.
+
 ---
 
 ## 8. Background processing

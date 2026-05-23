@@ -26,10 +26,13 @@ from app.ai.prompts import (
     grade_review,
     grading,
     learning_material,
+    learning_material_self_initiated,
     pill_proposal,
     weakness,
 )
 from app.ai.provider import Operation
+
+DEFAULT_VARIANT = "default"
 
 _REGISTRY: dict[Operation, tuple[str, str]] = {
     Operation.generation: (generation.TEMPLATE, generation.VERSION),
@@ -47,13 +50,42 @@ _REGISTRY: dict[Operation, tuple[str, str]] = {
     ),
 }
 
+# Named non-default variants of a registered op. AC-D8 self-initiated
+# learning material is the first entry: same ``learning_material`` op,
+# same ``provider.generate()`` method, distinct template + version that
+# is persisted on the produced ``LearningMaterial`` row so the two
+# pathways stay independently traceable in the AI-provenance columns.
+_VARIANT_REGISTRY: dict[tuple[Operation, str], tuple[str, str]] = {
+    (Operation.learning_material, "self_initiated"): (
+        learning_material_self_initiated.TEMPLATE,
+        learning_material_self_initiated.VERSION,
+    ),
+}
 
-def get_prompt(operation: Operation) -> tuple[str, str]:
-    """Return ``(template, version)`` for ``operation``.
+
+def get_prompt(
+    operation: Operation, *, variant: str = DEFAULT_VARIANT
+) -> tuple[str, str]:
+    """Return ``(template, version)`` for ``operation``'s ``variant``.
+
+    The default variant points at the long-standing single-prompt-per-op
+    mapping. Named variants live in ``_VARIANT_REGISTRY`` and are picked
+    up only when the caller asks for them explicitly — existing callers
+    that pass no ``variant`` keep their pre-variant behaviour unchanged.
 
     Raises :class:`KeyError` for operations whose prompts are deferred
-    to a later phase (``embed`` → P9; no other op is deferred after P8).
+    to a later phase (``embed`` → P9; no other op is deferred after P8)
+    and for unknown ``(operation, variant)`` pairs.
     """
+    if variant != DEFAULT_VARIANT:
+        try:
+            return _VARIANT_REGISTRY[(operation, variant)]
+        except KeyError as exc:
+            raise KeyError(
+                f"No prompt registered for {operation.value!r} variant "
+                f"{variant!r}. Registered variants for this op: "
+                f"{sorted(v for (op, v) in _VARIANT_REGISTRY if op == operation)}."
+            ) from exc
     try:
         return _REGISTRY[operation]
     except KeyError as exc:
