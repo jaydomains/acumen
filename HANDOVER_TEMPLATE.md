@@ -57,6 +57,15 @@
 - CI result at merge: <pass / fail-with-known-reason>
 - Manual verification performed: <what was checked by hand, if any>
 
+## Post-merge validation considerations
+
+- Does this PR touch code that runs inside a container without a source
+  bind mount? If yes, post-merge local validation requires `docker
+  compose build --no-cache <service>` before re-running.
+- What's the specific local command sequence that re-verifies this PR's
+  fix end-to-end? Document it here so a future debug session doesn't
+  waste cycles on stale-image masks.
+
 ## Anything a fresh Claude Code session needs to pick up cleanly
 
 - Required reading beyond `SESSION_START.md`, if any.

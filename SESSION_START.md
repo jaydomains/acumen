@@ -140,6 +140,18 @@ are *documented, not built* in v1.
   reviewer sessions repeatedly surfaced. Read the diff cold; let the
   findings emerge from what's there. A checklist is a sanity net
   *after* the cold read, not a frame *before* it.
+- **Stale-image trap (post-merge local validation).** When a PR
+  touches code that runs inside a container without a source bind
+  mount, post-merge local validation requires `docker compose build
+  --no-cache <service>` before re-running. CI runs against
+  checked-out source and will pass; local containers run against
+  baked images and can mask a successful fix as still-broken. The
+  "I merged the fix but it's still failing locally" trap is almost
+  always this. In Acumen's `docker-compose.yml`, all four built
+  services (`acumen`, `acumen-worker`, `acumen-beat`, `migrate`)
+  build from `context: .` with no source bind-mount, so the trap
+  applies to any code change inside any of them. Reproduced at
+  PR-028.
 - **Doc hygiene.** No `TBD`; no trailing "etc."; no "or"-framed
   requirements in `CODE_SPEC.md`. CHECKLIST rows tick only with real
   Evidence (a test path, command, or artifact).
