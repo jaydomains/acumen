@@ -10,8 +10,8 @@
 
 ## PR identifier and link
 
-- PR: #<TBD> — *docs: capture stale-image-trap + Resend SMTP casing in canonical docs*
-- Link: <TBD>
+- PR: #29 — *docs: capture stale-image-trap + Resend SMTP casing in canonical docs*
+- Link: https://github.com/jaydomains/acumen/pull/29
 - Author / session: Claude Code session (Opus 4.7 1M)
 - Date closed: 2026-05-23
 
