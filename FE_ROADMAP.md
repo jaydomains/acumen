@@ -195,6 +195,15 @@ finer-grained statuses not yet in the API.
 
 ---
 
+## Non-goals (v1 frontend)
+
+- Dedicated Learning Center (progress tracking, lesson sequences,
+  recommended-next-pill, bookmarks) — deferred to v1.x. v1 training
+  surface is the pill detail page (FE-3) consuming POST
+  /v1/pills/{id}/learning-material (PR-031) on page load.
+
+---
+
 *End of Acumen FE_ROADMAP. Pairs `ROADMAP.md` (backend) one-to-one in
 shape and discipline. Frontend stack pinned at AC-CD19; per-phase
 patterns at AC-CD20..24.*

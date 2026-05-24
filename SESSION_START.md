@@ -166,6 +166,18 @@ are *documented, not built* in v1.
 - **Doc hygiene.** No `TBD`; no trailing "etc."; no "or"-framed
   requirements in `CODE_SPEC.md`. CHECKLIST rows tick only with real
   Evidence (a test path, command, or artifact).
+- **Design reference completeness check.** When a design reference (a
+  prototype, a mock set, a Figma drop, etc.) is added or replaced in
+  the repo, audit that it covers every product surface SPEC/DECISIONS
+  mentions before treating it as canonical. Walk `SPEC.md` and
+  `DECISIONS.md` section by section; for each user-facing surface
+  enumerated there, confirm the design reference includes a mock.
+  Missing mocks are surfaced as spec-drift (do not silently fill the
+  gap with prose). Lesson learned from the v5 design drop that
+  omitted the auth-surface pages, surfaced only when FE-1 planning
+  opened — by which point design-Claude time had elapsed and the gap
+  had to be filled mid-build. Discovery at design-drop time is cheap;
+  discovery at build time is expensive.
 
 ## Auto-continue + per-slice Gitar workflow (FE-N phase work)
 
