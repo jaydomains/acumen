@@ -5,3 +5,4 @@ coverage/
 src/types/api.d.ts
 openapi/schema.json
 pnpm-lock.yaml
+design-reference/
