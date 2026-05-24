@@ -930,7 +930,265 @@ the new `tests/unit/test_cors.py` it picks up automatically.
   visual-content PR adds rendering without re-architecting the type
   layer.
 
+### AC-CD20 — Frontend routing structure, route groups, and role guards
+
+> Added in the Session 2 frontend canonical-doc PR. AC-CD19 locks the
+> stack but is silent on how the App Router surface is partitioned
+> across auth postures and roles. Without this anchor, every
+> page-building PR re-decides where guards live, producing the classic
+> Next.js bug of a non-guard `layout.tsx` letting an unauthenticated
+> user briefly see protected content during hydration. Self-contained:
+> a fresh contributor reading only AC-CD20 should know where to put a
+> new page and what gates its rendering. **Confidence:** confident
+> default.
+
+**Decision.** Next.js App Router route groups partition the frontend
+surface by auth posture and role. Four top-level groups under
+`frontend/src/app/`:
+
+- **`(auth)/`** — unauthenticated surfaces. `login/`, `forgot/`,
+  `reset/[token]/`, `setup/[token]/`. Group `layout.tsx` redirects to
+  `/dashboard` (testee) or `/ops` (admin) if a valid session is
+  already present.
+- **`(authed)/`** — anything an authenticated user touches that is
+  not role-specific. Group `layout.tsx` calls `useAuth()` and
+  redirects to `/login` if unauthenticated, or to `/privacy` if
+  `privacy_acknowledged_at` is null per AC-D16, before rendering
+  children. Hosts the `/privacy` page itself (which intentionally
+  bypasses the privacy-ack subgate via a route-group exception).
+- **`(testee)/`** — testee-role surfaces, nested under `(authed)/`
+  via layout composition. Group `layout.tsx` re-runs the authed gate
+  and redirects to `/403` if `role !== 'testee'`.
+- **`(admin)/`** — admin-role surfaces. Same shape as `(testee)/`
+  but checks `role === 'admin'`.
+
+**Guard implementation.** Route-guard logic lives in
+`frontend/src/lib/auth/guards.ts` as pure functions
+(`requireAuthed(session)`, `requireRole(session, role)`,
+`requirePrivacyAck(session)`) returning a redirect path or `null`.
+Each group's `layout.tsx` composes them. Pure functions are
+unit-tested without rendering.
+
+**URL conventions.** Segments are kebab-case (`learning-paths`,
+`pill-proposals`). Dynamic segments use `[paramName]` matching the
+API path parameter (`/attempts/[attemptId]`, `/pills/[pillId]`).
+
+**Error and loading surfaces.** Each route group ships its own
+`loading.tsx` (suspense skeleton matching the route's primary
+layout) and `error.tsx` (route-scoped error boundary surfacing the
+AC-CD6 error envelope through a toast). A repo-level
+`not-found.tsx` covers 404s.
+
+**Rationale.** Server-component layouts run before client hydration,
+so the redirect fires before any protected content is sent to the
+wire — closing the hydration-flash gap. Pure-function guards keep
+the test surface manageable. Route groups (parenthesised folders)
+do not affect URL paths, so the grouping is invisible to users
+while structuring the codebase.
+
+### AC-CD21 — TanStack Query conventions, form pattern, error-envelope display
+
+> Added in the Session 2 frontend canonical-doc PR. AC-CD19 pins
+> TanStack Query and `react-hook-form`+`zod` but leaves usage
+> patterns to per-PR judgement. Without this anchor, invalidation
+> strategies drift across pages, query-key shapes diverge, and error
+> display fragments into ad-hoc per-page handling. Self-contained: a
+> reader should know how to wire any new API call into the UI.
+> **Confidence:** confident default.
+
+**Decision.**
+
+- **Query keys** shape as `[domain, resource, ...params]`. Examples:
+  `['catalogue', 'pills', { search, subject }]`,
+  `['attempts', attemptId]`, `['attempts', attemptId, 'result']`. The
+  `domain` segment matches the backend router (`catalogue`,
+  `attempts`, `users`, etc.) so a single
+  `queryClient.invalidateQueries({ queryKey: ['catalogue'] })` clears
+  the domain.
+- **Mutations** call
+  `queryClient.invalidateQueries({ queryKey: [...] })` on success
+  rather than manual `setQueryData`. Optimistic updates are opt-in
+  per mutation, not default.
+- **Default `staleTime`** is `30_000`ms across the client.
+  Suspense-mode is opt-in per query (`useSuspenseQuery`); the default
+  `useQuery` returns `isPending`/`isError`/`data` and renders
+  skeletons/errors inline.
+- **Forms** use `react-hook-form` with a `zod` resolver. The zod
+  schema is the source of truth for field validation; the rhf
+  `register` / `Controller` pattern wires inputs.
+- **Error-envelope display.** A failed mutation's `error`
+  (`ApiError` from `unwrap()`) is passed to a
+  `applyApiErrorToForm(error, form)` helper that walks the AC-CD6
+  `detail` array, maps each item's `loc` onto the matching rhf field
+  via `form.setError`, and surfaces any non-field errors as a toast.
+  The helper lives at `frontend/src/lib/api/form-errors.ts`.
+  Non-mutation errors (page-level fetches) render via the route
+  group's `error.tsx` boundary.
+- **The `unwrap()` helper** from `frontend/src/lib/api/client.ts` is
+  the only call surface that throws `ApiError`. Callers never touch
+  raw `fetch` responses or the `openapi-fetch` `{ data, error }`
+  discriminated union directly; every typed call goes through
+  `unwrap(client.GET(...))`.
+
+**Rationale.** Domain-prefixed keys make invalidation a one-liner
+and prevent cross-domain accidental invalidation. Centralising
+error-envelope mapping in one helper means rhf field errors and
+toasts stay consistent across every form in the app. Suspense being
+opt-in keeps the default UX (inline skeleton in the same component)
+without forcing a Suspense boundary refactor on every page.
+
+### AC-CD22 — Frontend SSE client for `GET /v1/attempts/{id}/stream`
+
+> Added in the Session 2 frontend canonical-doc PR. AC-D25 specifies
+> JIT streaming and AC-CD10 specifies the backend SSE contract, but
+> the frontend has a real fork in the road — `EventSource` cannot set
+> `Authorization` headers, so the choice between `EventSource` and a
+> fetch-streaming adapter is consequential. Locking it now prevents a
+> wrong-turn first cut in FE-5. Self-contained: a reader should know
+> exactly how to consume the stream. **Confidence:** confident
+> default.
+
+**Decision.** SSE consumption uses a **fetch-streaming adapter**,
+not the browser's native `EventSource`. The adapter lives at
+`frontend/src/lib/api/sse.ts` and exposes a single function
+`openAttemptStream(attemptId, opts)` returning an
+`AsyncIterable<StreamEvent>` plus an `AbortController`-backed
+`close()`.
+
+**Adapter behaviour.**
+
+- Opens `GET /v1/attempts/{id}/stream` with the bearer token in the
+  `Authorization` header. If resuming, sets `Last-Event-ID` from the
+  highest event id received so far (per AC-CD10's resume contract).
+- Reads `response.body` as a `ReadableStream<Uint8Array>`, decodes
+  via `TextDecoderStream`, parses SSE frames (`event:`, `data:`,
+  `id:`, blank-line terminators).
+- Yields typed `StreamEvent` values into the consuming reducer.
+
+**Event shape and reducer.** Events arrive with `event` field
+matching the AC-CD10 set: `question_ready` (carries `idx` and the
+`QuestionResponse`), `done` (terminal — clears generating-state),
+`paused` (terminal — surfaces the AC-D11 paused UI). The reducer in
+`frontend/src/components/attempt/jit-queue.tsx` tracks an
+`arrivedIdx` set per question position, so the UI shows
+generating-dots for positions not yet in the set and ready-state
+for positions in it.
+
+**Disconnect handling.** On stream error (network drop, server 5xx
+mid-stream), the adapter retries **once** with `Last-Event-ID` set
+to the highest received id. On second failure, it stops
+reconnecting and emits a synthetic `paused` event so the UI
+surfaces the AC-D11 paused state until the user explicitly resumes
+(which re-invokes `openAttemptStream` with fresh resume state).
+
+**Mode gating.** Per AC-D25 / AC-CD10, the SSE endpoint is only
+consulted in `per_testee` mode. Benchmark mode walks questions via
+sequential `POST /v1/attempts/{id}/next` calls (no streaming). The
+mode resolver in `frontend/src/components/attempt/page.tsx`
+switches between SSE and sequential strategies based on the test's
+`mode` field.
+
+**Rationale.** `EventSource` is simpler but forces auth tokens into
+the URL as a query param — unacceptable given access tokens in the
+bearer flow. The fetch-streaming adapter is ~80 lines, supports the
+`Authorization` header natively, and lets the resume semantics
+align cleanly with AC-CD10's `Last-Event-ID` contract.
+
+### AC-CD23 — Theme system (paper default), token discipline, project-specific primitives
+
+> Added in the Session 2 frontend canonical-doc PR. AC-CD19 pins
+> Tailwind and shadcn/ui but is silent on theming, design-token
+> discipline, and which project-specific primitives (BandTag, Stat,
+> Pill-as-chip, Icon set) live in-tree. Without this anchor, literal
+> hex values creep in and break the theme path; "should this be a
+> primitive or a one-off?" gets re-decided per page; the v5
+> dark-theme exploration risks being reintroduced inadvertently.
+> Self-contained. **Confidence:** confident default.
+
+**Decision.**
+
+- **Single v1 theme: `paper`.** The `<html>` element carries
+  `data-theme="paper"` (server-set in the root `layout.tsx`). The
+  `carbon` and `steel` themes from the v5 design exploration are
+  deferred to v1.x; they are not in any FE-N phase.
+- **Tailwind v4 `@theme` directives.** All design tokens — colour
+  (`--color-ink`, `--color-surface`, `--color-accent`,
+  `--color-band-1` through `--color-band-5`, `--color-safety`),
+  spacing scale, radius, typography — are declared in
+  `frontend/src/app/globals.css` under `@theme`. Component code uses
+  semantic Tailwind classes (`bg-surface`, `text-ink`,
+  `text-band-3`) that bind to those tokens. **Literal hex values,
+  RGB values, or arbitrary-value brackets like `bg-[#fafafa]` are
+  prohibited in component code.** Reviewers reject PRs that
+  introduce them.
+- **Project-specific primitives** that shadcn/ui does not provide
+  live under `frontend/src/components/primitives/`. The v1 set:
+  `BandTag` (D0..D4 / B1..B5 / S1..S5 band badge with band-token
+  colouring), `BandPips` (small dot row for compact band display),
+  `Pill` (chip-style label for tags), `Stat` (label + value + delta
+  block used on dashboards), `Icon` (the design prototype's
+  stroke-SVG set, ~20 icons, authored as a single component with a
+  `name` prop), `Figure` / `InlineFigure` / `ChoiceFigure` (image
+  wrappers per AC-CD24 — type hooks live but render null in v1).
+- **No second component library.** Adding a primitive follows
+  shadcn/ui's source-copy posture: paste source, commit to
+  `primitives/`, no `@radix-ui/*` direct imports outside what
+  shadcn's source-copy brings in.
+
+**Rationale.** Tokens-in-CSS keeps the theme path single-source; the
+moment a hex value lands in a component, the theme path forks.
+Limiting v1 to one theme keeps the design surface bounded and
+matches the KBC pilot's deployment posture. Primitives in one
+folder make "is there already a primitive for this?" a 30-second
+grep.
+
+### AC-CD24 — Visual content deferral (v1.x scope lock)
+
+> Added in the Session 2 frontend canonical-doc PR. PR-030 added
+> nullable image fields to the question response shape
+> (`QuestionResponse.reference_image_url`,
+> `QuestionResponse.reference_image_caption`,
+> `ChoiceResponse.image_url`), with v1 backend always emitting
+> `null`. Without this anchor, "should we just render nothing and
+> add the prop later?" gets re-decided per question component; the
+> v1.x visual-content PR becomes a component-shape refactor instead
+> of a content-add. Self-contained. **Confidence:** confident
+> default.
+
+**Decision.** The frontend's question components accept the
+PR-030 image fields **through the type layer** (via the
+`openapi-typescript` generated
+`components["schemas"]["QuestionResponse"]` shape) but render
+`null` when the values are null. When the values are non-null,
+they render via `<Figure>` / `<InlineFigure>` / `<ChoiceFigure>`
+primitives at `frontend/src/components/primitives/figure.tsx`
+(the design prototype's wrappers, ported and stubbed for v1.x).
+
+**v1 scope.** No v1 page or component exercises the non-null
+branch. The figure primitives exist as typed shells returning
+`null`. Reviewers verify in FE-4 that question-component props
+accept the image fields without TypeScript widening or `as` casts.
+
+**v1.x add path.** The visual-content PR adds rendering inside the
+figure primitives **without touching the question-component
+contract**. The image-emitting backend path (LLM-generated
+reference images, admin-uploaded reference images) is the trigger;
+once `reference_image_url` starts arriving non-null from the
+backend, the figure primitives render it. No frontend type-layer
+refactor needed.
+
+**File-upload UI** (admin authoring of reference images) is **out
+of scope** for v1 frontend. It lands in the same v1.x PR as image
+rendering. Admin authoring screens in FE-8 (test authoring, pill
+authoring) do not include image-upload affordances.
+
+**Rationale.** Forcing the type-layer wiring through in FE-4 means
+the v1.x PR is purely additive (fill in the primitive body) rather
+than disruptive (rewrite question components). The prototype's
+`<Figure>` shape transfers cleanly so the wrappers carry the
+alignment / caption / aspect-ratio decisions from design.
+
 ---
 
 *End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.8
-and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception).*
+and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)).*

@@ -30,6 +30,17 @@ are *documented, not built* in v1.
 7. **`DECISIONS.md`** (product anchors AC-D1–AC-D27, v1.8) — the AC-D
    anchors the phase cites.
 
+> **Frontend phase docs.** Frontend phases (FE-0..FE-9) live in
+> parallel files at repo root: `FE_ROADMAP.md` and `FE_CHECKLIST.md`.
+> `ROADMAP.md` and `CHECKLIST.md` remain **backend-only**; the two
+> file pairs mirror each other in shape with reverse scope statements.
+> Frontend PRs use the titling convention `PR-NNN-feN-slug` (e.g.
+> `PR-033-fe1-auth-surface`). The frontend stack is locked at AC-CD19;
+> per-phase patterns (routing, query/form/error, SSE, theming,
+> visual-content deferral) at AC-CD20..24. Read the FE pair when the
+> phase you close is an FE-N phase, the backend pair when it is a P-N
+> phase.
+
 ## Working agreement (discipline — non-negotiable)
 
 - **Plan mode first.** Show the plan, get explicit user approval, then
@@ -155,6 +166,40 @@ are *documented, not built* in v1.
 - **Doc hygiene.** No `TBD`; no trailing "etc."; no "or"-framed
   requirements in `CODE_SPEC.md`. CHECKLIST rows tick only with real
   Evidence (a test path, command, or artifact).
+
+## Auto-continue + per-slice Gitar workflow (FE-N phase work)
+
+Multi-slice FE-N phases inherit the PR-025 auto-continue default
+(slices auto-continue on clean Gitar review unless the phase opener
+declares binding pauses). Three conventions govern the loop:
+
+- **(a) Spec-drift findings always pause the loop.** Even with
+  auto-continue enabled, the assistant does not silently resolve
+  spec drift. Any finding that the build hits a spec gap or
+  divergence — missing endpoint, ambiguous DECISIONS anchor,
+  CODE_SPEC pattern not yet locked, etc. — halts the loop and
+  surfaces for user input. The user authors the spec-clarification
+  PR; a fresh session implements against the corrected text. This
+  applies to FE-N work identically to backend P-N work, and is the
+  FE-mirror of the existing "Spec drift is surfaced, never silently
+  resolved" rule in the working agreement above.
+- **(b) Circuit breaker on Gitar-fix-Gitar loops.** Maximum 3 fix
+  rounds per slice before the assistant stops and surfaces. The
+  failure mode being prevented: Gitar flags issue → assistant fixes
+  → Gitar flags new issue introduced by the fix → repeat
+  indefinitely. After round 3, the assistant pauses, reports the
+  sequence of findings + fixes, and asks the user to decide whether
+  to continue, change approach, or accept the slice as-is.
+- **(c) User pause-button discipline.** An explicit "pause
+  auto-continue" or "stop at end of current slice" message from the
+  user halts the loop without aborting work in flight. The current
+  slice closes cleanly (commit, push, handover entry if at PR
+  close); the next slice does not start. Treated as a binding
+  instruction with the same gravity as a session-opener flag.
+
+These conventions sit next to the structural-additions carve-out
+above: both codify when the otherwise-default cadence yields to
+user judgement.
 
 ## What is never silently resolved
 
@@ -364,9 +409,24 @@ Anchor calibration at PR-020; P9 Drive RAG + realism feedback at
 PR-021; P10 JIT streaming generation at PR-023; P11 Bootstrap,
 safety links, crons, cost, comms at PR-024). v1.4 / v1.5 merged
 as doc-only clarifications; v1.6 consolidated the pre-build
-spec-audit; v1.7 closed AC-CD11; v1.8 closed AC-CD10. **No
-remaining phases — v1 implementation complete.** Next session
-starts with the post-build hardening / observability sweep
-(formerly the conditional P12 in `ROADMAP.md:200`).
+spec-audit; v1.7 closed AC-CD11; v1.8 closed AC-CD10. **Backend
+v1 implementation complete** — no remaining backend phases; the
+post-build hardening / observability sweep (formerly the
+conditional P12 in `ROADMAP.md:200`) is the only outstanding
+backend work.
 
-*End of SESSION_START. Paired with the v1.8 document set.*
+**Frontend build is now the live track.** **FE-0 landed** at
+PR-032 (Next.js 15 scaffold, pnpm + TS-strict, Tailwind v4 +
+shadcn/ui, openapi-typescript + openapi-fetch + `unwrap()`, auth
+context with memory access + localStorage refresh, CORS, Docker
+service, CI workflow). **FE-1..FE-9 pending** per `FE_ROADMAP.md`
+/ `FE_CHECKLIST.md`. The five frontend technical anchors
+(AC-CD20..24 — routing/guards, query+form+error patterns, SSE
+consumption, theming+primitives, visual-content deferral) landed
+at PR-033 (Session 2 of the frontend canonical-doc drafting); the
+codebase work begins at FE-1 (Auth surface). Next session opens
+FE-1.
+
+*End of SESSION_START. Paired with the v1.8 document set; FE
+phases tracked in `FE_ROADMAP.md` / `FE_CHECKLIST.md` against
+AC-CD19..24.*
