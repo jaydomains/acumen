@@ -202,6 +202,12 @@ finer-grained statuses not yet in the API.
   surface is the pill detail page (FE-3) consuming POST
   /v1/pills/{id}/learning-material (PR-031) on page load.
 
+- Dedicated Testee-facing pill recommendations (Recommended-for-you
+  dashboard card and any recommendations endpoint) — deferred to v1.x.
+  v1 has no AC anchor for recommendations and no backend endpoint; the
+  FE-3 dashboard ships without the card. Revisit once a recommendations
+  anchor lands.
+
 ---
 
 *End of Acumen FE_ROADMAP. Pairs `ROADMAP.md` (backend) one-to-one in
