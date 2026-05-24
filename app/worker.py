@@ -9,9 +9,12 @@ populates :mod:`app.beat_schedule` with the full seven-entry schedule.
 Every wrapper follows the same shape:
 
 1. Construct an :class:`~sqlalchemy.ext.asyncio.AsyncSession` via the
-   module-level :func:`~app.models._session_factory` (Celery runs
-   outside any FastAPI request, so the ``get_db`` dependency is
-   not available).
+   :func:`~app.models.worker_session` async context manager (Celery
+   runs outside any FastAPI request, so the ``get_db`` dependency is
+   not available; ``worker_session`` builds a fresh ``NullPool``
+   engine per task so the asyncpg connection's protocol state never
+   outlives the event loop that ``asyncio.run`` tears down — see the
+   helper's docstring for the failure mode it prevents).
 2. ``await`` the domain callable (which mutates rows + writes audit
    entries as needed; the domain layer is the source of truth for
    what the sweep does).
@@ -66,7 +69,7 @@ def reconcile_grade_reviews_task() -> dict[str, int]:
     """Celery wrapper around the async reconcile sweep.
 
     Constructs its own ``AsyncSession`` via
-    :func:`app.models._session_factory` (Celery runs outside any
+    :func:`app.models.worker_session` (Celery runs outside any
     FastAPI request, so the ``get_db`` dependency is not available).
     Commits at the end so the in-place row updates (auto-flag,
     confirmed/flagged transitions, overall_score recomputes) persist.
@@ -78,10 +81,10 @@ def reconcile_grade_reviews_task() -> dict[str, int]:
     # full domain/model layer at Celery startup (matches the AC-CD2
     # structure-gate convention).
     from app.domain.grade_review import reconcile_pending_grade_reviews
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, int]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await reconcile_pending_grade_reviews(session)
             await session.commit()
         return counts
@@ -95,10 +98,10 @@ def engagement_sweep_task() -> dict[str, int]:
     sweep (one of the seven §8.9 crons). Calls
     :func:`~app.domain.engagement.run_engagement_sweep` and commits."""
     from app.domain.engagement import run_engagement_sweep
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, int]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await run_engagement_sweep(session)
             await session.commit()
         return counts
@@ -113,10 +116,10 @@ def calibration_run_task() -> dict[str, object]:
     :func:`~app.domain.calibration.run_calibration_sweep` and
     commits."""
     from app.domain.calibration import run_calibration_sweep
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, object]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await run_calibration_sweep(session)
             await session.commit()
         return counts
@@ -130,10 +133,10 @@ def drive_rag_ingest_task() -> dict[str, object]:
     the seven §8.9 crons). Calls
     :func:`~app.domain.drive_rag.ingest_drive_folder` and commits."""
     from app.domain.drive_rag import ingest_drive_folder
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, object]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await ingest_drive_folder(session)
             await session.commit()
         return counts
@@ -148,10 +151,10 @@ def realism_aggregate_task() -> dict[str, object]:
     :func:`~app.domain.drive_rag.aggregate_realism_flags` and
     commits."""
     from app.domain.drive_rag import aggregate_realism_flags
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, object]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await aggregate_realism_flags(session)
             await session.commit()
         return counts
@@ -167,10 +170,10 @@ def safety_links_check_task() -> dict[str, int]:
     The Slice 2 stub returns zeros; Slice 3 fills the body (web
     search + httpx + SHA-256 drift audit)."""
     from app.domain.safety_links import check_safety_links
-    from app.models import _session_factory
+    from app.models import worker_session
 
     async def _run() -> dict[str, int]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             counts = await check_safety_links(session)
             await session.commit()
         return counts
@@ -193,10 +196,10 @@ def cost_budget_sweep_task() -> dict[str, object]:
     threshold crossing" gap.
     """
     from app.ai.cost import maybe_fire_budget_alert
-    from app.models import SEED_TENANT_ID, _session_factory
+    from app.models import SEED_TENANT_ID, worker_session
 
     async def _run() -> dict[str, object]:
-        async with _session_factory()() as session:
+        async with worker_session() as session:
             # v1 is single-tenant per AC-CD3 ("one acumen Postgres
             # schema; tenant_id is on every scoped table from day one
             # but v1 is single-tenant; RLS is a port seam, not built

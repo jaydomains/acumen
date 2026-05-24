@@ -1,10 +1,10 @@
 """P11 Slice 2 — Celery task wrappers smoke (CODE_SPEC §8 / AC-CD7).
 
 Each wrapper opens its own ``AsyncSession`` via
-:func:`app.models._session_factory` (Celery runs outside any FastAPI
+:func:`app.models.worker_session` (Celery runs outside any FastAPI
 request, so ``get_db`` is unavailable), calls the domain callable,
 commits, and returns the domain's counts dict unchanged. These tests
-substitute a fake session factory yielding the AC-CD15
+substitute a fake ``worker_session`` yielding the AC-CD15
 ``CatalogueFakeSession`` so the wrappers execute against the same
 in-memory store the integration suite uses.
 
@@ -23,27 +23,22 @@ from tests.integration.conftest import CatalogueFakeSession
 
 @pytest.fixture
 def fake_session_factory(monkeypatch: pytest.MonkeyPatch) -> CatalogueFakeSession:
-    """Patch :func:`app.models._session_factory` so wrappers running
+    """Patch :func:`app.models.worker_session` so wrappers running
     via ``asyncio.run`` open and close the shared
-    ``CatalogueFakeSession`` instead of a real async_sessionmaker.
+    ``CatalogueFakeSession`` instead of a real per-task NullPool
+    engine.
 
     The patched callable mirrors the production shape:
-    ``_session_factory()()`` yields an async-context-manager session.
+    ``worker_session()`` is an async context manager yielding an
+    ``AsyncSession``.
     """
     cat_session = CatalogueFakeSession()
 
     @asynccontextmanager
-    async def _ctx() -> Any:  # type: ignore[misc]
+    async def _worker_session() -> Any:  # type: ignore[misc]
         yield cat_session
 
-    def _factory() -> Any:
-        # ``_session_factory()`` returns the sessionmaker; ``()`` on
-        # the sessionmaker returns the async-ctx-manager session. The
-        # fake collapses both into a single callable that returns a
-        # fresh ctx manager each call.
-        return _ctx
-
-    monkeypatch.setattr("app.models._session_factory", _factory)
+    monkeypatch.setattr("app.models.worker_session", _worker_session)
     return cat_session
 
 

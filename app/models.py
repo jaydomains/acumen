@@ -15,6 +15,7 @@ from __future__ import annotations
 import enum
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import lru_cache
 
@@ -40,6 +41,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -1246,3 +1248,37 @@ async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency yielding a per-request ``AsyncSession``."""
     async with _session_factory()() as session:
         yield session
+
+
+# --- Worker session helper -------------------------------------------
+# Celery task wrappers (``app/worker.py``) each call ``asyncio.run()``
+# around the domain coroutine. ``asyncio.run`` tears down its event
+# loop on exit, but a pooled asyncpg connection survives in the
+# module-level pool with protocol state bound to the torn-down loop;
+# the next task's ``asyncio.run()`` gets that connection on a fresh
+# loop and asyncpg fires ``InterfaceError: cannot perform operation:
+# another operation is in progress`` at transaction-start. The API
+# request path is immune because uvicorn shares a single long-lived
+# loop, so its pooled connections never cross loops.
+#
+# ``worker_session`` builds a fresh ``NullPool`` engine per call and
+# disposes it on exit. Connection lifetime equals session lifetime
+# equals event-loop lifetime — no connection can cross loops. The
+# API-side ``_engine`` / ``_session_factory`` / ``get_db`` are
+# untouched.
+
+
+@asynccontextmanager
+async def worker_session() -> AsyncIterator[AsyncSession]:
+    """Per-task ``AsyncSession`` for Celery workers (CODE_SPEC §8 /
+    AC-CD7). See module-level note above for the loop-binding
+    rationale; ``NullPool`` makes the per-task lifecycle explicit so
+    a future widening of session scope cannot reintroduce the
+    cross-loop reuse."""
+    engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
+    try:
+        maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with maker() as session:
+            yield session
+    finally:
+        await engine.dispose()
