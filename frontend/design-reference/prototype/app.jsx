@@ -8,7 +8,8 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "streamingSpeed": "realistic",
   "integrityVisible": true,
   "density": "comfortable",
-  "constellationLabels": "selected"
+  "constellationLabels": "selected",
+  "v6Mock": "off"
 }/*EDITMODE-END*/;
 
 function App() {
@@ -44,6 +45,16 @@ function App() {
     if (reason === 'submitted') setRoute('results');
   }
 
+  // v6 · FE-1 — unauth surfaces take over the whole viewport (no rail, no topbar)
+  if (role === 'unauth') {
+    return (
+      <>
+        <window.AuthFrame/>
+        <AcumenTweaks t={t} setTweak={setTweak}/>
+      </>
+    );
+  }
+
   // attempt focus mode takes over
   if (attemptCtx && role === 'testee') {
     return (
@@ -65,6 +76,11 @@ function App() {
       <main className="main">
         <TopBar role={role} route={route} onRole={changeRole} user="Jay V."/>
 
+        {/* v6 mock router — overrides route body when active */}
+        {t.v6Mock && t.v6Mock !== 'off' ? (
+          <V6Router mock={t.v6Mock}/>
+        ) : (
+          <>
         {role === 'testee' && route === 'dashboard' && <TesteeDashboard onStartAttempt={startAttempt} onRoute={setRoute}/>}
         {role === 'testee' && route === 'catalogue' && <TesteeCatalogue onStartAttempt={startAttempt}/>}
         {role === 'testee' && route === 'attempt'   && <ResumePrompt onResume={() => startAttempt({pill:'antifouling',diff:5})}/>}
@@ -79,9 +95,30 @@ function App() {
         {role === 'admin'  && route === 'users'           && <AdminUsers/>}
         {role === 'admin'  && route === 'cost'            && <AdminCost/>}
         {role === 'admin'  && route === 'loop'            && <AdminLoops/>}
+          </>
+        )}
       </main>
 
       <AcumenTweaks t={t} setTweak={setTweak}/>
+    </div>
+  );
+}
+
+function V6Router({ mock }) {
+  if (mock === 'boundaries')         return <window.BoundariesMock/>;
+  if (mock === 'pill-detail')        return <window.PillDetailMock/>;
+  if (mock === 'attempt-variants')   return <window.AttemptVariantsMock/>;
+  if (mock === 'streaming-paused')   return <window.StreamingPausedMock/>;
+  if (mock === 'results-additions')  return <window.ResultsAdditionsMock/>;
+  if (mock === 'admin-ops')          return <window.AdminOpsMock/>;
+  if (mock === 'admin-authoring')    return <window.AdminAuthoringMock/>;
+  if (mock === 'admin-test')         return <window.AdminTestAuthoringMock/>;
+  return (
+    <div className="content">
+      <window.PageHeader
+        eyebrow="V6 PREVIEW"
+        title={<><span className="serif-it">Unknown</span> mock: {mock}</>}
+      />
     </div>
   );
 }
@@ -106,7 +143,7 @@ function AcumenTweaks({ t, setTweak }) {
   return (
     <TweaksPanel>
       <TweakSection label="Demo"/>
-      <TweakRadio label="Role" value={t.role} options={['testee','admin']} onChange={v => setTweak('role', v)}/>
+      <TweakRadio label="Role" value={t.role} options={['testee','admin','unauth']} onChange={v => setTweak('role', v)}/>
       <TweakSection label="Theme"/>
       <TweakRadio label="Theme" value={t.theme}
         options={[
@@ -124,6 +161,20 @@ function AcumenTweaks({ t, setTweak }) {
         ]}
         onChange={v => setTweak('streamingSpeed', v)}/>
       <TweakToggle label="Integrity badge" value={t.integrityVisible} onChange={v => setTweak('integrityVisible', v)}/>
+      <TweakSection label="v6 Mock preview"/>
+      <TweakSelect label="Mock" value={t.v6Mock || 'off'}
+        options={[
+          {value:'off',                label:'— Live prototype —'},
+          {value:'boundaries',         label:'FE-2 · Boundary pages'},
+          {value:'pill-detail',        label:'FE-3 · Pill detail + safety'},
+          {value:'attempt-variants',   label:'FE-4 · Benchmark + autosave'},
+          {value:'streaming-paused',   label:'FE-5 · Paused states'},
+          {value:'results-additions',  label:'FE-6 · Results additions'},
+          {value:'admin-ops',          label:'FE-9 · Admin operations'},
+          {value:'admin-authoring',    label:'FE-8 · Admin authoring (5 forms)'},
+          {value:'admin-test',         label:'FE-8 · Test authoring (#20)'},
+        ]}
+        onChange={v => setTweak('v6Mock', v)}/>
     </TweaksPanel>
   );
 }
