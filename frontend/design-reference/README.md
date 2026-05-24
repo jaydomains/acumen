@@ -37,6 +37,14 @@ the real frontend should not depend on anything in this directory.
 
 ## Organization
 
-Files are dropped into this directory flat. A follow-up session will
-analyze what has been added, reorganize into sensible subdirectories, and
-update this README to reflect the resulting structure.
+```
+frontend/design-reference/
+├── prototype/      Runnable HTML/CSS/JSX mockup (open prototype/index.html in a browser to run it standalone).
+├── screenshots/    PNGs captured from the prototype across design iterations.
+└── uploads/        Reference images consumed by the prototype.
+```
+
+The files under `prototype/` form one interconnected artifact —
+`index.html` loads `styles.css` and the `.jsx` files as ordered
+`<script type="text/babel">` tags, and the JSX modules communicate via
+window globals rather than ES imports. Keep them co-located.
