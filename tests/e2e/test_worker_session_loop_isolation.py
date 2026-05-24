@@ -58,10 +58,21 @@ def test_worker_session_survives_back_to_back_asyncio_run() -> None:
 
 
 def test_pooled_session_factory_reproduces_loop_binding_bug() -> None:
-    """The abandoned ``_session_factory()()`` pattern raises
-    ``asyncpg.InterfaceError`` on the second ``asyncio.run`` — pins
-    the failure mode so any future regression that re-routes worker
-    tasks through the pooled API-side factory trips immediately.
+    """The abandoned ``_session_factory()()`` pattern raises on the
+    second ``asyncio.run`` — pins the failure mode so any future
+    regression that re-routes worker tasks through the pooled API-side
+    factory trips immediately.
+
+    The exact exception class depends on which asyncpg internal sees
+    the loop mismatch first: the live 24h soak surfaced
+    ``asyncpg.InterfaceError: cannot perform operation: another
+    operation is in progress`` (asyncpg's protocol-state check at
+    transaction-start), while a controlled back-to-back
+    ``asyncio.run`` reproduction can surface ``RuntimeError`` from
+    asyncio attaching a Future to the wrong loop. Both are symptoms
+    of the same root cause (connection bound to a torn-down loop);
+    accept either so the test pins the failure mode without
+    over-specifying the visible manifestation.
 
     Clears the ``lru_cache`` first so a prior test in this module
     cannot have warmed an unrelated engine.
@@ -77,7 +88,7 @@ def test_pooled_session_factory_reproduces_loop_binding_bug() -> None:
             return int(result.scalar_one())
 
     assert asyncio.run(_round_trip()) == 1
-    with pytest.raises(asyncpg.InterfaceError, match="another operation is in progress"):
+    with pytest.raises((RuntimeError, asyncpg.InterfaceError)):
         asyncio.run(_round_trip())
 
     # Best-effort teardown so a following test cannot inherit a
