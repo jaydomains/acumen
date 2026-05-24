@@ -29,7 +29,11 @@ jobs:
       - name: Mypy
         run: mypy app
       - name: Pytest
-        run: pytest -q
+        # ``tests/e2e/`` requires a real Postgres service and runs in
+        # the ``migration-chain`` job below (which already spins one
+        # up for the alembic round-trip). The ``checks`` job stays
+        # hermetic per AC-CD15.
+        run: pytest -q --ignore=tests/e2e
 
   migration-chain:
     # Greenfield Alembic ``upgrade head`` against a real Postgres —
@@ -84,3 +88,10 @@ jobs:
         run: alembic downgrade base
       - name: alembic upgrade head (round-trip)
         run: alembic upgrade head
+      - name: Pytest (e2e — real Postgres)
+        # The worker_session loop-isolation regression test (CODE_SPEC
+        # §8 / AC-CD7) requires a real asyncpg connection; reuses the
+        # service + init.sql + upgrade head already applied above.
+        env:
+          DATABASE_URL: postgresql+asyncpg://acumen:acumen@127.0.0.1:5432/acumen
+        run: pytest -q tests/e2e/
