@@ -286,3 +286,26 @@ def test_migration_0007_question_position_round_trip() -> None:
     assert "DROP COLUMN attempt_position" in down.stdout
     assert "DROP CONSTRAINT uq_question_attempt_position" in down.stdout
     assert "DROP COLUMN reason" in down.stdout
+
+
+def test_migration_0008_test_pill_id_round_trip() -> None:
+    # Slice B B.3 additive: ``test.pill_id`` nullable FK to ``pill(id)``
+    # + ``ix_test_pill_id``. Reversible per AC-CD3.
+    up = _alembic(
+        "upgrade",
+        "0007_p10_question_position:0008_slice_b_test_pill_id",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "ADD COLUMN pill_id UUID" in up.stdout
+    assert "REFERENCES" in up.stdout
+    assert "CREATE INDEX ix_test_pill_id" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0008_slice_b_test_pill_id:0007_p10_question_position",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP INDEX" in down.stdout and "ix_test_pill_id" in down.stdout
+    assert "DROP COLUMN pill_id" in down.stdout

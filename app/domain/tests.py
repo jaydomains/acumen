@@ -48,6 +48,7 @@ __all__ = [
     "create_test",
     "get_test",
     "list_tests",
+    "resolve_test",
     "update_test",
     "publish_test",
     "delete_test",
@@ -111,6 +112,7 @@ async def create_test(
     randomise_option_order: bool = True,
     benchmark_scope: Any | None = None,
     benchmark_target_testee_id: uuid.UUID | None = None,
+    pill_id: uuid.UUID | None = None,
 ) -> Test:
     """Create a draft test. The schema layer has already enforced the
     mode-field matrix and the AC-D11 timing/pause rules; this sets
@@ -135,6 +137,7 @@ async def create_test(
         randomise_option_order=randomise_option_order,
         benchmark_scope=benchmark_scope,
         benchmark_target_testee_id=benchmark_target_testee_id,
+        pill_id=pill_id,
     )
     db.add(test)
     await db.flush()
@@ -159,6 +162,37 @@ async def list_tests(
 ) -> tuple[list[Test], str | None]:
     """Admin listing — includes draft and private tests."""
     return paginate(await _tenant_rows(db, Test), cursor, limit)
+
+
+async def resolve_test(
+    db: AsyncSession, *, pill_id: uuid.UUID, difficulty: int
+) -> Test | None:
+    """Slice B B.3 — testee-facing find-only resolver.
+
+    Returns the newest published frozen / hand-authored test whose
+    ``pill_id`` (canonical pill linkage, slice-B migration 0008) and
+    ``target_difficulty`` both match the requested (pill, band).
+    Tests without an explicit pill linkage are unresolvable here by
+    design — the find-only contract requires admins to opt a test into
+    discovery by setting ``test.pill_id``.
+
+    On-demand generation is out-of-slice — a separate
+    ``POST /v1/tests/generate`` is filed as the follow-up upgrade.
+    """
+    tests = await _tenant_rows(db, Test)
+    candidates = [
+        t
+        for t in tests
+        if t.status == TestStatus.published
+        and t.mode in _AUTHORED_MODES
+        and t.pill_id == pill_id
+        and t.target_difficulty == difficulty
+    ]
+    if not candidates:
+        return None
+    # Newest-first for determinism — most-recent published test wins.
+    candidates.sort(key=lambda t: t.created_at, reverse=True)
+    return candidates[0]
 
 
 async def update_test(

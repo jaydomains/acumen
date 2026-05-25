@@ -152,6 +152,9 @@ def test_parser_finds_expected_post_p1_names() -> None:
         ("column", "question", "attempt_position"),
         ("constraint", "question", "uq_question_attempt_position"),
         ("column", "attempt_pause_event", "reason"),
+        # 0008: test.pill_id + its index (slice B B.3)
+        ("column", "test", "pill_id"),
+        ("index", "test", "ix_test_pill_id"),
     }
     missing = expected - seen
     assert not missing, f"parser missed expected (kind, table, name): {missing}"

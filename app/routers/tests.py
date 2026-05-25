@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import tests as test_domain
 from app.models import AppUser, Question, Test, get_db
-from app.permissions import ROLE_ADMINISTRATOR, APIError, require_role
+from app.permissions import (
+    ROLE_ADMINISTRATOR,
+    APIError,
+    get_privacy_acked_user,
+    require_role,
+)
 from app.schemas import (
     CampaignLockRequest,
     Page,
@@ -26,6 +31,7 @@ from app.schemas import (
     QuestionResponse,
     QuestionUpdate,
     TestCreate,
+    TestResolveResponse,
     TestResponse,
     TestUpdate,
 )
@@ -76,6 +82,7 @@ async def create_test(
         randomise_option_order=bool(body.randomise_option_order),
         benchmark_scope=body.benchmark_scope,
         benchmark_target_testee_id=body.benchmark_target_testee_id,
+        pill_id=body.pill_id,
     )
     await db.commit()
     return TestResponse.model_validate(test)
@@ -93,6 +100,28 @@ async def list_tests(
         data=[TestResponse.model_validate(r) for r in rows],
         meta=PageMeta(next_cursor=next_cursor),
     )
+
+
+@router.get("/resolve")
+async def resolve_test(
+    pill_id: uuid.UUID = Query(...),
+    difficulty: int = Query(..., ge=1, le=10),
+    _user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+) -> TestResolveResponse:
+    """Slice B B.3 — testee-facing find-only resolver for the FE-3
+    pill-detail "Practice at D{n}" CTA. Returns the test_id of a
+    published single-pill test matching (pill_id, difficulty); 404
+    when no match exists. Find-or-generate is filed as a follow-up
+    (separate ``POST /v1/tests/generate``)."""
+    test = await test_domain.resolve_test(db, pill_id=pill_id, difficulty=difficulty)
+    if test is None:
+        raise APIError(
+            404,
+            "not_found",
+            "No published test exists for this pill at this difficulty.",
+        )
+    return TestResolveResponse(test_id=test.id)
 
 
 @router.get("/{test_id}")

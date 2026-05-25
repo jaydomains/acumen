@@ -105,6 +105,7 @@ __all__ = [
     "submit_attempt",
     "next_question",
     "result_view",
+    "list_own_submitted_attempts",
 ]
 
 # Deterministic types grade locally in P4 (Slice 3). AI-graded types
@@ -1517,3 +1518,91 @@ async def next_question(db: AsyncSession, attempt: Attempt, test: Test) -> dict[
             "assigned_difficulty": difficulty,
         },
     }
+
+
+# --- Slice B B.5 — testee own-scope attempt listing (FE-7 history) ----
+# Returns submitted-only attempts for the caller's testee_id, newest
+# first, with the pill name joined in. Cursor pagination via
+# :func:`app.domain.catalogue.paginate` keeps the envelope consistent
+# with every other paginated endpoint (CODE_SPEC §5). Returned dicts
+# carry every field the ``AttemptListItem`` schema needs;
+# ``competence_delta`` is always ``None`` in slice B (a per-attempt
+# competence snapshot column is filed as the follow-up upgrade).
+
+
+async def list_own_submitted_attempts(
+    db: AsyncSession,
+    *,
+    testee_id: uuid.UUID,
+    cursor: str | None,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Submitted-only attempts for ``testee_id``, newest first, joined
+    with the test's canonical pill (B.3 ``Test.pill_id`` linkage).
+    Attempts on tests with no pill linkage are skipped — FE-7 surfaces
+    per-pill rows, so an unrooted entry has nothing to render.
+
+    The canonical :func:`app.domain.catalogue.paginate` orders by
+    ``(created_at, id)`` ASC, which would put oldest first; for the
+    FE-7 history table we need submitted-time DESC, so this helper
+    paginates inline (cursor = opaque attempt id of the last row of the
+    previous page)."""
+    from app.domain.competence import band_string
+
+    attempts_result = await db.execute(
+        select(Attempt).where(Attempt.testee_id == testee_id)
+    )
+    submitted = [
+        a
+        for a in attempts_result.scalars().all()
+        if a.submitted_at is not None and a.tenant_id == SEED_TENANT_ID
+    ]
+    # Newest submission first, tie-break by id for determinism.
+    submitted.sort(key=lambda a: (a.submitted_at, str(a.id)), reverse=True)
+
+    if cursor:
+        start = next((i + 1 for i, a in enumerate(submitted) if str(a.id) == cursor), 0)
+        submitted = submitted[start:]
+    page = submitted[:limit]
+    next_cursor = str(page[-1].id) if len(submitted) > limit else None
+
+    if not page:
+        return [], next_cursor
+
+    test_ids = {a.test_id for a in page}
+    tests_result = await db.execute(select(Test).where(Test.tenant_id == SEED_TENANT_ID))
+    tests_by_id = {t.id: t for t in tests_result.scalars().all() if t.id in test_ids}
+
+    pill_ids_needed = {t.pill_id for t in tests_by_id.values() if t.pill_id is not None}
+    pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    pills_by_id = {
+        p.id: p for p in pills_result.scalars().all() if p.id in pill_ids_needed
+    }
+
+    items: list[dict[str, Any]] = []
+    for attempt in page:
+        test = tests_by_id.get(attempt.test_id)
+        if test is None or test.pill_id is None:
+            continue
+        pill = pills_by_id.get(test.pill_id)
+        if pill is None:
+            continue
+        score = attempt.overall_score
+        score_percent = float(score) * 100.0 if score is not None else 0.0
+        # B.5 derives the per-attempt band from score, mapping the
+        # 0..100 score axis onto the 0..10 competence axis — FE-7
+        # history rows show the per-attempt band independently of the
+        # testee's current CompetencyProfile.
+        items.append(
+            {
+                "attempt_id": attempt.id,
+                "pill_id": pill.id,
+                "pill_name": pill.name,
+                "submitted_at": attempt.submitted_at,
+                "score_percent": score_percent,
+                "band": band_string(score_percent / 10.0),
+                "origin": attempt.origin,
+                "competence_delta": None,
+            }
+        )
+    return items, next_cursor

@@ -242,6 +242,17 @@ async def override_pill_safety(
     return pill
 
 
+async def get_discoverable_pill(db: AsyncSession, pill_id: uuid.UUID) -> Pill | None:
+    """Testee-facing single-pill fetch (AC-D8). Returns ``None`` when
+    the pill is missing, not discoverable, or retired — the router
+    collapses all three into ``404 not_found`` for the same reason
+    :func:`list_discoverable_pills` hides them from the discovery list."""
+    pill = await _by_id(db, Pill, pill_id)
+    if pill is None or not pill.discoverable or pill.retired_at is not None:
+        return None
+    return pill
+
+
 async def list_discoverable_pills(
     db: AsyncSession,
     *,

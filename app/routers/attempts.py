@@ -31,7 +31,7 @@ from contextlib import AbstractAsyncContextManager
 from typing import Any, cast
 
 import anyio
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,11 +62,14 @@ from app.permissions import (
     load_user_by_id,
 )
 from app.schemas import (
+    AttemptListItem,
     AttemptResultResponse,
     AttemptStartRequest,
     AttemptView,
     AutosaveRequest,
     BenchmarkNextResponse,
+    Page,
+    PageMeta,
 )
 
 router = APIRouter(prefix="/v1/attempts", tags=["attempts"])
@@ -95,6 +98,35 @@ async def _load(
     if test is None:
         raise APIError(404, "not_found", "Attempt not found.")
     return attempt, test
+
+
+# Slice B B.5 — testee own-scope attempt history (FE-7 §B.2). Declared
+# before ``/{attempt_id}`` is irrelevant (different HTTP methods), but
+# kept here next to ``POST ""`` so the empty-path handlers stay
+# co-located.
+_ATTEMPTS_DEFAULT_LIMIT = 50
+_ATTEMPTS_MAX_LIMIT = 200
+
+
+@router.get("")
+async def list_own_attempts(
+    user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=_ATTEMPTS_DEFAULT_LIMIT, ge=1, le=_ATTEMPTS_MAX_LIMIT),
+) -> Page[AttemptListItem]:
+    """Testee's own submitted attempts (FE-7 history + sparkline).
+    Own-scope only (caller's testee_id); in-flight attempts are excluded.
+    Newest first. Ships under the canonical ``Page[T]`` envelope per
+    CODE_SPEC §5 — the FE-7-profile.md flat-shape contract is filed for
+    a follow-up doc amendment."""
+    rows, next_cursor = await attempt_domain.list_own_submitted_attempts(
+        db, testee_id=user.id, cursor=cursor, limit=limit
+    )
+    return Page[AttemptListItem](
+        data=[AttemptListItem(**row) for row in rows],
+        meta=PageMeta(next_cursor=next_cursor),
+    )
 
 
 @router.post("", status_code=201)
