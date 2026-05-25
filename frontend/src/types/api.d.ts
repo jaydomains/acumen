@@ -304,10 +304,15 @@ export interface paths {
         };
         /**
          * Grade Reviews Flagged
-         * @description List flagged grade_review rows pending admin resolution
-         *     (AC-D19 v1.6 admin queue). Oldest-first; rows whose underlying
-         *     Grade has already been resolved (Grade.overridden_at IS NOT NULL)
-         *     drop off the queue.
+         * @description List grade_review rows pending admin resolution (AC-D19 v1.6
+         *     admin queue). Oldest-first; rows whose underlying Grade has
+         *     already been resolved (Grade.overridden_at IS NOT NULL) drop off
+         *     the queue.
+         *
+         *     Slice C row-enrichment adds the ``verdict`` query param so the
+         *     FE-9 queue page can flip between ``flagged`` (default), ``confirmed``,
+         *     or ``all`` without a second endpoint (FE-9-admin-ops.md §H(a)
+         *     item 1).
          */
         get: operations["grade_reviews_flagged_v1_admin_grade_reviews_flagged_get"];
         put?: never;
@@ -380,6 +385,11 @@ export interface paths {
          *     (AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose
          *     ``routed_to_admin`` flag has been cleared by a prior approve/reject
          *     drop off the queue.
+         *
+         *     Slice C row-enrichment adds the ``status`` query param so the
+         *     FE-9 queue page can server-side-filter against the derived 5-value
+         *     enum (FE-9-admin-ops.md §H(a) item 1). Omitted = return every
+         *     routed-to-admin row regardless of derived status.
          */
         get: operations["loop_queue_v1_admin_loop_queue_get"];
         put?: never;
@@ -429,6 +439,11 @@ export interface paths {
          * @description Reject a queued WeaknessReport: clears ``routed_to_admin``
          *     without creating a follow-up. The Testee never sees a remediation
          *     pass for this attempt. Audit-logged at ``loop.queue.reject``.
+         *
+         *     Slice C row-enrichment accepts an optional ``{reason: str}`` body
+         *     captured into the audit_log detail for operator traceability
+         *     (FE-9-admin-ops.md §H(a) item 1 sub-item). Empty POST is still
+         *     accepted — the reason simply defaults to None.
          */
         post: operations["loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post"];
         delete?: never;
@@ -498,6 +513,37 @@ export interface paths {
          *     realism_flag_count changes on the dashboard.
          */
         post: operations["realism_aggregate_v1_admin_realism_aggregate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/realism/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Realism Status Endpoint
+         * @description Read-only telemetry roll-up for the FE-9 systems-page realism
+         *     aggregation card (FE-9-admin-systems.md §H(a) item 8).
+         *
+         *     Five fields per the locked spec contract: ``last_aggregated_at``,
+         *     ``flags_processed_last_run``, ``below_threshold_count``,
+         *     ``auto_suppressed_count``, ``total_flag_count_active``. No new
+         *     persistence — every value derives from ``audit_log`` (the
+         *     realism.aggregate row written by :func:`realism_aggregate`),
+         *     ``question.realism_flag_count``, the ``anchor_question.excluded``
+         *     + ``excluded_reason`` columns set by
+         *     :func:`app.domain.drive_rag.aggregate_realism_flags`, and the
+         *     ``realism_flag`` table itself.
+         */
+        get: operations["realism_status_endpoint_v1_admin_realism_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -576,7 +622,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Own Attempts
+         * @description Testee's own submitted attempts (FE-7 history + sparkline).
+         *     Own-scope only (caller's testee_id); in-flight attempts are excluded.
+         *     Newest first. Ships under the canonical ``Page[T]`` envelope per
+         *     CODE_SPEC §5 — the FE-7-profile.md flat-shape contract is filed for
+         *     a follow-up doc amendment.
+         */
+        get: operations["list_own_attempts_v1_attempts_get"];
         put?: never;
         /** Start Attempt */
         post: operations["start_attempt_v1_attempts_post"];
@@ -951,6 +1005,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/setup/{token}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Setup Preview
+         * @description Read-only sibling of ``POST /setup/consume`` — exposes the
+         *     invitee email so the activation form can pre-fill a read-only
+         *     email field (FE-1 §B activation flow). Same invalid-token opacity
+         *     as ``setup/consume``: 400 ``invalid_token`` for missing / expired
+         *     / used tokens; the email leaks nothing the holder of a valid token
+         *     didn't already have.
+         */
+        get: operations["setup_preview_v1_auth_setup__token__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/calibration/pills/{pill_id}/bands/{band}": {
         parameters: {
             query?: never;
@@ -985,6 +1064,28 @@ export interface paths {
         };
         /** Discover Pills */
         get: operations["discover_pills_v1_catalogue_pills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/pills/{pill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Discoverable Pill Detail
+         * @description Testee-facing single-pill detail (AC-D8). Mirrors the discovery
+         *     list filter — non-discoverable and retired pills 404 here just as
+         *     they hide from the list.
+         */
+        get: operations["get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1099,6 +1200,28 @@ export interface paths {
         head?: never;
         /** Update Path */
         patch: operations["update_path_v1_learning_paths__path_id__patch"];
+        trace?: never;
+    };
+    "/v1/me/competence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Competence
+         * @description Testee's own per-pill competency profile. Empty
+         *     ``{ "pills": [] }`` for a testee with no CompetencyProfile rows
+         *     (new account).
+         */
+        get: operations["get_my_competence_v1_me_competence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/pill-proposals": {
@@ -1290,6 +1413,30 @@ export interface paths {
         put?: never;
         /** Create Test */
         post: operations["create_test_v1_tests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Test
+         * @description Slice B B.3 — testee-facing find-only resolver for the FE-3
+         *     pill-detail "Practice at D{n}" CTA. Returns the test_id of a
+         *     published single-pill test matching (pill_id, difficulty); 404
+         *     when no match exists. Find-or-generate is filed as a follow-up
+         *     (separate ``POST /v1/tests/generate``).
+         */
+        get: operations["resolve_test_v1_tests_resolve_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1623,6 +1770,36 @@ export interface components {
              */
             updated_at: string;
         };
+        /** AttemptListItem */
+        AttemptListItem: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /**
+             * Band
+             * @enum {string}
+             */
+            band: "novice" | "junior" | "working" | "advanced" | "expert";
+            /** Competence Delta */
+            competence_delta?: number | null;
+            origin: components["schemas"]["AttemptOrigin"];
+            /**
+             * Pill Id
+             * Format: uuid
+             */
+            pill_id: string;
+            /** Pill Name */
+            pill_name: string;
+            /** Score Percent */
+            score_percent: number;
+            /**
+             * Submitted At
+             * Format: date-time
+             */
+            submitted_at: string;
+        };
         /**
          * AttemptOrigin
          * @enum {string}
@@ -1890,6 +2067,8 @@ export interface components {
         };
         /** EngagementWidgetItem */
         EngagementWidgetItem: {
+            /** Assigner Name */
+            assigner_name: string;
             /**
              * Assignment Id
              * Format: uuid
@@ -1900,15 +2079,25 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Days Stale */
+            days_stale: number;
             /** Deadline */
             deadline: string | null;
+            /** Escalated */
+            escalated: boolean;
             /** Is Mandatory */
             is_mandatory: boolean;
+            /** Pill Or Test Name */
+            pill_or_test_name: string;
+            /** Reminders Sent */
+            reminders_sent: number;
             /**
              * Testee Id
              * Format: uuid
              */
             testee_id: string;
+            /** Testee Name */
+            testee_name: string;
         };
         /** EngagementWidgetResponse */
         EngagementWidgetResponse: {
@@ -1947,6 +2136,8 @@ export interface components {
              * Format: uuid
              */
             pill_id: string;
+            /** Pill Name */
+            pill_name: string;
             /** Regeneration Attempts */
             regeneration_attempts: number;
             /** Type */
@@ -1976,6 +2167,8 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
+            /** Band */
+            band: number;
             /**
              * Created At
              * Format: date-time
@@ -1991,13 +2184,23 @@ export interface components {
              * Format: uuid
              */
             grade_review_id: string;
+            /** Pill Name */
+            pill_name: string;
             /**
              * Question Id
              * Format: uuid
              */
             question_id: string;
+            /** Question Prompt */
+            question_prompt: string;
             /** Review Reasoning */
             review_reasoning: string | null;
+            /** Rubric Extract */
+            rubric_extract: string;
+            /** Testee Name */
+            testee_name: string;
+            /** Testee Response */
+            testee_response: string;
         };
         /** FlaggedGradeReviewListResponse */
         FlaggedGradeReviewListResponse: {
@@ -2281,6 +2484,15 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Iteration */
+            iteration: string;
+            /** Last Attempt At */
+            last_attempt_at: string | null;
+            /**
+             * Loop Mode
+             * @enum {string}
+             */
+            loop_mode: "autonomous" | "admin_reviewed";
             /** Overall Score */
             overall_score: number | null;
             /**
@@ -2291,10 +2503,17 @@ export interface components {
             /** Pill Name */
             pill_name: string;
             /**
+             * Status
+             * @enum {string}
+             */
+            status: "review" | "queued" | "step-down" | "material-served" | "closed";
+            /**
              * Testee Id
              * Format: uuid
              */
             testee_id: string;
+            /** Testee Name */
+            testee_name: string;
             /** Weak Pill Ids */
             weak_pill_ids: string[];
             /**
@@ -2309,6 +2528,20 @@ export interface components {
             data: components["schemas"]["LoopQueueItem"][];
         };
         /**
+         * LoopRejectRequest
+         * @description Optional body for ``POST /v1/admin/loop/queue/{id}/reject``.
+         *
+         *     The admin may provide a free-text ``reason`` captured into the
+         *     audit_log row for the rejection (operator traceability — surfaces
+         *     in the review history). Body is optional; the endpoint accepts an
+         *     empty POST and writes ``reason=None`` to the audit detail (FE-9
+         *     §H(a) item 1 sub-item).
+         */
+        LoopRejectRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
          * LoopRejectResult
          * @description Response shape after a successful admin rejection. Compact
          *     payload — the flag is cleared and no follow-up created. Audit-
@@ -2320,6 +2553,46 @@ export interface components {
              * Format: uuid
              */
             weakness_report_id: string;
+        };
+        /** MeCompetencePill */
+        MeCompetencePill: {
+            /**
+             * Band
+             * @enum {string}
+             */
+            band: "novice" | "junior" | "working" | "advanced" | "expert";
+            /** Competence Estimate */
+            competence_estimate: number | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "preliminary" | "confident";
+            /** Last Activity At */
+            last_activity_at: string | null;
+            /** N */
+            n: number;
+            /**
+             * Pill Id
+             * Format: uuid
+             */
+            pill_id: string;
+            /** Pill Name */
+            pill_name: string;
+            /** Related Pill Ids */
+            related_pill_ids: string[];
+            /** Safety Relevant */
+            safety_relevant: boolean;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+        };
+        /** MeCompetenceResponse */
+        MeCompetenceResponse: {
+            /** Pills */
+            pills: components["schemas"]["MeCompetencePill"][];
         };
         /** MessageResponse */
         MessageResponse: {
@@ -2338,6 +2611,12 @@ export interface components {
         Page_AssignmentResponse_: {
             /** Data */
             data: components["schemas"]["AssignmentResponse"][];
+            meta: components["schemas"]["PageMeta"];
+        };
+        /** Page[AttemptListItem] */
+        Page_AttemptListItem_: {
+            /** Data */
+            data: components["schemas"]["AttemptListItem"][];
             meta: components["schemas"]["PageMeta"];
         };
         /** Page[GroupResponse] */
@@ -2612,6 +2891,29 @@ export interface components {
              */
             testee_id: string;
         };
+        /**
+         * RealismStatusResponse
+         * @description Read-only dashboard surface for the realism-aggregation card on
+         *     the admin systems page (FE-9-admin-systems.md §H(a) item 8).
+         *
+         *     Telemetry is derived from existing tables: the last-run fields read
+         *     the most-recent ``audit_log`` row with ``action='realism.aggregate'``
+         *     (written by :func:`app.routers.rag.realism_aggregate`); the live
+         *     counters are computed against ``question``, ``anchor_question`` and
+         *     ``realism_flag`` directly. No new persistence layer (zero migration).
+         */
+        RealismStatusResponse: {
+            /** Auto Suppressed Count */
+            auto_suppressed_count: number;
+            /** Below Threshold Count */
+            below_threshold_count: number;
+            /** Flags Processed Last Run */
+            flags_processed_last_run: number;
+            /** Last Aggregated At */
+            last_aggregated_at: string | null;
+            /** Total Flag Count Active */
+            total_flag_count_active: number;
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /** Refresh Token */
@@ -2661,6 +2963,11 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** SetupPreviewResponse */
+        SetupPreviewResponse: {
+            /** Email */
+            email: string;
+        };
         /** SubjectCreate */
         SubjectCreate: {
             /** Description */
@@ -2699,10 +3006,23 @@ export interface components {
         };
         /** SweepResult */
         SweepResult: {
+            /** Assignments Processed */
+            assignments_processed: number;
+            /** Duration Ms */
+            duration_ms: number;
             /** Escalations Sent */
             escalations_sent: number;
+            /** First Reminders Sent */
+            first_reminders_sent: number;
+            /**
+             * Last Swept At
+             * Format: date-time
+             */
+            last_swept_at: string;
             /** Reminders Sent */
             reminders_sent: number;
+            /** Second Reminders Sent */
+            second_reminders_sent: number;
         };
         /** TestCreate */
         TestCreate: {
@@ -2723,6 +3043,8 @@ export interface components {
             pass_threshold?: number | null;
             /** Pause Allowance */
             pause_allowance?: number | null;
+            /** Pill Id */
+            pill_id?: string | null;
             /** Randomise Option Order */
             randomise_option_order?: boolean | null;
             /** Randomise Question Order */
@@ -2744,6 +3066,14 @@ export interface components {
          * @enum {string}
          */
         TestMode: "per_testee" | "frozen" | "hand_authored" | "benchmark";
+        /** TestResolveResponse */
+        TestResolveResponse: {
+            /**
+             * Test Id
+             * Format: uuid
+             */
+            test_id: string;
+        };
         /** TestResponse */
         TestResponse: {
             benchmark_scope: components["schemas"]["BenchmarkScope"] | null;
@@ -2774,6 +3104,8 @@ export interface components {
             pass_threshold: number | null;
             /** Pause Allowance */
             pause_allowance: number | null;
+            /** Pill Id */
+            pill_id?: string | null;
             /** Randomise Option Order */
             randomise_option_order: boolean;
             /** Randomise Question Order */
@@ -2808,6 +3140,8 @@ export interface components {
             pass_threshold?: number | null;
             /** Pause Allowance */
             pause_allowance?: number | null;
+            /** Pill Id */
+            pill_id?: string | null;
             /** Randomise Option Order */
             randomise_option_order?: boolean | null;
             /** Randomise Question Order */
@@ -3224,7 +3558,9 @@ export interface operations {
     };
     grade_reviews_flagged_v1_admin_grade_reviews_flagged_get: {
         parameters: {
-            query?: never;
+            query?: {
+                verdict?: "flagged" | "confirmed" | "all";
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -3323,7 +3659,9 @@ export interface operations {
     };
     loop_queue_v1_admin_loop_queue_get: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: ("review" | "queued" | "step-down" | "material-served" | "closed") | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -3396,7 +3734,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LoopRejectRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -3469,6 +3811,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealismAggregationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    realism_status_endpoint_v1_admin_realism_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RealismStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3635,6 +4008,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_own_attempts_v1_attempts_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AttemptListItem_"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -4273,6 +4680,37 @@ export interface operations {
             };
         };
     };
+    setup_preview_v1_auth_setup__token__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     band_state_v1_calibration_pills__pill_id__bands__band__get: {
         parameters: {
             query?: never;
@@ -4331,6 +4769,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_PillResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4742,6 +5213,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LearningPathResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_competence_v1_me_competence_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeCompetenceResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5393,6 +5895,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_test_v1_tests_resolve_get: {
+        parameters: {
+            query: {
+                pill_id: string;
+                difficulty: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResolveResponse"];
                 };
             };
             /** @description Validation Error */

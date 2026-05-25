@@ -607,29 +607,28 @@ _LOOP_STATUS_VALUES = frozenset(
 )
 
 
-async def _attempts_index(db: AsyncSession) -> dict[uuid.UUID, Attempt]:
-    result = await db.execute(select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID))
-    return {a.id: a for a in result.scalars().all()}
-
-
-async def _children_by_parent(
+async def _build_attempt_indexes(
     db: AsyncSession,
-) -> dict[uuid.UUID, list[Attempt]]:
-    """Index of loop-driven child attempts by ``parent_attempt_id``.
+) -> tuple[dict[uuid.UUID, Attempt], dict[uuid.UUID, list[Attempt]]]:
+    """Single tenant-wide :class:`Attempt` scan that yields both the
+    ``by_id`` lookup AND the ``loop_driven`` children-by-parent index.
 
-    Used by the admin-queue status derivation to detect whether a
-    follow-up has been started (``queued`` / ``step-down``) for the
-    parent attempt. Loop-only — self-initiated and assignment-driven
-    attempts skip the index."""
+    Built in one pass per Gitar PR-#49 review — loading the Attempt
+    table twice for the admin-queue surface doubled DB I/O + memory for
+    no behavioural gain. Both indexes derive from the same row set, so
+    we walk it once and split into the two shapes the caller needs.
+    """
     result = await db.execute(select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID))
-    index: dict[uuid.UUID, list[Attempt]] = {}
+    by_id: dict[uuid.UUID, Attempt] = {}
+    children: dict[uuid.UUID, list[Attempt]] = {}
     for attempt in result.scalars().all():
-        if attempt.parent_attempt_id is None:
-            continue
-        if attempt.origin != AttemptOrigin.loop_driven:
-            continue
-        index.setdefault(attempt.parent_attempt_id, []).append(attempt)
-    return index
+        by_id[attempt.id] = attempt
+        if (
+            attempt.parent_attempt_id is not None
+            and attempt.origin == AttemptOrigin.loop_driven
+        ):
+            children.setdefault(attempt.parent_attempt_id, []).append(attempt)
+    return by_id, children
 
 
 async def _materials_by_weakness(
@@ -651,22 +650,47 @@ async def _users_index(db: AsyncSession) -> dict[uuid.UUID, AppUser]:
     return {u.id: u for u in result.scalars().all()}
 
 
-async def _iteration_depth(db: AsyncSession, attempt: Attempt) -> int:
-    """Walk the ``parent_attempt_id`` chain and return the 1-indexed
-    loop depth for ``attempt``. The root (no parent) is iteration 1; a
-    follow-up to the root is iteration 2; etc. Mirrors the depth-walk
-    pattern at ``apply_overlap_check``'s caller (``_loop_depth`` is the
-    safety counter — this surfacing function is UI-only, no cap)."""
+async def _assignments_index(db: AsyncSession) -> dict[uuid.UUID, Assignment]:
+    result = await db.execute(
+        select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
+    )
+    return {a.id: a for a in result.scalars().all()}
+
+
+async def _pills_index(db: AsyncSession) -> dict[uuid.UUID, Pill]:
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return {p.id: p for p in result.scalars().all()}
+
+
+async def _weakness_report_pills_by_report(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[WeaknessReportPill]]:
+    result = await db.execute(
+        select(WeaknessReportPill).where(WeaknessReportPill.tenant_id == SEED_TENANT_ID)
+    )
+    index: dict[uuid.UUID, list[WeaknessReportPill]] = {}
+    for row in result.scalars().all():
+        index.setdefault(row.weakness_report_id, []).append(row)
+    return index
+
+
+def _iteration_depth_from_index(
+    attempt: Attempt, attempts_by_id: dict[uuid.UUID, Attempt]
+) -> int:
+    """Walk the ``parent_attempt_id`` chain via the pre-loaded index and
+    return the 1-indexed loop depth for ``attempt``. The root (no
+    parent) is iteration 1; a follow-up to the root is iteration 2;
+    etc. Reuses the same tenant-scan ``_build_attempt_indexes`` already
+    performed for the caller — zero extra DB hits per Gitar PR-#49
+    review (the previous query-per-ancestor walk was the N+1 the
+    pre-fetch was designed to avoid)."""
     current: Attempt | None = attempt
     depth = 0
     while current is not None and depth <= MAX_LOOP_DEPTH + 1:
         depth += 1
         if current.parent_attempt_id is None:
             break
-        parent_result = await db.execute(
-            select(Attempt).where(Attempt.id == current.parent_attempt_id)
-        )
-        current = parent_result.scalar_one_or_none()
+        current = attempts_by_id.get(current.parent_attempt_id)
     return depth
 
 
@@ -729,6 +753,12 @@ async def list_admin_queue(
       rather than raising so the FE can pass through query strings
       without bounds checking.
 
+    Pre-fetch pattern (Gitar PR-#49 review): every related table loads
+    once into an in-memory index — Attempt (split into by_id +
+    loop_driven children), Assignment, Pill, WeaknessReportPill,
+    LearningMaterial, AppUser. The per-report loop then enriches each
+    row in memory with zero per-row DB hits.
+
     Returns a list of dicts shaped for ``LoopQueueItem``. The caller
     (router) converts to Pydantic.
     """
@@ -741,31 +771,33 @@ async def list_admin_queue(
     if not reports:
         return []
 
-    attempts_index = await _attempts_index(db)
-    children_index = await _children_by_parent(db)
+    attempts_by_id, children_index = await _build_attempt_indexes(db)
     materials_index = await _materials_by_weakness(db)
     users_index = await _users_index(db)
+    assignments_index = await _assignments_index(db)
+    pills_index = await _pills_index(db)
+    weakness_pills_index = await _weakness_report_pills_by_report(db)
 
     out: list[dict[str, Any]] = []
     for report in reports:
         if not report.routed_to_admin:
             continue
-        attempt = attempts_index.get(report.attempt_id)
+        attempt = attempts_by_id.get(report.attempt_id)
         if attempt is None or attempt.assignment_id is None:
             continue
-        assignment = await _assignment(db, attempt.assignment_id)
+        assignment = assignments_index.get(attempt.assignment_id)
         if assignment is None or assignment.pill_id is None:
             continue
-        pill = await _pill(db, assignment.pill_id)
+        pill = pills_index.get(assignment.pill_id)
         if pill is None:
             continue
-        pill_rows = await _weakness_report_pills(db, report.id)
+        pill_rows = weakness_pills_index.get(report.id, [])
         children = children_index.get(attempt.id, [])
         materials = materials_index.get(report.id, [])
         derived_status = _derive_loop_status(report, children, materials)
         if status is not None and derived_status != status:
             continue
-        iteration_depth = await _iteration_depth(db, attempt)
+        iteration_depth = _iteration_depth_from_index(attempt, attempts_by_id)
         testee = users_index.get(attempt.testee_id)
         out.append(
             {
