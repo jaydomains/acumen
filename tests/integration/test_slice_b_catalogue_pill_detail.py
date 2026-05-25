@@ -36,9 +36,7 @@ def _seed_pill(
     name: str = "Antifouling",
     discoverable: bool = True,
 ) -> str:
-    sid = client.post(
-        "/v1/subjects", headers=admin_h, json={"name": "Subj"}
-    ).json()["id"]
+    sid = client.post("/v1/subjects", headers=admin_h, json={"name": "Subj"}).json()["id"]
     return client.post(
         "/v1/pills",
         headers=admin_h,

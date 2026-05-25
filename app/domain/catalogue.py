@@ -242,9 +242,7 @@ async def override_pill_safety(
     return pill
 
 
-async def get_discoverable_pill(
-    db: AsyncSession, pill_id: uuid.UUID
-) -> Pill | None:
+async def get_discoverable_pill(db: AsyncSession, pill_id: uuid.UUID) -> Pill | None:
     """Testee-facing single-pill fetch (AC-D8). Returns ``None`` when
     the pill is missing, not discoverable, or retired — the router
     collapses all three into ``404 not_found`` for the same reason

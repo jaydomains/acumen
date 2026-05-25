@@ -40,9 +40,7 @@ def _mcq_config() -> dict[str, object]:
 
 
 def _seed_pill(client: TestClient, admin_h: dict[str, str], name: str) -> str:
-    sid = client.post(
-        "/v1/subjects", headers=admin_h, json={"name": "S"}
-    ).json()["id"]
+    sid = client.post("/v1/subjects", headers=admin_h, json={"name": "S"}).json()["id"]
     return client.post(
         "/v1/pills",
         headers=admin_h,
@@ -96,9 +94,7 @@ def test_happy_path_returns_matching_test(
     pid = _seed_pill(cat_client, admin_h, "Antifouling")
     test_id = _publish_test(cat_client, admin_h, pill_id=pid, difficulty=5)
 
-    r = cat_client.get(
-        f"/v1/tests/resolve?pill_id={pid}&difficulty=5", headers=testee_h
-    )
+    r = cat_client.get(f"/v1/tests/resolve?pill_id={pid}&difficulty=5", headers=testee_h)
     assert r.status_code == 200, r.text
     assert r.json() == {"test_id": test_id}
 
@@ -128,9 +124,7 @@ def test_404_when_difficulty_mismatches(
     pid = _seed_pill(cat_client, admin_h, "Antifouling")
     _publish_test(cat_client, admin_h, pill_id=pid, difficulty=5)
 
-    r = cat_client.get(
-        f"/v1/tests/resolve?pill_id={pid}&difficulty=7", headers=testee_h
-    )
+    r = cat_client.get(f"/v1/tests/resolve?pill_id={pid}&difficulty=7", headers=testee_h)
     assert r.status_code == 404
 
 
@@ -152,9 +146,7 @@ def test_unpublished_test_does_not_match(
         },
     )
 
-    r = cat_client.get(
-        f"/v1/tests/resolve?pill_id={pid}&difficulty=5", headers=testee_h
-    )
+    r = cat_client.get(f"/v1/tests/resolve?pill_id={pid}&difficulty=5", headers=testee_h)
     assert r.status_code == 404
 
 
@@ -171,9 +163,7 @@ def test_invalid_difficulty_422(
     testee_h = _testee_headers(cat_session)
     pid = uuid.uuid4()
     # difficulty 0 fails the ge=1 query constraint
-    r = cat_client.get(
-        f"/v1/tests/resolve?pill_id={pid}&difficulty=0", headers=testee_h
-    )
+    r = cat_client.get(f"/v1/tests/resolve?pill_id={pid}&difficulty=0", headers=testee_h)
     assert r.status_code == 422
 
 

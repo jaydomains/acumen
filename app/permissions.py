@@ -470,9 +470,7 @@ async def consume_setup_token(
     return user
 
 
-async def load_usable_setup_token(
-    db: AsyncSession, raw_token: str
-) -> AppUser | None:
+async def load_usable_setup_token(db: AsyncSession, raw_token: str) -> AppUser | None:
     """Read-only counterpart to :func:`consume_setup_token` — looks up
     the user behind an unspent, unexpired setup token without mutating
     state. Returns ``None`` for missing / expired / used tokens."""

@@ -32,9 +32,7 @@ def upgrade() -> None:
         f"ALTER TABLE {SCHEMA}.test "
         f"ADD COLUMN pill_id UUID REFERENCES {SCHEMA}.pill(id)"
     )
-    op.execute(
-        f"CREATE INDEX ix_test_pill_id ON {SCHEMA}.test (pill_id)"
-    )
+    op.execute(f"CREATE INDEX ix_test_pill_id ON {SCHEMA}.test (pill_id)")
 
 
 def downgrade() -> None:

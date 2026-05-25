@@ -113,9 +113,7 @@ async def list_own_attempts(
     user: AppUser = Depends(get_privacy_acked_user),
     db: AsyncSession = Depends(get_db),
     cursor: str | None = Query(default=None),
-    limit: int = Query(
-        default=_ATTEMPTS_DEFAULT_LIMIT, ge=1, le=_ATTEMPTS_MAX_LIMIT
-    ),
+    limit: int = Query(default=_ATTEMPTS_DEFAULT_LIMIT, ge=1, le=_ATTEMPTS_MAX_LIMIT),
 ) -> Page[AttemptListItem]:
     """Testee's own submitted attempts (FE-7 history + sparkline).
     Own-scope only (caller's testee_id); in-flight attempts are excluded.

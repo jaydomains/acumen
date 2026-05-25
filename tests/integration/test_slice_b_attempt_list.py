@@ -177,9 +177,7 @@ def test_pagination_cursor(
             sequence_number=i + 1,
         )
 
-    first = cat_client.get(
-        "/v1/attempts?limit=2", headers=bearer(testee)
-    ).json()
+    first = cat_client.get("/v1/attempts?limit=2", headers=bearer(testee)).json()
     assert len(first["data"]) == 2
     cursor = first["meta"]["next_cursor"]
     assert cursor is not None

@@ -1561,9 +1561,7 @@ async def list_own_submitted_attempts(
     submitted.sort(key=lambda a: (a.submitted_at, str(a.id)), reverse=True)
 
     if cursor:
-        start = next(
-            (i + 1 for i, a in enumerate(submitted) if str(a.id) == cursor), 0
-        )
+        start = next((i + 1 for i, a in enumerate(submitted) if str(a.id) == cursor), 0)
         submitted = submitted[start:]
     page = submitted[:limit]
     next_cursor = str(page[-1].id) if len(submitted) > limit else None
@@ -1572,17 +1570,11 @@ async def list_own_submitted_attempts(
         return [], next_cursor
 
     test_ids = {a.test_id for a in page}
-    tests_result = await db.execute(
-        select(Test).where(Test.tenant_id == SEED_TENANT_ID)
-    )
+    tests_result = await db.execute(select(Test).where(Test.tenant_id == SEED_TENANT_ID))
     tests_by_id = {t.id: t for t in tests_result.scalars().all() if t.id in test_ids}
 
-    pill_ids_needed = {
-        t.pill_id for t in tests_by_id.values() if t.pill_id is not None
-    }
-    pills_result = await db.execute(
-        select(Pill).where(Pill.tenant_id == SEED_TENANT_ID)
-    )
+    pill_ids_needed = {t.pill_id for t in tests_by_id.values() if t.pill_id is not None}
+    pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
     pills_by_id = {
         p.id: p for p in pills_result.scalars().all() if p.id in pill_ids_needed
     }

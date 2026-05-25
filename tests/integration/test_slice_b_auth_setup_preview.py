@@ -50,9 +50,7 @@ def test_preview_400_for_unknown_token(client: TestClient) -> None:
     assert r.json()["error"]["code"] == "invalid_token"
 
 
-def test_preview_400_for_consumed_token(
-    client: TestClient, session: FakeSession
-) -> None:
+def test_preview_400_for_consumed_token(client: TestClient, session: FakeSession) -> None:
     admin = make_user(session, email="admin2@kbc.com", role=p.ROLE_ADMINISTRATOR)
     client.post(
         "/v1/users",
@@ -72,9 +70,7 @@ def test_preview_400_for_consumed_token(
     assert r.json()["error"]["code"] == "invalid_token"
 
 
-def test_preview_400_for_expired_token(
-    client: TestClient, session: FakeSession
-) -> None:
+def test_preview_400_for_expired_token(client: TestClient, session: FakeSession) -> None:
     user = make_user(session, email="exp@kbc.com", role=p.ROLE_TESTEE)
     # Seed an expired token directly (avoid the admin-create email path).
     raw = "expired-raw-token"

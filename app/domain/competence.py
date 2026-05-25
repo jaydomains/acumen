@@ -570,9 +570,7 @@ async def list_me_competence(
     )
 
     settings = await _system_settings(db)
-    threshold = (
-        getattr(settings, "anchor_calibration_confidence_threshold", None) or 20
-    )
+    threshold = getattr(settings, "anchor_calibration_confidence_threshold", None) or 20
 
     profiles_result = await db.execute(
         select(CompetencyProfile).where(CompetencyProfile.testee_id == testee_id)
@@ -582,9 +580,7 @@ async def list_me_competence(
         return []
 
     pill_ids = [p.pill_id for p in profiles]
-    pills_result = await db.execute(
-        select(Pill).where(Pill.tenant_id == SEED_TENANT_ID)
-    )
+    pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
     pills_by_id = {p.id: p for p in pills_result.scalars().all() if p.id in pill_ids}
 
     related_result = await db.execute(
