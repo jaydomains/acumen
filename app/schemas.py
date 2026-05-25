@@ -81,6 +81,10 @@ class SetupConsumeRequest(_Base):
     new_password: Password
 
 
+class SetupPreviewResponse(_Base):
+    email: str
+
+
 class PasswordResetRequest(_Base):
     email: Email
 
@@ -341,6 +345,10 @@ class TestCreate(_Base):
     randomise_option_order: bool | None = None
     benchmark_scope: BenchmarkScope | None = None
     benchmark_target_testee_id: uuid.UUID | None = None
+    # Slice B B.3 — optional canonical pill linkage for the testee-
+    # facing "Practice at D{n}" resolver (frozen / hand-authored modes
+    # only; per_testee / benchmark have no fixed pill).
+    pill_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _check_matrix(self) -> TestCreate:
@@ -392,6 +400,7 @@ class TestUpdate(_Base):
     target_difficulty: Difficulty | None = None
     randomise_question_order: bool | None = None
     randomise_option_order: bool | None = None
+    pill_id: uuid.UUID | None = None
 
 
 class TestResponse(_Base):
@@ -415,8 +424,13 @@ class TestResponse(_Base):
     randomise_option_order: bool
     benchmark_scope: BenchmarkScope | None
     benchmark_target_testee_id: uuid.UUID | None
+    pill_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class TestResolveResponse(_Base):
+    test_id: uuid.UUID
 
 
 class CampaignLockRequest(_Base):
@@ -576,6 +590,56 @@ class AttemptResultResponse(_Base):
     overall_score: float | None = None
     outcome: str | None = None
     questions: list[dict] | None = None
+
+
+# --- Slice B testee own-scope listing (FE-7 history + sparkline) ------
+# Locked decision: ships under the canonical ``Page[T]`` envelope, not
+# the FE-7-profile.md:370-382 flat ``{attempts, next_cursor}`` shape;
+# the FE spec is filed for a follow-up doc amendment to consume
+# ``response.data`` / ``response.meta.next_cursor``.
+#
+# ``competence_delta`` is always None in slice B — populating it needs
+# a per-attempt competence snapshot column (and a grading-finalise
+# wire-up); filed as a slice-B follow-up ticket.
+
+Band = Literal["novice", "junior", "working", "advanced", "expert"]
+Confidence = Literal["preliminary", "confident"]
+
+
+class AttemptListItem(_Base):
+    attempt_id: uuid.UUID
+    pill_id: uuid.UUID
+    pill_name: str
+    submitted_at: datetime
+    score_percent: float
+    band: Band
+    origin: AttemptOrigin
+    competence_delta: float | None = None
+
+
+# --- Slice B testee competence profile (FE-7 §B.1) --------------------
+# Contract per FE-7-profile.md:140-153.
+# ``band`` thresholds mirror frontend/design-reference/prototype/data.jsx:51
+# (novice<3, junior<5, working<7, advanced<8.5, expert>=8.5). ``confidence``
+# uses system_settings.anchor_calibration_confidence_threshold (default 20):
+# n >= threshold → confident, else preliminary.
+
+
+class MeCompetencePill(_Base):
+    pill_id: uuid.UUID
+    pill_name: str
+    subject_id: uuid.UUID
+    competence_estimate: float | None
+    band: Band
+    n: int
+    confidence: Confidence
+    last_activity_at: datetime | None
+    related_pill_ids: list[uuid.UUID]
+    safety_relevant: bool
+
+
+class MeCompetenceResponse(_Base):
+    pills: list[MeCompetencePill]
 
 
 class EngagementWidgetItem(_Base):

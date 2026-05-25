@@ -307,6 +307,21 @@ async def discover_pills(
     )
 
 
+@router.get("/catalogue/pills/{pill_id}")
+async def get_discoverable_pill_detail(
+    pill_id: uuid.UUID,
+    _user: AppUser = Depends(get_privacy_acked_user),
+    db: AsyncSession = Depends(get_db),
+) -> PillResponse:
+    """Testee-facing single-pill detail (AC-D8). Mirrors the discovery
+    list filter — non-discoverable and retired pills 404 here just as
+    they hide from the list."""
+    pill = await catalogue.get_discoverable_pill(db, pill_id)
+    if pill is None:
+        raise _not_found("Pill")
+    return PillResponse.model_validate(pill)
+
+
 # --- AI pill-proposal queue (AI stubbed) ------------------------------
 
 

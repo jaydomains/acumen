@@ -37,6 +37,7 @@ from __future__ import annotations
 import math
 import uuid
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -525,3 +526,93 @@ async def apply_competence_update(db: AsyncSession, attempt: Attempt) -> None:
         profile.competence_estimate = estimate
         profile.last_activity_at = now
     await db.flush()
+
+
+# --- Slice B B.4 — testee competence profile (FE-7) -------------------
+# Thresholds mirror the FE prototype mapping in
+# frontend/design-reference/prototype/data.jsx:51 (band-string axis is
+# FE-only; BE returns the derived string so the constellation can render
+# without a client-side band-lookup). Confidence reuses the AC-D20
+# threshold (default 20) — n >= threshold → confident, else preliminary.
+# n is sourced from CompetencyProfile.retake_count (closest existing
+# attempt-count field; AC-D20 v1.2 names it as the threshold input).
+
+
+def band_string(competence_estimate: float | None) -> str:
+    """Map a 1.0–10.0 competence estimate to the 5-band FE axis. A
+    None estimate (testee has no data yet) emits the lowest band so the
+    constellation has a valid string to render against — the empty-state
+    path filters n==0 pills out of any per-band aggregations anyway."""
+    if competence_estimate is None:
+        return "novice"
+    if competence_estimate < 3:
+        return "novice"
+    if competence_estimate < 5:
+        return "junior"
+    if competence_estimate < 7:
+        return "working"
+    if competence_estimate < 8.5:
+        return "advanced"
+    return "expert"
+
+
+async def list_me_competence(
+    db: AsyncSession, testee_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """Per-pill competency snapshot for the testee (FE-7-profile.md
+    §B.1 locked contract). One row per CompetencyProfile, joined with
+    its Pill (for name + subject + safety) and PillRelated (for
+    related_pill_ids). Ordered by pill name for a stable constellation
+    layout (FE-7 §5 assumes deterministic order across requests)."""
+    from app.models import (  # local import — competence.py is in the AC-CD2 hot path
+        Pill,
+        PillRelated,
+    )
+
+    settings = await _system_settings(db)
+    threshold = (
+        getattr(settings, "anchor_calibration_confidence_threshold", None) or 20
+    )
+
+    profiles_result = await db.execute(
+        select(CompetencyProfile).where(CompetencyProfile.testee_id == testee_id)
+    )
+    profiles = list(profiles_result.scalars().all())
+    if not profiles:
+        return []
+
+    pill_ids = [p.pill_id for p in profiles]
+    pills_result = await db.execute(
+        select(Pill).where(Pill.tenant_id == SEED_TENANT_ID)
+    )
+    pills_by_id = {p.id: p for p in pills_result.scalars().all() if p.id in pill_ids}
+
+    related_result = await db.execute(
+        select(PillRelated).where(PillRelated.tenant_id == SEED_TENANT_ID)
+    )
+    related_by_pill: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for row in related_result.scalars().all():
+        related_by_pill.setdefault(row.pill_id, []).append(row.related_pill_id)
+
+    items: list[dict[str, Any]] = []
+    for profile in profiles:
+        pill = pills_by_id.get(profile.pill_id)
+        if pill is None:
+            continue
+        n = profile.retake_count or 0
+        items.append(
+            {
+                "pill_id": profile.pill_id,
+                "pill_name": pill.name,
+                "subject_id": pill.subject_id,
+                "competence_estimate": profile.competence_estimate,
+                "band": band_string(profile.competence_estimate),
+                "n": n,
+                "confidence": "confident" if n >= threshold else "preliminary",
+                "last_activity_at": profile.last_activity_at,
+                "related_pill_ids": related_by_pill.get(profile.pill_id, []),
+                "safety_relevant": bool(pill.safety_relevant),
+            }
+        )
+    items.sort(key=lambda r: str(r["pill_name"]).lower())
+    return items

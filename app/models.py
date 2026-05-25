@@ -427,6 +427,15 @@ class Test(Base, TimestampMixin):
     benchmark_target_testee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.app_user.id")
     )
+    # Slice B B.3 — optional canonical pill linkage for the testee-
+    # facing "Practice at D{n}" resolver. Nullable: pre-slice-B tests
+    # (no link, mixed-pill frozen tests, benchmark / per_testee modes)
+    # stay NULL and remain unresolvable, matching the find-only contract.
+    # FK to ``pill.id`` (no CASCADE — retiring a pill keeps the test
+    # row but the discovery filter hides the pill anyway).
+    pill_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.pill.id"), index=True
+    )
 
 
 class Question(Base, TimestampMixin, AIProvenanceMixin):

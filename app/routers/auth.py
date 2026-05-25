@@ -27,6 +27,7 @@ from app.permissions import (
     issue_access_token,
     issue_password_reset_token,
     issue_refresh_token,
+    load_usable_setup_token,
     load_user_by_email,
     load_user_by_id,
     reset_email_content,
@@ -42,6 +43,7 @@ from app.schemas import (
     PrivacyAckResponse,
     RefreshRequest,
     SetupConsumeRequest,
+    SetupPreviewResponse,
     TokenPair,
     UserResponse,
 )
@@ -109,6 +111,22 @@ async def setup_consume(
         raise APIError(400, "invalid_token", "Setup link is invalid or has expired.")
     await db.commit()
     return MessageResponse()
+
+
+@router.get("/setup/{token}/preview")
+async def setup_preview(
+    token: str, db: AsyncSession = Depends(get_db)
+) -> SetupPreviewResponse:
+    """Read-only sibling of ``POST /setup/consume`` — exposes the
+    invitee email so the activation form can pre-fill a read-only
+    email field (FE-1 §B activation flow). Same invalid-token opacity
+    as ``setup/consume``: 400 ``invalid_token`` for missing / expired
+    / used tokens; the email leaks nothing the holder of a valid token
+    didn't already have."""
+    user = await load_usable_setup_token(db, token)
+    if user is None:
+        raise APIError(400, "invalid_token", "Setup link is invalid or has expired.")
+    return SetupPreviewResponse(email=user.email)
 
 
 @router.post("/password-reset/request")
