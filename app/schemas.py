@@ -645,9 +645,15 @@ class MeCompetenceResponse(_Base):
 class EngagementWidgetItem(_Base):
     assignment_id: uuid.UUID
     testee_id: uuid.UUID
+    testee_name: str
+    pill_or_test_name: str
+    assigner_name: str
     created_at: datetime
     deadline: datetime | None
     is_mandatory: bool
+    days_stale: int
+    reminders_sent: int
+    escalated: bool
 
 
 class EngagementWidgetResponse(_Base):
@@ -657,6 +663,11 @@ class EngagementWidgetResponse(_Base):
 class SweepResult(_Base):
     reminders_sent: int
     escalations_sent: int
+    first_reminders_sent: int
+    second_reminders_sent: int
+    assignments_processed: int
+    duration_ms: int
+    last_swept_at: datetime
 
 
 class AnchorBandSummary(_Base):
@@ -702,6 +713,7 @@ class FlaggedAnchorItem(_Base):
 
     anchor_question_id: uuid.UUID
     pill_id: uuid.UUID
+    pill_name: str
     band: int
     type: str
     config: dict[str, Any]
@@ -776,6 +788,12 @@ class FlaggedGradeReviewItem(_Base):
     grade_id: uuid.UUID
     attempt_id: uuid.UUID
     question_id: uuid.UUID
+    testee_name: str
+    pill_name: str
+    question_prompt: str
+    rubric_extract: str
+    testee_response: str
+    band: int
     ai_score: float
     ai_verdict: str
     ai_reasoning: str | None
@@ -846,10 +864,15 @@ class LoopQueueItem(_Base):
     weakness_report_id: uuid.UUID
     attempt_id: uuid.UUID
     testee_id: uuid.UUID
+    testee_name: str
     pill_id: uuid.UUID
     pill_name: str
     overall_score: float | None
     weak_pill_ids: list[uuid.UUID]
+    loop_mode: Literal["autonomous", "admin_reviewed"]
+    iteration: str
+    last_attempt_at: datetime | None
+    status: Literal["review", "queued", "step-down", "material-served", "closed"]
     created_at: datetime
 
 
@@ -865,6 +888,18 @@ class LoopApproveResult(_Base):
 
     weakness_report_id: uuid.UUID
     follow_up_count: int
+
+
+class LoopRejectRequest(_Base):
+    """Optional body for ``POST /v1/admin/loop/queue/{id}/reject``.
+
+    The admin may provide a free-text ``reason`` captured into the
+    audit_log row for the rejection (operator traceability — surfaces
+    in the review history). Body is optional; the endpoint accepts an
+    empty POST and writes ``reason=None`` to the audit detail (FE-9
+    §H(a) item 1 sub-item)."""
+
+    reason: str | None = None
 
 
 class LoopRejectResult(_Base):
@@ -926,6 +961,23 @@ class RealismAggregationResult(_Base):
     questions_updated: int
     anchors_excluded: int
     anchor_questions_seen: int
+
+
+class RealismStatusResponse(_Base):
+    """Read-only dashboard surface for the realism-aggregation card on
+    the admin systems page (FE-9-admin-systems.md §H(a) item 8).
+
+    Telemetry is derived from existing tables: the last-run fields read
+    the most-recent ``audit_log`` row with ``action='realism.aggregate'``
+    (written by :func:`app.routers.rag.realism_aggregate`); the live
+    counters are computed against ``question``, ``anchor_question`` and
+    ``realism_flag`` directly. No new persistence layer (zero migration)."""
+
+    last_aggregated_at: datetime | None
+    flags_processed_last_run: int
+    below_threshold_count: int
+    auto_suppressed_count: int
+    total_flag_count_active: int
 
 
 class DriveIndexStatus(_Base):

@@ -65,6 +65,7 @@ from app.models import (
     AnchorQuestion,
     Attempt,
     AttemptAnchor,
+    AuditLog,
     DriveChunk,
     Question,
     RealismFlag,
@@ -1084,6 +1085,84 @@ async def aggregate_realism_flags(db: AsyncSession) -> dict[str, Any]:
         "questions_updated": questions_updated,
         "anchors_excluded": anchors_excluded,
         "anchor_questions_seen": anchor_questions_seen,
+    }
+
+
+_REALISM_AGGREGATE_ACTION = "realism.aggregate"
+_HIGH_REALISM_FLAG_PREFIX = "high_realism_flag_ratio:"
+
+
+async def realism_status(db: AsyncSession) -> dict[str, Any]:
+    """Read-only telemetry roll-up for the FE-9 systems-page realism
+    aggregation card (FE-9-admin-systems.md §H(a) item 8).
+
+    No new persistence — every field is derived from existing tables:
+
+    * ``last_aggregated_at`` / ``flags_processed_last_run`` ← the most
+      recent ``audit_log`` row with ``action='realism.aggregate'``. The
+      aggregate endpoint at :func:`app.routers.rag.realism_aggregate`
+      already writes one row per run with the full telemetry dict in
+      ``detail`` (``{flags_processed, questions_updated, ...}``).
+    * ``below_threshold_count`` — count of :class:`Question` rows whose
+      ``realism_flag_count`` reached the low-realism threshold
+      (``_LOW_REALISM_THRESHOLD = 2`` at this module's top). These are
+      the questions the testees collectively flagged as unrealistic.
+    * ``auto_suppressed_count`` — count of :class:`AnchorQuestion` rows
+      excluded by the aggregation cron's high-flag-ratio rule (the
+      ``excluded_reason`` prefix is fixed at
+      ``"high_realism_flag_ratio:"`` — written at the bottom of
+      :func:`aggregate_realism_flags`).
+    * ``total_flag_count_active`` — count of all :class:`RealismFlag`
+      rows for the tenant (org-wide active flag count).
+    """
+    audit_result = await db.execute(
+        select(AuditLog).where(AuditLog.tenant_id == SEED_TENANT_ID)
+    )
+    last_run: AuditLog | None = None
+    for row in audit_result.scalars().all():
+        if row.action != _REALISM_AGGREGATE_ACTION:
+            continue
+        if last_run is None or row.created_at > last_run.created_at:
+            last_run = row
+
+    last_aggregated_at = last_run.created_at if last_run is not None else None
+    flags_processed_last_run = 0
+    if last_run is not None and isinstance(last_run.detail, dict):
+        raw = last_run.detail.get("flags_processed", 0)
+        if isinstance(raw, int):
+            flags_processed_last_run = raw
+
+    questions_result = await db.execute(
+        select(Question).where(Question.tenant_id == SEED_TENANT_ID)
+    )
+    below_threshold_count = sum(
+        1
+        for q in questions_result.scalars().all()
+        if q.realism_flag_count >= _LOW_REALISM_THRESHOLD
+    )
+
+    anchors_result = await db.execute(
+        select(AnchorQuestion).where(AnchorQuestion.tenant_id == SEED_TENANT_ID)
+    )
+    auto_suppressed_count = sum(
+        1
+        for a in anchors_result.scalars().all()
+        if a.excluded
+        and isinstance(a.excluded_reason, str)
+        and a.excluded_reason.startswith(_HIGH_REALISM_FLAG_PREFIX)
+    )
+
+    flags_result = await db.execute(
+        select(RealismFlag).where(RealismFlag.tenant_id == SEED_TENANT_ID)
+    )
+    total_flag_count_active = len(list(flags_result.scalars().all()))
+
+    return {
+        "last_aggregated_at": last_aggregated_at,
+        "flags_processed_last_run": flags_processed_last_run,
+        "below_threshold_count": below_threshold_count,
+        "auto_suppressed_count": auto_suppressed_count,
+        "total_flag_count_active": total_flag_count_active,
     }
 
 

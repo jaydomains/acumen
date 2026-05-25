@@ -66,6 +66,7 @@ from app.models import (
     GradeReview,
     GradeSource,
     GradeVerdict,
+    Pill,
     Question,
     QuestionType,
     Response,
@@ -699,9 +700,139 @@ async def reconcile_pending_grade_reviews(db: AsyncSession) -> dict[str, int]:
 # --- Admin flag queue (Slice 4 — AC-D19 v1.6 / AC-D2) -----------------
 
 
-async def list_flagged_reviews(db: AsyncSession) -> list[dict[str, Any]]:
-    """List flagged ``grade_review`` rows whose underlying Grade has
-    NOT been admin-overridden — the admin queue surface (AC-D19 v1.6).
+_QUESTION_PROMPT_MAX = 240
+_RUBRIC_EXTRACT_MAX = 200
+_TESTEE_RESPONSE_MAX = 600
+
+
+def _truncate(text: str | None, max_chars: int) -> str:
+    """Cap a text excerpt to ``max_chars`` for the admin queue row
+    payload (Slice C row-enrichment). Returns ``""`` on None, appends
+    a single ellipsis when truncated. Distinct from
+    :func:`app.domain.calibration._truncate_reason` which builds a
+    fixed-prefix ``excluded_reason`` against a 1024-char column
+    budget — these excerpts are UI-only and have no prefix."""
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "…"
+
+
+def _testee_response_text(response: Response, question: Question | None) -> str:
+    """Render a Response's ``answer_payload`` (JSONB; shape varies by
+    question type) as the human-readable text the admin sees in the
+    flag queue. Polymorphic by ``Question.type`` so an MCQ row
+    surfaces the selected option label(s) rather than a raw
+    ``{"choice": 0}`` dump."""
+    payload = response.answer_payload
+    if not isinstance(payload, dict):
+        return ""
+    if question is None:
+        return json.dumps(payload, ensure_ascii=False)
+    qtype = question.type
+    if qtype in (QuestionType.short_answer, QuestionType.scenario):
+        value = payload.get("text")
+        return value if isinstance(value, str) else ""
+    config = question.config or {}
+    if qtype == QuestionType.multiple_choice:
+        options = config.get("options") or []
+        choice = payload.get("choice")
+        if isinstance(choice, int) and 0 <= choice < len(options):
+            return str(options[choice])
+        choices = payload.get("choices")
+        if isinstance(choices, list):
+            picked = [
+                str(options[i])
+                for i in choices
+                if isinstance(i, int) and 0 <= i < len(options)
+            ]
+            return ", ".join(picked)
+    if qtype == QuestionType.true_false:
+        value = payload.get("value")
+        if isinstance(value, bool):
+            return "True" if value else "False"
+    if qtype == QuestionType.matching:
+        pairs = payload.get("pairs")
+        if isinstance(pairs, list):
+            return ", ".join(
+                f"{pair.get('left')}→{pair.get('right')}"
+                for pair in pairs
+                if isinstance(pair, dict)
+            )
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _rubric_extract(question: Question | None) -> str:
+    if question is None:
+        return ""
+    config = question.config or {}
+    rubric = config.get("rubric") or config.get("model_answer") or ""
+    return rubric if isinstance(rubric, str) else ""
+
+
+def _question_prompt(question: Question | None) -> str:
+    if question is None:
+        return ""
+    prompt = (question.config or {}).get("prompt")
+    return prompt if isinstance(prompt, str) else ""
+
+
+async def _grades_by_id(db: AsyncSession) -> dict[uuid.UUID, Grade]:
+    result = await db.execute(select(Grade).where(Grade.tenant_id == SEED_TENANT_ID))
+    return {g.id: g for g in result.scalars().all()}
+
+
+async def _responses_by_id(db: AsyncSession) -> dict[uuid.UUID, Response]:
+    result = await db.execute(
+        select(Response).where(Response.tenant_id == SEED_TENANT_ID)
+    )
+    return {r.id: r for r in result.scalars().all()}
+
+
+async def _questions_by_id(db: AsyncSession) -> dict[uuid.UUID, Question]:
+    result = await db.execute(
+        select(Question).where(Question.tenant_id == SEED_TENANT_ID)
+    )
+    return {q.id: q for q in result.scalars().all()}
+
+
+async def _attempts_by_id(db: AsyncSession) -> dict[uuid.UUID, Attempt]:
+    result = await db.execute(select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID))
+    return {a.id: a for a in result.scalars().all()}
+
+
+async def _assignments_by_id(db: AsyncSession) -> dict[uuid.UUID, Any]:
+    from app.models import Assignment
+
+    result = await db.execute(
+        select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
+    )
+    return {a.id: a for a in result.scalars().all()}
+
+
+async def _pills_by_id(db: AsyncSession) -> dict[uuid.UUID, Pill]:
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return {p.id: p for p in result.scalars().all()}
+
+
+async def _users_by_id(db: AsyncSession) -> dict[uuid.UUID, AppUser]:
+    result = await db.execute(select(AppUser).where(AppUser.tenant_id == SEED_TENANT_ID))
+    return {u.id: u for u in result.scalars().all()}
+
+
+_VERDICT_FILTERS: dict[str, ReviewStatus | None] = {
+    "flagged": ReviewStatus.flagged,
+    "confirmed": ReviewStatus.confirmed,
+    "all": None,
+}
+
+
+async def list_flagged_reviews(
+    db: AsyncSession, *, verdict: str = "flagged"
+) -> list[dict[str, Any]]:
+    """List ``grade_review`` rows whose underlying Grade has NOT been
+    admin-overridden — the admin queue surface (AC-D19 v1.6).
 
     Once an admin resolves a flag via :func:`resolve_flagged_review`,
     ``Grade.overridden_at`` is set and the row drops off the queue.
@@ -710,30 +841,75 @@ async def list_flagged_reviews(db: AsyncSession) -> list[dict[str, Any]]:
     filter joins on the override column rather than checking review
     status alone.
 
+    Slice C row-enrichment (FE-9-admin-ops.md §H(a) item 1):
+    - Each row carries the testee name, pill name, question prompt /
+      rubric extract / testee response text excerpt, and the band the
+      question was authored at.
+    - The ``verdict`` parameter accepts ``"flagged"`` (default),
+      ``"confirmed"``, or ``"all"`` so the FE-9 queue page can flip
+      between filtered views without a second endpoint.
+
+    Pre-fetch pattern (mirrors ``_reminders_by_assignment`` /
+    ``_attempts_by_assignment_testee`` at ``app/domain/engagement.py``):
+    each related table loads once, in-memory enrichment per row.
+    Replaces the previous per-row ``_grade_by_id`` / ``_response_by_id``
+    pattern that would have amplified N+1 with three extra lookups per
+    row under the Slice C enrichment.
+
     Returns a list of dicts shaped for ``FlaggedGradeReviewItem``. The
     caller (router) converts to Pydantic.
     """
-    flagged = await db.execute(
-        select(GradeReview).where(
-            GradeReview.status == ReviewStatus.flagged,
-            GradeReview.tenant_id == SEED_TENANT_ID,
-        )
+    status_filter = _VERDICT_FILTERS.get(verdict, ReviewStatus.flagged)
+    review_query = await db.execute(
+        select(GradeReview).where(GradeReview.tenant_id == SEED_TENANT_ID)
     )
-    rows = list(flagged.scalars().all())
+    reviews = list(review_query.scalars().all())
+    if status_filter is not None:
+        reviews = [gr for gr in reviews if gr.status == status_filter]
+
+    grades_index = await _grades_by_id(db)
+    responses_index = await _responses_by_id(db)
+    questions_index = await _questions_by_id(db)
+    attempts_index = await _attempts_by_id(db)
+    assignments_index = await _assignments_by_id(db)
+    pills_index = await _pills_by_id(db)
+    users_index = await _users_by_id(db)
+
     out: list[dict[str, Any]] = []
-    for gr in rows:
-        grade = await _grade_by_id(db, gr.grade_id)
+    for gr in reviews:
+        grade = grades_index.get(gr.grade_id)
         if grade is None or grade.overridden_at is not None:
             continue
-        response = await _response_by_id(db, grade.response_id)
+        response = responses_index.get(grade.response_id)
         if response is None:
             continue
+        question = questions_index.get(response.question_id)
+        attempt = attempts_index.get(response.attempt_id)
+        testee = users_index.get(attempt.testee_id) if attempt is not None else None
+        pill = None
+        if attempt is not None and attempt.assignment_id is not None:
+            assignment = assignments_index.get(attempt.assignment_id)
+            if assignment is not None and assignment.pill_id is not None:
+                pill = pills_index.get(assignment.pill_id)
         out.append(
             {
                 "grade_review_id": gr.id,
                 "grade_id": grade.id,
                 "attempt_id": response.attempt_id,
                 "question_id": response.question_id,
+                "testee_name": testee.name if testee is not None else "",
+                "pill_name": pill.name if pill is not None else "",
+                "question_prompt": _truncate(
+                    _question_prompt(question), _QUESTION_PROMPT_MAX
+                ),
+                "rubric_extract": _truncate(
+                    _rubric_extract(question), _RUBRIC_EXTRACT_MAX
+                ),
+                "testee_response": _truncate(
+                    _testee_response_text(response, question),
+                    _TESTEE_RESPONSE_MAX,
+                ),
+                "band": question.assigned_difficulty if question is not None else 0,
                 "ai_score": float(grade.score),
                 "ai_verdict": grade.verdict.value,
                 "ai_reasoning": grade.ai_reasoning,

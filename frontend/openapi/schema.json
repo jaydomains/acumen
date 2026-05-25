@@ -351,6 +351,70 @@
         "title": "AssignmentResponse",
         "type": "object"
       },
+      "AttemptListItem": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "band": {
+            "enum": [
+              "novice",
+              "junior",
+              "working",
+              "advanced",
+              "expert"
+            ],
+            "title": "Band",
+            "type": "string"
+          },
+          "competence_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competence Delta"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AttemptOrigin"
+          },
+          "pill_id": {
+            "format": "uuid",
+            "title": "Pill Id",
+            "type": "string"
+          },
+          "pill_name": {
+            "title": "Pill Name",
+            "type": "string"
+          },
+          "score_percent": {
+            "title": "Score Percent",
+            "type": "number"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "pill_id",
+          "pill_name",
+          "submitted_at",
+          "score_percent",
+          "band",
+          "origin"
+        ],
+        "title": "AttemptListItem",
+        "type": "object"
+      },
       "AttemptOrigin": {
         "enum": [
           "self_initiated",
@@ -954,6 +1018,10 @@
       "EngagementWidgetItem": {
         "additionalProperties": false,
         "properties": {
+          "assigner_name": {
+            "title": "Assigner Name",
+            "type": "string"
+          },
           "assignment_id": {
             "format": "uuid",
             "title": "Assignment Id",
@@ -963,6 +1031,10 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "days_stale": {
+            "title": "Days Stale",
+            "type": "integer"
           },
           "deadline": {
             "anyOf": [
@@ -976,22 +1048,44 @@
             ],
             "title": "Deadline"
           },
+          "escalated": {
+            "title": "Escalated",
+            "type": "boolean"
+          },
           "is_mandatory": {
             "title": "Is Mandatory",
             "type": "boolean"
           },
+          "pill_or_test_name": {
+            "title": "Pill Or Test Name",
+            "type": "string"
+          },
+          "reminders_sent": {
+            "title": "Reminders Sent",
+            "type": "integer"
+          },
           "testee_id": {
             "format": "uuid",
             "title": "Testee Id",
+            "type": "string"
+          },
+          "testee_name": {
+            "title": "Testee Name",
             "type": "string"
           }
         },
         "required": [
           "assignment_id",
           "testee_id",
+          "testee_name",
+          "pill_or_test_name",
+          "assigner_name",
           "created_at",
           "deadline",
-          "is_mandatory"
+          "is_mandatory",
+          "days_stale",
+          "reminders_sent",
+          "escalated"
         ],
         "title": "EngagementWidgetItem",
         "type": "object"
@@ -1059,6 +1153,10 @@
             "title": "Pill Id",
             "type": "string"
           },
+          "pill_name": {
+            "title": "Pill Name",
+            "type": "string"
+          },
           "regeneration_attempts": {
             "title": "Regeneration Attempts",
             "type": "integer"
@@ -1071,6 +1169,7 @@
         "required": [
           "anchor_question_id",
           "pill_id",
+          "pill_name",
           "band",
           "type",
           "config",
@@ -1128,6 +1227,10 @@
             "title": "Attempt Id",
             "type": "string"
           },
+          "band": {
+            "title": "Band",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1143,9 +1246,17 @@
             "title": "Grade Review Id",
             "type": "string"
           },
+          "pill_name": {
+            "title": "Pill Name",
+            "type": "string"
+          },
           "question_id": {
             "format": "uuid",
             "title": "Question Id",
+            "type": "string"
+          },
+          "question_prompt": {
+            "title": "Question Prompt",
             "type": "string"
           },
           "review_reasoning": {
@@ -1158,6 +1269,18 @@
               }
             ],
             "title": "Review Reasoning"
+          },
+          "rubric_extract": {
+            "title": "Rubric Extract",
+            "type": "string"
+          },
+          "testee_name": {
+            "title": "Testee Name",
+            "type": "string"
+          },
+          "testee_response": {
+            "title": "Testee Response",
+            "type": "string"
           }
         },
         "required": [
@@ -1165,6 +1288,12 @@
           "grade_id",
           "attempt_id",
           "question_id",
+          "testee_name",
+          "pill_name",
+          "question_prompt",
+          "rubric_extract",
+          "testee_response",
+          "band",
           "ai_score",
           "ai_verdict",
           "ai_reasoning",
@@ -1809,6 +1938,30 @@
             "title": "Created At",
             "type": "string"
           },
+          "iteration": {
+            "title": "Iteration",
+            "type": "string"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "loop_mode": {
+            "enum": [
+              "autonomous",
+              "admin_reviewed"
+            ],
+            "title": "Loop Mode",
+            "type": "string"
+          },
           "overall_score": {
             "anyOf": [
               {
@@ -1829,9 +1982,24 @@
             "title": "Pill Name",
             "type": "string"
           },
+          "status": {
+            "enum": [
+              "review",
+              "queued",
+              "step-down",
+              "material-served",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "testee_id": {
             "format": "uuid",
             "title": "Testee Id",
+            "type": "string"
+          },
+          "testee_name": {
+            "title": "Testee Name",
             "type": "string"
           },
           "weak_pill_ids": {
@@ -1852,10 +2020,15 @@
           "weakness_report_id",
           "attempt_id",
           "testee_id",
+          "testee_name",
           "pill_id",
           "pill_name",
           "overall_score",
           "weak_pill_ids",
+          "loop_mode",
+          "iteration",
+          "last_attempt_at",
+          "status",
           "created_at"
         ],
         "title": "LoopQueueItem",
@@ -1878,6 +2051,25 @@
         "title": "LoopQueueListResponse",
         "type": "object"
       },
+      "LoopRejectRequest": {
+        "additionalProperties": false,
+        "description": "Optional body for ``POST /v1/admin/loop/queue/{id}/reject``.\n\nThe admin may provide a free-text ``reason`` captured into the\naudit_log row for the rejection (operator traceability \u2014 surfaces\nin the review history). Body is optional; the endpoint accepts an\nempty POST and writes ``reason=None`` to the audit detail (FE-9\n\u00a7H(a) item 1 sub-item).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "LoopRejectRequest",
+        "type": "object"
+      },
       "LoopRejectResult": {
         "additionalProperties": false,
         "description": "Response shape after a successful admin rejection. Compact\npayload \u2014 the flag is cleared and no follow-up created. Audit-\nlogged at ``loop.queue.reject`` for operator traceability.",
@@ -1892,6 +2084,114 @@
           "weakness_report_id"
         ],
         "title": "LoopRejectResult",
+        "type": "object"
+      },
+      "MeCompetencePill": {
+        "additionalProperties": false,
+        "properties": {
+          "band": {
+            "enum": [
+              "novice",
+              "junior",
+              "working",
+              "advanced",
+              "expert"
+            ],
+            "title": "Band",
+            "type": "string"
+          },
+          "competence_estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competence Estimate"
+          },
+          "confidence": {
+            "enum": [
+              "preliminary",
+              "confident"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity At"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "pill_id": {
+            "format": "uuid",
+            "title": "Pill Id",
+            "type": "string"
+          },
+          "pill_name": {
+            "title": "Pill Name",
+            "type": "string"
+          },
+          "related_pill_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Related Pill Ids",
+            "type": "array"
+          },
+          "safety_relevant": {
+            "title": "Safety Relevant",
+            "type": "boolean"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pill_id",
+          "pill_name",
+          "subject_id",
+          "competence_estimate",
+          "band",
+          "n",
+          "confidence",
+          "last_activity_at",
+          "related_pill_ids",
+          "safety_relevant"
+        ],
+        "title": "MeCompetencePill",
+        "type": "object"
+      },
+      "MeCompetenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "pills": {
+            "items": {
+              "$ref": "#/components/schemas/MeCompetencePill"
+            },
+            "title": "Pills",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pills"
+        ],
+        "title": "MeCompetenceResponse",
         "type": "object"
       },
       "MessageResponse": {
@@ -1943,6 +2243,27 @@
           "meta"
         ],
         "title": "Page[AssignmentResponse]",
+        "type": "object"
+      },
+      "Page_AttemptListItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptListItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Page[AttemptListItem]",
         "type": "object"
       },
       "Page_GroupResponse_": {
@@ -2719,6 +3040,49 @@
         "title": "RealismFlagResult",
         "type": "object"
       },
+      "RealismStatusResponse": {
+        "additionalProperties": false,
+        "description": "Read-only dashboard surface for the realism-aggregation card on\nthe admin systems page (FE-9-admin-systems.md \u00a7H(a) item 8).\n\nTelemetry is derived from existing tables: the last-run fields read\nthe most-recent ``audit_log`` row with ``action='realism.aggregate'``\n(written by :func:`app.routers.rag.realism_aggregate`); the live\ncounters are computed against ``question``, ``anchor_question`` and\n``realism_flag`` directly. No new persistence layer (zero migration).",
+        "properties": {
+          "auto_suppressed_count": {
+            "title": "Auto Suppressed Count",
+            "type": "integer"
+          },
+          "below_threshold_count": {
+            "title": "Below Threshold Count",
+            "type": "integer"
+          },
+          "flags_processed_last_run": {
+            "title": "Flags Processed Last Run",
+            "type": "integer"
+          },
+          "last_aggregated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Aggregated At"
+          },
+          "total_flag_count_active": {
+            "title": "Total Flag Count Active",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "last_aggregated_at",
+          "flags_processed_last_run",
+          "below_threshold_count",
+          "auto_suppressed_count",
+          "total_flag_count_active"
+        ],
+        "title": "RealismStatusResponse",
+        "type": "object"
+      },
       "RefreshRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2835,6 +3199,20 @@
         "title": "SetupConsumeRequest",
         "type": "object"
       },
+      "SetupPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "SetupPreviewResponse",
+        "type": "object"
+      },
       "SubjectCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2942,18 +3320,44 @@
       "SweepResult": {
         "additionalProperties": false,
         "properties": {
+          "assignments_processed": {
+            "title": "Assignments Processed",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
           "escalations_sent": {
             "title": "Escalations Sent",
             "type": "integer"
           },
+          "first_reminders_sent": {
+            "title": "First Reminders Sent",
+            "type": "integer"
+          },
+          "last_swept_at": {
+            "format": "date-time",
+            "title": "Last Swept At",
+            "type": "string"
+          },
           "reminders_sent": {
             "title": "Reminders Sent",
+            "type": "integer"
+          },
+          "second_reminders_sent": {
+            "title": "Second Reminders Sent",
             "type": "integer"
           }
         },
         "required": [
           "reminders_sent",
-          "escalations_sent"
+          "escalations_sent",
+          "first_reminders_sent",
+          "second_reminders_sent",
+          "assignments_processed",
+          "duration_ms",
+          "last_swept_at"
         ],
         "title": "SweepResult",
         "type": "object"
@@ -3038,6 +3442,18 @@
             ],
             "title": "Pause Allowance"
           },
+          "pill_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pill Id"
+          },
           "randomise_option_order": {
             "anyOf": [
               {
@@ -3111,6 +3527,21 @@
         ],
         "title": "TestMode",
         "type": "string"
+      },
+      "TestResolveResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "test_id": {
+            "format": "uuid",
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id"
+        ],
+        "title": "TestResolveResponse",
+        "type": "object"
       },
       "TestResponse": {
         "additionalProperties": false,
@@ -3206,6 +3637,18 @@
               }
             ],
             "title": "Pause Allowance"
+          },
+          "pill_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pill Id"
           },
           "randomise_option_order": {
             "title": "Randomise Option Order",
@@ -3345,6 +3788,18 @@
               }
             ],
             "title": "Pause Allowance"
+          },
+          "pill_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pill Id"
           },
           "randomise_option_order": {
             "anyOf": [
@@ -4112,9 +4567,24 @@
     },
     "/v1/admin/grade-reviews/flagged": {
       "get": {
-        "description": "List flagged grade_review rows pending admin resolution\n(AC-D19 v1.6 admin queue). Oldest-first; rows whose underlying\nGrade has already been resolved (Grade.overridden_at IS NOT NULL)\ndrop off the queue.",
+        "description": "List grade_review rows pending admin resolution (AC-D19 v1.6\nadmin queue). Oldest-first; rows whose underlying Grade has\nalready been resolved (Grade.overridden_at IS NOT NULL) drop off\nthe queue.\n\nSlice C row-enrichment adds the ``verdict`` query param so the\nFE-9 queue page can flip between ``flagged`` (default), ``confirmed``,\nor ``all`` without a second endpoint (FE-9-admin-ops.md \u00a7H(a)\nitem 1).",
         "operationId": "grade_reviews_flagged_v1_admin_grade_reviews_flagged_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "default": "flagged",
+              "enum": [
+                "flagged",
+                "confirmed",
+                "all"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -4282,9 +4752,32 @@
     },
     "/v1/admin/loop/queue": {
       "get": {
-        "description": "List WeaknessReport rows in the admin-reviewed loop queue\n(AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose\n``routed_to_admin`` flag has been cleared by a prior approve/reject\ndrop off the queue.",
+        "description": "List WeaknessReport rows in the admin-reviewed loop queue\n(AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose\n``routed_to_admin`` flag has been cleared by a prior approve/reject\ndrop off the queue.\n\nSlice C row-enrichment adds the ``status`` query param so the\nFE-9 queue page can server-side-filter against the derived 5-value\nenum (FE-9-admin-ops.md \u00a7H(a) item 1). Omitted = return every\nrouted-to-admin row regardless of derived status.",
         "operationId": "loop_queue_v1_admin_loop_queue_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "review",
+                    "queued",
+                    "step-down",
+                    "material-served",
+                    "closed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -4392,7 +4885,7 @@
     },
     "/v1/admin/loop/queue/{weakness_report_id}/reject": {
       "post": {
-        "description": "Reject a queued WeaknessReport: clears ``routed_to_admin``\nwithout creating a follow-up. The Testee never sees a remediation\npass for this attempt. Audit-logged at ``loop.queue.reject``.",
+        "description": "Reject a queued WeaknessReport: clears ``routed_to_admin``\nwithout creating a follow-up. The Testee never sees a remediation\npass for this attempt. Audit-logged at ``loop.queue.reject``.\n\nSlice C row-enrichment accepts an optional ``{reason: str}`` body\ncaptured into the audit_log detail for operator traceability\n(FE-9-admin-ops.md \u00a7H(a) item 1 sub-item). Empty POST is still\naccepted \u2014 the reason simply defaults to None.",
         "operationId": "loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post",
         "parameters": [
           {
@@ -4422,6 +4915,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LoopRejectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -4555,6 +5065,56 @@
           }
         },
         "summary": "Realism Aggregate",
+        "tags": [
+          "rag"
+        ]
+      }
+    },
+    "/v1/admin/realism/status": {
+      "get": {
+        "description": "Read-only telemetry roll-up for the FE-9 systems-page realism\naggregation card (FE-9-admin-systems.md \u00a7H(a) item 8).\n\nFive fields per the locked spec contract: ``last_aggregated_at``,\n``flags_processed_last_run``, ``below_threshold_count``,\n``auto_suppressed_count``, ``total_flag_count_active``. No new\npersistence \u2014 every value derives from ``audit_log`` (the\nrealism.aggregate row written by :func:`realism_aggregate`),\n``question.realism_flag_count``, the ``anchor_question.excluded``\n+ ``excluded_reason`` columns set by\n:func:`app.domain.drive_rag.aggregate_realism_flags`, and the\n``realism_flag`` table itself.",
+        "operationId": "realism_status_endpoint_v1_admin_realism_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealismStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Realism Status Endpoint",
         "tags": [
           "rag"
         ]
@@ -4871,6 +5431,82 @@
       }
     },
     "/v1/attempts": {
+      "get": {
+        "description": "Testee's own submitted attempts (FE-7 history + sparkline).\nOwn-scope only (caller's testee_id); in-flight attempts are excluded.\nNewest first. Ships under the canonical ``Page[T]`` envelope per\nCODE_SPEC \u00a75 \u2014 the FE-7-profile.md flat-shape contract is filed for\na follow-up doc amendment.",
+        "operationId": "list_own_attempts_v1_attempts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AttemptListItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Own Attempts",
+        "tags": [
+          "attempts"
+        ]
+      },
       "post": {
         "operationId": "start_attempt_v1_attempts_post",
         "parameters": [
@@ -5901,6 +6537,49 @@
         ]
       }
     },
+    "/v1/auth/setup/{token}/preview": {
+      "get": {
+        "description": "Read-only sibling of ``POST /setup/consume`` \u2014 exposes the\ninvitee email so the activation form can pre-fill a read-only\nemail field (FE-1 \u00a7B activation flow). Same invalid-token opacity\nas ``setup/consume``: 400 ``invalid_token`` for missing / expired\n/ used tokens; the email leaks nothing the holder of a valid token\ndidn't already have.",
+        "operationId": "setup_preview_v1_auth_setup__token__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup Preview",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/v1/calibration/pills/{pill_id}/bands/{band}": {
       "get": {
         "description": "``preliminary -> confident`` display state for one (pill, band)\n(AC-D27 #3 / AC-D20). Returns ``state='preliminary'`` when the\naggregate observation count is below\n``system_settings.anchor_calibration_confidence_threshold``\n(default 20), ``state='confident'`` once it crosses (inclusive\nboundary).",
@@ -6094,6 +6773,66 @@
           }
         },
         "summary": "Discover Pills",
+        "tags": [
+          "catalogue"
+        ]
+      }
+    },
+    "/v1/catalogue/pills/{pill_id}": {
+      "get": {
+        "description": "Testee-facing single-pill detail (AC-D8). Mirrors the discovery\nlist filter \u2014 non-discoverable and retired pills 404 here just as\nthey hide from the list.",
+        "operationId": "get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Discoverable Pill Detail",
         "tags": [
           "catalogue"
         ]
@@ -6854,6 +7593,56 @@
         "summary": "Update Path",
         "tags": [
           "paths"
+        ]
+      }
+    },
+    "/v1/me/competence": {
+      "get": {
+        "description": "Testee's own per-pill competency profile. Empty\n``{ \"pills\": [] }`` for a testee with no CompetencyProfile rows\n(new account).",
+        "operationId": "get_my_competence_v1_me_competence_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeCompetenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get My Competence",
+        "tags": [
+          "me"
         ]
       }
     },
@@ -8072,6 +8861,77 @@
           }
         },
         "summary": "Create Test",
+        "tags": [
+          "tests"
+        ]
+      }
+    },
+    "/v1/tests/resolve": {
+      "get": {
+        "description": "Slice B B.3 \u2014 testee-facing find-only resolver for the FE-3\npill-detail \"Practice at D{n}\" CTA. Returns the test_id of a\npublished single-pill test matching (pill_id, difficulty); 404\nwhen no match exists. Find-or-generate is filed as a follow-up\n(separate ``POST /v1/tests/generate``).",
+        "operationId": "resolve_test_v1_tests_resolve_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pill_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Pill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "difficulty",
+            "required": true,
+            "schema": {
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Difficulty",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResolveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Test",
         "tags": [
           "tests"
         ]

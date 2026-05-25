@@ -46,13 +46,19 @@ def test_engagement_sweep_task_returns_zero_counts_on_empty_store(
     fake_session_factory: CatalogueFakeSession,
 ) -> None:
     """``engagement.sweep`` against an empty store returns the
-    standard counts dict shape (reminders_sent=0, escalations_sent=0)
-    — proves the wrapper imports cleanly, opens a session, runs the
-    domain callable, and commits without error."""
+    Slice C row-enriched counts dict — proves the wrapper imports
+    cleanly, opens a session, runs the domain callable, and commits
+    without error."""
     from app.worker import engagement_sweep_task
 
     result = engagement_sweep_task()
-    assert result == {"reminders_sent": 0, "escalations_sent": 0}
+    assert result["reminders_sent"] == 0
+    assert result["escalations_sent"] == 0
+    assert result["first_reminders_sent"] == 0
+    assert result["second_reminders_sent"] == 0
+    assert result["assignments_processed"] == 0
+    assert result["duration_ms"] >= 0
+    assert result["last_swept_at"] is not None
 
 
 def test_calibration_run_task_returns_counts_on_empty_store(
