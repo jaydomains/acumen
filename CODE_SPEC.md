@@ -1065,14 +1065,27 @@ not the browser's native `EventSource`. The adapter lives at
   `id:`, blank-line terminators).
 - Yields typed `StreamEvent` values into the consuming reducer.
 
-**Event shape and reducer.** Events arrive with `event` field
-matching the AC-CD10 set: `question_ready` (carries `idx` and the
-`QuestionResponse`), `done` (terminal — clears generating-state),
-`paused` (terminal — surfaces the AC-D11 paused UI). The reducer in
-`frontend/src/components/attempt/jit-queue.tsx` tracks an
-`arrivedIdx` set per question position, so the UI shows
-generating-dots for positions not yet in the set and ready-state
-for positions in it.
+**Event shape and reducer.** Reflecting the AC-CD10 backend
+contract as shipped:
+
+- **Question events use the default `message` event** — the SSE
+  frame carries no explicit `event:` line. The data payload is
+  **identifying only**: `{id, attempt_position, attempt_id}` (not
+  the full `QuestionResponse`). On arrival, the frontend issues a
+  `GET /v1/attempts/{id}` re-read to pick up the full question
+  content for that `attempt_position`; the question rows on the
+  attempt response are the source of truth for question state.
+- **Terminals use explicit `event:` headers**: `event: done`
+  (clears generating-state) and `event: paused` (surfaces the
+  AC-D11 paused UI). No payload assumption beyond what AC-CD10
+  dictates.
+
+The reducer in `frontend/src/components/attempt/jit-queue.tsx`
+keys arrivals on `attempt_position` from the identifying payload
+and merges the full question content from the post-arrival
+`GET /v1/attempts/{id}` refetch. The UI shows generating-dots for
+positions not yet announced and ready-state for positions whose
+content has joined from the refetch.
 
 **Disconnect handling.** On stream error (network drop, server 5xx
 mid-stream), the adapter retries **once** with `Last-Event-ID` set
@@ -1094,7 +1107,7 @@ bearer flow. The fetch-streaming adapter is ~80 lines, supports the
 `Authorization` header natively, and lets the resume semantics
 align cleanly with AC-CD10's `Last-Event-ID` contract.
 
-### AC-CD23 — Theme system (paper default), token discipline, project-specific primitives
+### AC-CD23 — Theme system (paper + carbon), token discipline, project-specific primitives
 
 > Added in the Session 2 frontend canonical-doc PR. AC-CD19 pins
 > Tailwind and shadcn/ui but is silent on theming, design-token
@@ -1107,18 +1120,39 @@ align cleanly with AC-CD10's `Last-Event-ID` contract.
 
 **Decision.**
 
-- **Single v1 theme: `paper`.** The `<html>` element carries
-  `data-theme="paper"` (server-set in the root `layout.tsx`). The
-  `carbon` and `steel` themes from the v5 design exploration are
-  deferred to v1.x; they are not in any FE-N phase.
-- **Tailwind v4 `@theme` directives.** All design tokens — colour
-  (`--color-ink`, `--color-surface`, `--color-accent`,
-  `--color-band-1` through `--color-band-5`, `--color-safety`),
-  spacing scale, radius, typography — are declared in
-  `frontend/src/app/globals.css` under `@theme`. Component code uses
-  semantic Tailwind classes (`bg-surface`, `text-ink`,
-  `text-band-3`) that bind to those tokens. **Literal hex values,
-  RGB values, or arbitrary-value brackets like `bg-[#fafafa]` are
+- **Two v1 themes: `paper` (light) and `carbon` (dark).** The
+  `<html>` element carries `data-theme="paper"` or
+  `data-theme="carbon"`. The `steel` theme from the v5 design
+  exploration is **out of scope entirely** — not in v1, not in any
+  v1.x phase. It is named here only to inoculate against
+  reintroduction.
+- **Initial state and persistence.** Initial theme is `paper`. There
+  is **no `prefers-color-scheme` detection** in v1 — the OS setting
+  is ignored. The user switches manually via the TopBar toggle (see
+  below). Selection persists in `localStorage` under key
+  `acumen.theme` with value `"paper" | "carbon"`, read at mount and
+  written on toggle. Persistence is per-device.
+- **Toggle UX.** A small sun ↔ moon icon button rendered **beside
+  the avatar in the `TopBar`** (not inside the avatar dropdown).
+  Clicking flips `data-theme` on `<html>` and writes the new value
+  to `localStorage`. Icon reflects the *target* state (sun shown
+  while on `carbon`, moon shown while on `paper`).
+- **Token contract (bare-name primitives + `@theme` aliases).** The
+  design-prototype's bare-name custom properties are the canonical
+  tokens and are declared on `:root[data-theme="paper"]` and
+  `:root[data-theme="carbon"]` in `frontend/src/app/globals.css`:
+  `--ink`, `--bg-page`, `--bg-surface`, `--bg-muted`,
+  `--band-novice`, `--band-junior`, `--band-working`,
+  `--band-advanced`, `--band-expert`, `--safety`, plus spacing,
+  radius, and typography scales. A Tailwind v4 `@theme` block in
+  the same file declares `--color-*` aliases that point at the
+  bare-name tokens (e.g. `--color-ink: var(--ink);`,
+  `--color-band-working: var(--band-working);`) so Tailwind's
+  utility-generation picks them up. Component code uses semantic
+  Tailwind classes (`bg-surface`, `text-ink`, `text-band-working`)
+  that bind via the aliases to the bare-name tokens, so swapping
+  `data-theme` swaps the entire palette. **Literal hex values, RGB
+  values, or arbitrary-value brackets like `bg-[#fafafa]` are
   prohibited in component code.** Reviewers reject PRs that
   introduce them.
 - **Project-specific primitives** that shadcn/ui does not provide
@@ -1136,9 +1170,13 @@ align cleanly with AC-CD10's `Last-Event-ID` contract.
   shadcn's source-copy brings in.
 
 **Rationale.** Tokens-in-CSS keeps the theme path single-source; the
-moment a hex value lands in a component, the theme path forks.
-Limiting v1 to one theme keeps the design surface bounded and
-matches the KBC pilot's deployment posture. Primitives in one
+moment a hex value lands in a component, the theme path forks. Two
+themes (paper + carbon) cover the v1 light/dark expectation that
+testees raise on first use; gating the toggle on an explicit
+TopBar button (no OS-preference detection) keeps the v1 surface
+deterministic and side-steps SSR/CSR-mismatch flashes. Excluding
+`steel` outright caps the palette at two and protects against the
+v5 exploration's design surface re-expanding. Primitives in one
 folder make "is there already a primitive for this?" a 30-second
 grep.
 

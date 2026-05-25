@@ -425,7 +425,7 @@ Scenario: Mismatch / weak / validation
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(auth)/privacy/page.tsx`. **Important:** `/privacy` lives in `(auth)` but its guard logic inverts — requires an **authenticated** user with `privacy_ack_at === null`. See §C.4 for the full matrix.
+- File: `frontend/src/app/(authed)/privacy/page.tsx` per AC-CD20. `/privacy` lives in the `(authed)/` group (the only authenticated route a privacy-unacked user can hit) and intentionally bypasses the `(authed)/` layout's privacy-ack subgate via a route-group exception. See §C.4 for the full matrix.
 - No URL params.
 
 **2. Components**
@@ -516,7 +516,7 @@ Scenario: Unauthenticated user lands on /privacy
 
 ### C.1 Shared components (introduced this PR)
 
-Under `frontend/src/components/auth/` and `frontend/src/lib/forms/`. FE-1 originals that propagate into FE-2..FE-9:
+Under `frontend/src/components/auth/` and `frontend/src/lib/api/` (the form-error helper lives at `frontend/src/lib/api/form-errors.ts` per CODE_SPEC.md:1024). FE-1 originals that propagate into FE-2..FE-9:
 
 | Component | Purpose | Source-of-truth design lines |
 |---|---|---|
@@ -535,7 +535,7 @@ FE-2 may move `AuthNotice`/`AuthField` into a top-level `components/ui/` once mo
 
 ### C.2 `applyApiErrorToForm` — the form-error display precedent
 
-Lives at `frontend/src/lib/forms/applyApiErrorToForm.ts`. **AC-CD21 precedent** — every form in FE-2..FE-9 uses this helper.
+Lives at `frontend/src/lib/api/form-errors.ts` (canonical path per CODE_SPEC.md:1024). **AC-CD21 precedent** — every form in FE-2..FE-9 uses this helper.
 
 ```ts
 import type { UseFormReturn, FieldValues, Path } from "react-hook-form";
@@ -591,14 +591,18 @@ frontend/src/app/
   layout.tsx                # AuthProvider + QueryClient + Toaster
   page.tsx                  # dashboard shell (empty for FE-1)
   (auth)/
-    layout.tsx              # auth-group guard (see below)
+    layout.tsx              # auth-group guard — unauth surfaces only (see below)
     login/page.tsx
     forgot/page.tsx
     reset/[token]/page.tsx
     setup/[token]/page.tsx
-    privacy/page.tsx        # SPECIAL — privacy-only guard
+  (authed)/
+    layout.tsx              # authed-group guard — privacy-ack subgate, with /privacy bypass (see below)
+    privacy/page.tsx        # SPECIAL — bypasses the privacy-ack subgate
   403/page.tsx              # role-mismatch landing
 ```
+
+Per AC-CD20, `(auth)/` hosts unauthenticated surfaces only; `(authed)/` hosts any post-auth surface that is not role-specific, including `/privacy`. Route groups (parenthesised folders) do not affect URL paths.
 
 **The five postures (evaluated in order):**
 
@@ -611,7 +615,8 @@ frontend/src/app/
 | 5 | Authed, ack'd, role-matched | Redirect → `/` | Redirect → `/` | Render |
 
 **Implementation:**
-- `(auth)/layout.tsx` enforces postures 1, 2, 3, 5 (and renders posture 3's redirect → `/privacy` for the auth-set pages, except `/privacy` itself which inverts).
+- `(auth)/layout.tsx` enforces postures 1, 2, 5 for the unauth-set pages (`/login`, `/forgot`, `/reset/*`, `/setup/*`): renders for posture 2, redirects to `/` for posture 5.
+- `(authed)/layout.tsx` enforces postures 1, 2, 3 for the authed surfaces (including `/privacy`): redirects to `/login` for posture 2, redirects to `/privacy` for posture 3 — **except** `/privacy` itself, which bypasses the privacy-ack subgate via a route-group exception so the unacked user can actually render and acknowledge.
 - `frontend/src/lib/auth/guards.tsx` exports a `<RequireAuth>` wrapper used by future role-gated layouts (FE-2 adds `(testee)`/`(admin)` route groups).
 - For FE-1, role-mismatch (posture 4) only needs `/403` to exist — no role-gated routes ship in FE-1. Guard plumbing is wired against an empty allow-list; `/403` ships with placeholder copy.
 - **Post-login resolver:** after `POST /v1/auth/login`, page calls `unwrap(client.GET("/v1/auth/me"))` to seed auth context fresh, then routes per matrix (posture 3 vs 5).
@@ -661,7 +666,7 @@ Vitest config aliases `@` → `/src` (PR-032). Tests under `frontend/tests/` and
 
 ### D.1 Unit tests (lib + helpers)
 
-`frontend/src/lib/forms/applyApiErrorToForm.test.ts`:
+`frontend/src/lib/api/form-errors.test.ts`:
 - Maps a FastAPI-style `detail` array onto rhf fields via `setError`.
 - Unknown field name falls through to `root`.
 - Non-422 `ApiError` uses the `fieldMap` opt.
@@ -681,7 +686,7 @@ One test per Gherkin scenario in each per-page §6, using MSW handlers:
 - `frontend/src/app/(auth)/forgot/page.test.tsx` — §B.2 trios.
 - `frontend/src/app/(auth)/reset/[token]/page.test.tsx` — §B.3 trios (incl. both token-error variants).
 - `frontend/src/app/(auth)/setup/[token]/page.test.tsx` — §B.4 trios.
-- `frontend/src/app/(auth)/privacy/page.test.tsx` — §B.5 trios (incl. declined-stays-mounted edge case).
+- `frontend/src/app/(authed)/privacy/page.test.tsx` — §B.5 trios (incl. declined-stays-mounted edge case).
 
 ### D.3 Round-trip integration test
 
@@ -705,7 +710,7 @@ One test per Gherkin scenario in each per-page §6, using MSW handlers:
 
 | # | Placeholder | Location | Action before production |
 |---|---|---|---|
-| 1 | Privacy notice 4-paragraph body | `app/(auth)/privacy/page.tsx` — port of `auth.jsx:592–614` | **Legal sign-off.** AC-D16 §8.7 flags this. Tag with `// TODO(AC-D16): placeholder copy, needs legal review before production`. Handover records "BLOCKER FOR EXTERNAL ROLLOUT". |
+| 1 | Privacy notice 4-paragraph body | `app/(authed)/privacy/page.tsx` — port of `auth.jsx:592–614` | **Legal sign-off.** AC-D16 §8.7 flags this. Tag with `// TODO(AC-D16): placeholder copy, needs legal review before production`. Handover records "BLOCKER FOR EXTERNAL ROLLOUT". |
 | 2 | `/403` page copy | `app/403/page.tsx` | Generic copy fine for v1; FE-2 may refine. Not a blocker. |
 | 3 | Empty-dashboard shell at `/` | `app/page.tsx` | FE-1 leaves a minimal "Welcome, {name}" view replacing the current scaffold debug page. FE-2 lands the real shell. Not a blocker. |
 
