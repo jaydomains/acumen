@@ -160,7 +160,7 @@ tabs); pill CRUD + safety-override toggle; pill-proposal approve/reject
 (no edit-then-approve in v1); users CRUD + deactivate/reactivate; groups
 CRUD + membership with system-group immutability per AC-D15; **test
 authoring with single editor and mode-conditional sections** for the 4
-test modes (`frozen`, `per_testee`, `benchmark`, `live`), question editor
+test modes (`frozen`, `per_testee`, `hand_authored`, `benchmark`), question editor
 covering all 5 types, publish/lock/unlock; learning-path authoring;
 assignment authoring (testees + groups, deadlines, `loop_mode`).
 **Done-when:** Admin can: create a subject → create a pill in it →
