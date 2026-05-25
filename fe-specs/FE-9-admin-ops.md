@@ -25,7 +25,7 @@ The two files share a single PR. The split aligns with the prototype's natural d
 - **FE-1 `applyApiErrorToForm` helper** at `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` + `fe-specs/FE-3-content.md:16` + `fe-specs/FE-4-runner.md:16` + `fe-specs/FE-8-admin-catalogue.md` §H (b) item 1. Every FE-9 modal form uses this helper. Signature locked at `fe-specs/FE-1-auth.md:558–562`.
 - **FE-1 error patterns A/B/C** at `fe-specs/FE-1-auth.md:567–658`: Pattern A (inline + root via `setError`), Pattern B (sonner toast with severity-coded auto-dismiss 3s/5s/7s), Pattern C (full-page boundary card). FE-9 uses A for the override drawer + reject-reason modal forms, B for sweep / approve / reject success and error toasts, C for `(admin)` route-group `error.tsx` boundaries.
 - **FE-1 five-posture route-guard matrix** at `fe-specs/FE-1-auth.md:603–611`. Posture 4 (testee role → `/admin/*`) redirects to `/403`. FE-9's `(admin)` route group consumes the matrix unchanged.
-- **FE-2 `(admin)` route group + admin shell** at `fe-specs/FE-2-shell.md` (B.14). FE-9 mounts pages under `frontend/src/app/(admin)/` without adding new guard plumbing. Admin nav rail from `shell.jsx:15` declares `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop` — FE-9 maps to all of these except `catalogue-admin` + `users`. **§H (b) item 1: the rail does NOT declare separate `loops` vs `loop`** — verify whether `loop` is the canonical id (loop queue page is the only consumer) or if rail also needs `calibration` + `system` ids added (covered by the sibling file).
+- **FE-2 `(admin)` route group + admin shell** at `fe-specs/FE-2-shell.md` (B.14). FE-9 mounts pages under `frontend/src/app/(admin)/` without adding new guard plumbing. Admin nav rail from `shell.jsx:15` declares `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop` — FE-9 maps to all of these except `catalogue-admin` + `users`. The rail does NOT declare separate `loops` vs `loop` — verify whether `loop` is the canonical id (the loop queue page is the only consumer) at build session open. The broader nav-rail extension question (adding `calibration` + `system` ids) is covered by sibling file's §H (b) item 14.
 - **FE-2 primitives** consumed unchanged: `Pill` (status / verdict / mode badges), `Stat` (overview stat cards on ops landing), `BandTag` (per-pill band in grade-review detail), `PageHeader` (eyebrow + serif-italic title), `Icon` (lucide-react). shadcn install set from FE-2 + FE-8's addition of `Sheet` (used here for the grade-review override drawer per design `admin.jsx:208–306`).
 - **FE-3 cursor pagination pattern** at `fe-specs/FE-3-content.md:634–636` — `useInfiniteQuery` with `getNextPageParam: (last) => last.meta.next_cursor` + `IntersectionObserver` sentinel. **NOT used in FE-9.** The four FE-9 ops endpoints return `data: [...]` flat lists (not `Page_T_` envelopes — verified at `app/routers/admin.py:84–86 / 116–118 / 156–158`); cursor pagination is unnecessary at v1 queue depth. If a queue grows past ~200 rows the build session adds pagination as a v1.x follow-up. Surfaced as §H (c) approved resolution.
 - **FE-3 URL-state ↔ filter-state sync** at `fe-specs/FE-3-content.md:642–644` — `useRouter().replace()` (not `push`) so back-button doesn't accumulate filter noise. Grade-review queue's `?verdict=` + `?selected={id}` URL state inherits this pattern.
@@ -42,7 +42,7 @@ The two files share a single PR. The split aligns with the prototype's natural d
 - **Cost dashboard daily bars + per-operation breakdown.** Sibling-file scope (descoped to v1.x per user lock-in). Ops landing still renders the month-to-date cost summary teaser via `GET /v1/admin/cost/summary`.
 - **Pill catalogue / users / groups / assignments / test authoring.** FE-8 territory (`fe-specs/FE-8-admin-catalogue.md` + `fe-specs/FE-8-admin-identity.md` + `fe-specs/FE-8-admin-tests.md`).
 - **Edit-then-approve on flagged grade-review.** AC-D19 v1.6 surfaces three resolve actions only (`keep_ai` / `accept_reviewer` / `substitute`) per `GradeReviewResolveRequest` at `app/schemas.py:726–744`. The override drawer (§B.2) ships these three; no inline edit of the AI reasoning. Surfaced in §F.2.
-- **`GET /v1/admin/ops/overview` server-side aggregate endpoint.** Does not exist; ops landing composes client-side from 5 parallel TanStack queries per user lock-in. Surfaced in §H (c) item 13.
+- **`GET /v1/admin/ops/overview` server-side aggregate endpoint.** Does not exist; ops landing composes client-side from 5 parallel TanStack queries per user lock-in. Surfaced in §H (c).
 
 **Additions to `(admin)/layout.tsx`:** none beyond what FE-2 mounts. The shared `(admin)` shell from FE-2 hosts all FE-9 pages unchanged.
 
@@ -530,7 +530,7 @@ const rejectMutation = useMutation({
 | `table_empty_review` | Response `data: []` with `?status=review` (default) | Empty state: "No loops waiting for your review — autonomous loops are self-progressing." |
 | `table_empty_other` | Response `data: []` with other filter | Empty state appropriate to status (e.g. "No closed loops on the current window"). |
 | `table_happy` | Rows render | Table populated; actionable rows render Approve + Reject buttons in last column. |
-| `filter_status_changed` | Admin clicks segmented `?status=` button | URL replaces; client-side filter applies (until backend wiring lands per §H (a) item 5). |
+| `filter_status_changed` | Admin clicks segmented `?status=` button | URL replaces; client-side filter applies (until backend wiring lands per §H (b) item 5). |
 | `approve_modal_open` | Admin clicks Approve on a row | `ApproveModal` mounts. |
 | `approve_submitting` | Admin clicks Approve in modal | Button pulse-dot + "Approving…"; cancel disabled. |
 | `approve_success` | 2xx | Modal closes; toast confirms; row disappears from `?status=review` view; queue invalidates. |
@@ -588,7 +588,7 @@ Scenario: Reject with empty reason blocked
 
 ```gherkin
 Scenario: Mode column distinguishes autonomous vs admin-reviewed
-  Given the queue has 4 admin-reviewed rows and 2 autonomous rows (post §H (a) item 5)
+  Given the queue has 4 admin-reviewed rows and 2 autonomous rows (post §H (a) item 1)
   When the admin switches filter to ?status=all
   Then all 6 rows render
   And the Mode column shows "Admin · review" Pill for the 4 admin-reviewed rows
@@ -656,7 +656,7 @@ Scenario: Empty queue
 - **Scaffold reused:** same as §B.2 §2 minus rhf (no forms).
 - **New in this PR:**
   - `EngagementPage` — top-level page. Renders `PageHeader` (eyebrow "AC-D26 · derived engagement_status · 7-day default threshold" + serif-italic title "Who's not engaging.") + sweep section + pending list.
-  - `SweepSection` — card containing `SweepButton` + last-run timestamp ("Last swept N hours ago" — derived from query result OR a separate metadata field; spec note: backend's `SweepResult` doesn't currently include `last_run_at`, so v1 derives from local state — see §H (b) item 8). Reason for surfacing here: design's sweep affordance is the primary admin action on this page.
+  - `SweepSection` — card containing `SweepButton` + last-run timestamp ("Last swept N hours ago" — derived from query result OR a separate metadata field; spec note: backend's `SweepResult` doesn't currently include `last_run_at`, so v1 derives from local state — §H (a) item 1's row-enrichment contract optionally adds `last_swept_at: datetime` to `SweepResult`, replacing the fallback once the backend PR lands). Reason for surfacing here: design's sweep affordance is the primary admin action on this page.
   - `SweepButton` — state-machine button. **CANONICAL DEFINITION for FE-9** — extracted to `frontend/src/components/admin/sweep-button.tsx` and reused by sibling file's calibration run + drive ingest + safety-links check + realism aggregate cards. States: `idle` (CTA enabled), `running` (pulse-dot + label flips to "Sweeping…", button disabled), `done` (check icon for 1500ms, then resets to idle). On error → reverts to idle + Pattern B toast. See §C.4 for the full primitive spec.
   - `PendingList` — table per `admin.jsx:325–352`. Columns (post §H (a) item 1): Testee, Assignment (pill or test name), Assigner, Days stale, Reminders sent (`R0` / `R1` / `R2` Pill badges), Escalated (badge if true). NO action column in v1 per `FE_ROADMAP.md:188` + `admin-ops.jsx:277–284` v5-removal callout.
   - `SweepSuccessToast` — Pattern B toast variant: "Swept N stale assignments · M first reminders · K second reminders · L escalated" composing from `SweepResult`. Note: current `SweepResult` is `{reminders_sent, escalations_sent}` only per `app/schemas.py:593–595`; the more granular fields require §H (a) item 1 enrichment. Until then, toast surfaces the two available counts.
@@ -763,7 +763,7 @@ Scenario: Reminder badge per row
 
 - **No per-row actions in v1** — design v5 had Nudge / Reassign; explicitly removed per `FE_ROADMAP.md:188` + design callout `admin-ops.jsx:277–284`. Build session must not re-introduce them. If a future user request asks for them, surface as v1.x spec-clarification PR.
 - **Sweep toast counts** — current backend returns only `reminders_sent` + `escalations_sent`. Design wants richer summary (first / second reminders separated, escalation count, tokens used, duration). The row-enrichment PR (§H (a) item 1) folds this into `SweepResult`. Until landed, toast is the minimal two-count version.
-- **`Last swept` derived timestamp** — design implies a "last run" indicator on the page. Backend doesn't expose this; v1 falls back to local `useState` ("Last swept by you N minutes ago" / no copy on initial mount). §H (b) item 8 verifies whether `AuditLog` has the timestamp accessible via a simple query.
+- **`Last swept` derived timestamp** — design implies a "last run" indicator on the page. Backend doesn't expose this; v1 falls back to local `useState` ("Last swept by you N minutes ago" / no copy on initial mount). §H (a) item 1's row-enrichment contract optionally adds `last_swept_at: datetime` to `SweepResult` — once that lands the local-state fallback is replaced with the canonical timestamp.
 - **Cron and admin trigger share same code path** — sweep cron fires every N (default per AC-D26 schedule); admin trigger runs the same body. The admin button surfaces the cron's results for the admin's local "I want to know now" need; doesn't disable the cron.
 - **Sweep is idempotent at v1 scale** — if admin clicks twice quickly, second call processes only the assignments that escalated since the first call. No frontend debounce in v1 (button disabled during pending state suffices).
 
@@ -973,7 +973,7 @@ Per-phase variances NOT allowed without spec-drift surface:
 
 ## H. Spec-drift roll-up (post-review classification)
 
-The cross-walk surfaced 14 candidate items (8 in this file + 6 in the sibling). After review, classified into three groups. **This file's H block covers items numbered 1–7; the sibling file's H block covers 8–14 (continuous numbering across the FE-9 split for cross-reference clarity).**
+The cross-walk surfaced 14 numbered candidate items across the FE-9 split (7 in this file + 7 in the sibling) plus approved-resolution bullets in §H(c) of each file (unnumbered — they do not participate in cross-file referencing). **This file's H block covers items numbered 1–7; the sibling file's H block covers 8–14 (continuous numbering across the FE-9 split for cross-reference clarity).**
 
 ### (a) BLOCKERS for the FE-9 build session — must land before the build session opens
 
@@ -1004,13 +1004,15 @@ The build session opens with a verification step before any code lands: read the
 
 These are not blockers. The spec body locks the resolution; the build session implements; the build PR's handover records them under the SESSION_START.md AC-CD-structural-additions carve-out.
 
-8. **Two-file split** (ops + systems) — user-locked at plan time per `/root/.claude/plans/fresh-session-fe-9-bubbly-reef.md`.
-9. **No cursor pagination in FE-9** — list endpoints return flat `{data: [...]}` not `Page_T_`; design's small queue sizes don't need pagination at v1. Departs from FE-3's pattern; documented in §0 and §G.
-10. **`adminKeys.ops.overview()` synthetic invalidation key** — no real endpoint; the key catches the landing's 5-query composition for cross-resource mutation invalidation.
-11. **Override-drawer `?selected={id}` URL state pattern** — locked in §C.2 as a deep-linkable drawer-open primitive.
-12. **`SweepButton` primitive canonical in this file** (§C.4), consumed by sibling file's four cron-trigger surfaces.
-13. **Ops landing composes 5 parallel queries client-side** — no `/v1/admin/ops/overview` endpoint; user-locked at plan time.
-14. **AC-D19 three resolve actions only** (`keep_ai` / `accept_reviewer` / `substitute`) — no edit-then-approve; design tiles map to `substitute` per the table in §B.2 §3.
+(Items below are unnumbered — they capture approved resolutions for the build PR handover but do not participate in cross-file referencing.)
+
+- **Two-file split** (ops + systems) — user-locked at plan time per `/root/.claude/plans/fresh-session-fe-9-bubbly-reef.md`.
+- **No cursor pagination in FE-9** — list endpoints return flat `{data: [...]}` not `Page_T_`; design's small queue sizes don't need pagination at v1. Departs from FE-3's pattern; documented in §0 and §G.
+- **`adminKeys.ops.overview()` synthetic invalidation key** — no real endpoint; the key catches the landing's 5-query composition for cross-resource mutation invalidation.
+- **Override-drawer `?selected={id}` URL state pattern** — locked in §C.2 as a deep-linkable drawer-open primitive.
+- **`SweepButton` primitive canonical in this file** (§C.4), consumed by sibling file's four cron-trigger surfaces.
+- **Ops landing composes 5 parallel queries client-side** — no `/v1/admin/ops/overview` endpoint; user-locked at plan time.
+- **AC-D19 three resolve actions only** (`keep_ai` / `accept_reviewer` / `substitute`) — no edit-then-approve; design tiles map to `substitute` per the table in §B.2 §3.
 
 ---
 

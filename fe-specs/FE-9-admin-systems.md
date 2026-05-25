@@ -57,7 +57,7 @@ Plus AC-D23 bootstrap → `POST /v1/admin/bootstrap/run` (system-page card 1; no
 | 2 | Anchor calibration — run trigger (`SweepButton`) + summary stat strip (anchors analysed / flagged / % in-band / since last run) + per-pill drift chart with flag counts + flagged-anchors table + resolve modal with 3 verdict tiles (`keep` / `substitute_wording` / `reject`) | `(admin)/calibration/page.tsx` + `_components/calibration-summary-strip.tsx` + `_components/drift-chart.tsx` + `_components/flagged-anchors-table.tsx` + `_components/resolve-anchor-modal.tsx` | `admin-ops.jsx:578–785` (`CalibrationMock` with `CalibrationButton:715–729`, `ResolveAnchorModal:731–785`, `VerdictChoice:787–799`) | `v6-fe9-26-calibration.png` |
 | 3 | System page — 5 cards (bootstrap / drive-ingest / drive-index status / realism aggregate / safety-link check); each card has eyebrow + stats + optional Recent Runs sub-list + manual trigger (`SweepButton`); toast on success/failure | `(admin)/system/page.tsx` + `_components/system-op-card.tsx` (5 instances composed in the page) | `admin-ops.jsx:417–530` (`SystemPageMock` with `SystemOpCard:474–530`) | `v6-fe9-25-system-page.png` |
 
-Three capabilities. Each its own §B entry. Nav-rail anchors: `shell.jsx:15` declares `cost` for the cost dashboard. **§H (b) item 9** (continued numbering from sibling) — `calibration` and `system` nav-rail ids likely need adding (verify `shell.jsx:15` — the v6 shell may only declare 7 ids: `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop`); FE-9 either (a) extends the nav-rail in this build PR as an AC-CD-structural addition, or (b) accesses calibration / system via cross-page links from `/admin/system` aggregate teaser on the ops landing.
+Three capabilities. Each its own §B entry. Nav-rail anchors: `shell.jsx:15` declares `cost` for the cost dashboard. **§H (b) item 14** — `calibration` and `system` nav-rail ids likely need adding (verify `shell.jsx:15` — the v6 shell may only declare 7 ids: `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop`); FE-9 either (a) extends the nav-rail in this build PR as an AC-CD-structural addition, or (b) accesses calibration / system via cross-page links from `/admin/system` aggregate teaser on the ops landing.
 
 URL state declared per surface:
 - §B.1 — `?range={7d|month|ytd}` rendered but disabled in v1; effective state always `month`.
@@ -229,7 +229,7 @@ Scenario: Query fails — Pattern C boundary
 - File: `frontend/src/app/(admin)/calibration/page.tsx`. Segment + `error.tsx` boundary file are FE-9-introduced.
 - URL state: `?pill={pill_id}` (optional — when admin drills into a specific pill's flagged anchors). State change via `router.replace()`.
 - Static `<title>Anchor calibration · Acumen</title>`.
-- Nav-rail anchor: **§H (b) item 9** — `shell.jsx:15` likely doesn't declare a `calibration` id; build session either extends the nav rail or accesses via the system-page's "Open calibration →" CTA.
+- Nav-rail anchor: **§H (b) item 14** — `shell.jsx:15` likely doesn't declare a `calibration` id; build session either extends the nav rail or accesses via the system-page's "Open calibration →" CTA.
 
 **2. Components**
 
@@ -429,7 +429,7 @@ Scenario: Resolve race — another admin resolves first
 
 **7. Edge cases / gotchas**
 
-- **AC-D23 vs AC-D27 queue confusion.** The endpoint `anchors/flagged` is the bootstrap-quality flag queue (failed generate+review cycles); the design language ("drift chart", "calibration drift") evokes AC-D27 effective-difficulty drift. Spec body locks AC-D23 as the v1 surface and defers AC-D27 to v1.x (§E.4). Naming kept as `anchors/flagged` (not renamed to `calibration/flagged`) — §H (c) item 14.
+- **AC-D23 vs AC-D27 queue confusion.** The endpoint `anchors/flagged` is the bootstrap-quality flag queue (failed generate+review cycles); the design language ("drift chart", "calibration drift") evokes AC-D27 effective-difficulty drift. Spec body locks AC-D23 as the v1 surface and defers AC-D27 to v1.x (§E.4). Naming kept as `anchors/flagged` (not renamed to `calibration/flagged`) — §H (c).
 - **Calibration run can take 10+ seconds at v1 scale** (thousands of anchors). `SweepButton`'s `running` state is the only UX; no progress bar. If a v1.x usability gap emerges, add a streaming endpoint with progress events.
 - **`new_config` JSON editor.** v1 ships a plain controlled `<textarea>` with monospace styling + zod validation. shadcn doesn't ship a JSON editor primitive; v1.x may swap in a CodeMirror / Monaco editor if admin authoring volume justifies it.
 - **`lastRun` is session-local.** The summary stats reset to "—" if the admin reloads the page without running calibration. v1 acceptable; v1.x may persist via a separate GET endpoint or a TanStack persistent cache (`@tanstack/query-sync-storage-persister`).
@@ -452,7 +452,7 @@ Scenario: Resolve race — another admin resolves first
 - File: `frontend/src/app/(admin)/system/page.tsx`. Segment + `error.tsx` boundary file are FE-9-introduced.
 - URL state: none.
 - Static `<title>System operations · Acumen</title>`.
-- Nav-rail anchor: **§H (b) item 9** — `system` id likely not in `shell.jsx:15`; same resolution as calibration.
+- Nav-rail anchor: **§H (b) item 14** — `system` id likely not in `shell.jsx:15`; same resolution as calibration.
 
 **2. Components**
 
@@ -742,7 +742,7 @@ AC-D18 explicit: "operations continue regardless of threshold crossings (no hard
 
 ### F.2 `DECISIONS.md` AC-D27 deferral — calibration drift queue not in v1
 
-Surfaced in §E.4 + §H (c) item 17. The v1 calibration page consumes the AC-D23 bootstrap-quality queue (`anchors/flagged`) only. An AC-D27 drift queue is a distinct backend surface, deferred to v1.x. No v1 spec amendment.
+Surfaced in §E.4 + §H (c). The v1 calibration page consumes the AC-D23 bootstrap-quality queue (`anchors/flagged`) only. An AC-D27 drift queue is a distinct backend surface, deferred to v1.x. No v1 spec amendment.
 
 ### F.3 No new `CODE_SPEC.md` AC-CD-structural additions
 
@@ -750,7 +750,7 @@ FE-9 systems side ships with **zero new runtime deps**. All primitives inherited
 
 ### F.4 Nav-rail extension — folded into build PR's handover
 
-The current `shell.jsx:15` declares 7 admin nav ids: `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop`. FE-9 systems pages need 2 additional ids: `calibration` + `system`. **§H (b) item 9** verifies; build session extends the nav-rail as an AC-CD-structural addition fold per SESSION_START.md carve-out (small, well-rationalised, doesn't violate AC-CD19).
+The current `shell.jsx:15` declares 7 admin nav ids: `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop`. FE-9 systems pages need 2 additional ids: `calibration` + `system`. **§H (b) item 14** verifies; build session extends the nav-rail as an AC-CD-structural addition fold per SESSION_START.md carve-out (small, well-rationalised, doesn't violate AC-CD19).
 
 ---
 
@@ -762,7 +762,7 @@ See `fe-specs/FE-9-admin-ops.md` §G. The full propagation discipline lives ther
 
 ## H. Spec-drift roll-up (post-review classification)
 
-The cross-walk surfaced 14 candidate items across the FE-9 split. After review, classified into three groups. **This file's H block covers items numbered 8–17 (continuous numbering across the FE-9 split for cross-reference clarity); the sibling file's H block covers 1–7.**
+The cross-walk surfaced 14 numbered candidate items across the FE-9 split (7 in this file + 7 in the sibling) plus approved-resolution bullets in §H(c) of each file (unnumbered — they do not participate in cross-file referencing). **This file's H block covers items numbered 8–14 (continuous numbering across the FE-9 split for cross-reference clarity); the sibling file's H block covers 1–7.**
 
 ### (a) BLOCKERS for the FE-9 build session — must land before the build session opens
 
@@ -792,13 +792,15 @@ The cross-walk surfaced 14 candidate items across the FE-9 split. After review, 
 
 ### (c) APPROVED RESOLUTIONS — folded into FE-9 build PR scope, captured in the build PR's handover
 
-15. **Cost-dashboard daily bars + by-operation breakdown descoped to v1.x** per user lock-in (§B.1 §7, §E.3). Locked v1.x contract documented for future PR; v1 ships placeholder card.
-16. **Cost-dashboard 7d / YTD range segments disabled in v1** per user lock-in (§E.5). v1 ships the segments visible-but-disabled with tooltip "Coming in v1.x".
-17. **AC-D27 effective-difficulty drift queue deferred to v1.x** (§E.4, §F.2). v1 ships the AC-D23 bootstrap-quality queue (`anchors/flagged`) only; `anchors/flagged` naming kept canonical (not renamed to `calibration/flagged`).
-18. **Drift chart simplified to a TABLE in v1** (§E.2). Justified by v1 scale (~14 flagged anchors, ~8 pills). v1.x adds a real chart.
-19. **No GET for bootstrap status in v1** (§E.6, §H (b) item 13). v1 ships session-local cache mirroring calibration `lastRun` pattern; build session decides whether to add a small backend exposure (small enough to fold into the row-enrichment PR scope if the user prefers atomicity).
-20. **Drive-ingest "Recent runs" sub-list session-local in v1** (§E.7). v1.x adds backend persistence.
-21. **Nav-rail extension** (`calibration` + `system` ids if absent) — AC-CD-structural addition fold per §F.4.
+(Items below are unnumbered — they capture approved resolutions for the build PR handover but do not participate in cross-file referencing.)
+
+- **Cost-dashboard daily bars + by-operation breakdown descoped to v1.x** per user lock-in (§B.1 §7, §E.3). Locked v1.x contract documented for future PR; v1 ships placeholder card.
+- **Cost-dashboard 7d / YTD range segments disabled in v1** per user lock-in (§E.5). v1 ships the segments visible-but-disabled with tooltip "Coming in v1.x".
+- **AC-D27 effective-difficulty drift queue deferred to v1.x** (§E.4, §F.2). v1 ships the AC-D23 bootstrap-quality queue (`anchors/flagged`) only; `anchors/flagged` naming kept canonical (not renamed to `calibration/flagged`).
+- **Drift chart simplified to a TABLE in v1** (§E.2). Justified by v1 scale (~14 flagged anchors, ~8 pills). v1.x adds a real chart.
+- **No GET for bootstrap status in v1** (§E.6, §H (b) item 13). v1 ships session-local cache mirroring calibration `lastRun` pattern; build session decides whether to add a small backend exposure (small enough to fold into the row-enrichment PR scope if the user prefers atomicity).
+- **Drive-ingest "Recent runs" sub-list session-local in v1** (§E.7). v1.x adds backend persistence.
+- **Nav-rail extension** (`calibration` + `system` ids if absent) — AC-CD-structural addition fold per §F.4.
 
 ---
 
