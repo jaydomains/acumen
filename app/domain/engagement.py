@@ -39,7 +39,9 @@ from app.models import (
     AssignmentReminder,
     AssignmentReminderKind,
     Attempt,
+    Pill,
     SystemSettings,
+    Test,
 )
 from app.permissions import SMTPClient, now_utc
 
@@ -175,6 +177,23 @@ async def _users_by_id(db: AsyncSession) -> dict[uuid.UUID, AppUser]:
     return {u.id: u for u in result.scalars().all()}
 
 
+async def _pills_by_id(db: AsyncSession) -> dict[uuid.UUID, Pill]:
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return {p.id: p for p in result.scalars().all()}
+
+
+async def _tests_by_id(db: AsyncSession) -> dict[uuid.UUID, Test]:
+    """Tenant-wide :class:`Test` index for assignment-name resolution.
+
+    Slice C row-enrichment: an Assignment with ``pill_id is None`` may
+    still target a Test (FE-1 ``GET /v1/tests/{id}/resolver`` shows the
+    Test→Assignment linkage). We look the Test up via the per-assignee
+    Attempt's ``test_id`` as a fallback when neither pill nor an
+    explicit test_id column is present on the Assignment row."""
+    result = await db.execute(select(Test).where(Test.tenant_id == SEED_TENANT_ID))
+    return {t.id: t for t in result.scalars().all()}
+
+
 # --- pending widget --------------------------------------------------
 
 
@@ -202,6 +221,10 @@ async def list_pending_assignments(
     cutoff = now - timedelta(days=threshold_days)
     assignees_index = await _assignees_by_assignment(db)
     attempts_index = await _attempts_by_assignment_testee(db)
+    reminders_index = await _reminders_by_assignment(db)
+    users_index = await _users_by_id(db)
+    pills_index = await _pills_by_id(db)
+    tests_index = await _tests_by_id(db)
     rows: list[dict[str, Any]] = []
     result = await db.execute(
         select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
@@ -211,20 +234,65 @@ async def list_pending_assignments(
             continue
         if assignment.created_at > cutoff:
             continue
+        assigner = users_index.get(assignment.assigner_id)
+        assigner_name = assigner.name if assigner is not None else ""
+        pill_or_test_name = _resolve_assignment_label(
+            assignment, pills_index, tests_index, attempts_index
+        )
+        reminders_sent = sum(
+            1
+            for r in reminders_index.get(assignment.id, [])
+            if r.kind == AssignmentReminderKind.reminder
+        )
+        escalated = assignment.escalation_sent_at is not None
+        days_stale = max(0, (now - assignment.created_at).days)
         for assignee in assignees_index.get(assignment.id, []):
             attempts = attempts_index.get((assignment.id, assignee.user_id), [])
             status = _status_from_attempts(attempts, assignment, now)
-            if status == EngagementStatus.pending:
-                rows.append(
-                    {
-                        "assignment_id": assignment.id,
-                        "testee_id": assignee.user_id,
-                        "created_at": assignment.created_at,
-                        "deadline": assignment.deadline,
-                        "is_mandatory": assignment.is_mandatory,
-                    }
-                )
+            if status != EngagementStatus.pending:
+                continue
+            testee = users_index.get(assignee.user_id)
+            rows.append(
+                {
+                    "assignment_id": assignment.id,
+                    "testee_id": assignee.user_id,
+                    "testee_name": testee.name if testee is not None else "",
+                    "pill_or_test_name": pill_or_test_name,
+                    "assigner_name": assigner_name,
+                    "created_at": assignment.created_at,
+                    "deadline": assignment.deadline,
+                    "is_mandatory": assignment.is_mandatory,
+                    "days_stale": days_stale,
+                    "reminders_sent": reminders_sent,
+                    "escalated": escalated,
+                }
+            )
     return rows
+
+
+def _resolve_assignment_label(
+    assignment: Assignment,
+    pills_index: dict[uuid.UUID, Pill],
+    tests_index: dict[uuid.UUID, Test],
+    attempts_index: dict[tuple[uuid.UUID, uuid.UUID], list[Attempt]],
+) -> str:
+    """The display label for the assignment's target. A pill-backed
+    assignment uses :attr:`Pill.name`; an Assignment without a pill_id
+    falls back to the Test name reached through any Attempt the
+    assignees have started against it (post-Slice-B Test.pill_id is
+    optional, so a Test-only assignment is a legal v1 shape)."""
+    if assignment.pill_id is not None:
+        pill = pills_index.get(assignment.pill_id)
+        if pill is not None:
+            return pill.name
+    for (assignment_id, _testee_id), attempts in attempts_index.items():
+        if assignment_id != assignment.id:
+            continue
+        for attempt in attempts:
+            test = tests_index.get(attempt.test_id)
+            if test is not None:
+                return test.name
+    return ""
 
 
 # --- reminder + escalation sweep -------------------------------------
@@ -286,7 +354,7 @@ def _smtp() -> SMTPClient:
 
 async def run_engagement_sweep(
     db: AsyncSession, *, now: datetime | None = None
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Per-tick reminder + escalation pass (AC-D26). Idempotent.
 
     For each mandatory assignment:
@@ -304,12 +372,24 @@ async def run_engagement_sweep(
         avoidance) if any assignee remains ``pending``.
 
     Returns a small summary so the admin trigger endpoint can render
-    the outcome. Email send is fail-soft via the P2 SMTP seam.
+    the outcome (Slice C row-enrichment adds per-step reminder splits,
+    ``assignments_processed``, wall-clock ``duration_ms``, and
+    ``last_swept_at`` for the systems-page card). Email send is
+    fail-soft via the P2 SMTP seam.
     """
-    now = now or now_utc()
+    swept_at = now_utc()
+    now = now or swept_at
     settings = await _settings(db)
     escalation_enabled = settings.escalation_enabled if settings is not None else True
-    summary = {"reminders_sent": 0, "escalations_sent": 0}
+    summary: dict[str, Any] = {
+        "reminders_sent": 0,
+        "escalations_sent": 0,
+        "first_reminders_sent": 0,
+        "second_reminders_sent": 0,
+        "assignments_processed": 0,
+        "duration_ms": 0,
+        "last_swept_at": swept_at,
+    }
     smtp = _smtp()
 
     # Pre-fetched indices (Gitar PR-#15 N+1): each is one tenant
@@ -325,6 +405,7 @@ async def run_engagement_sweep(
     for assignment in result.scalars().all():
         if not assignment.is_mandatory:
             continue
+        summary["assignments_processed"] += 1
         history = reminders_index.get(assignment.id, [])
         reminder_count = sum(
             1 for r in history if r.kind == AssignmentReminderKind.reminder
@@ -371,6 +452,10 @@ async def run_engagement_sweep(
             )
             reminder_count += 1
             summary["reminders_sent"] += 1
+            if step_index == 0:
+                summary["first_reminders_sent"] += 1
+            elif step_index == 1:
+                summary["second_reminders_sent"] += 1
 
         if (
             escalation_enabled
@@ -407,6 +492,8 @@ async def run_engagement_sweep(
                     detail={"pending_count": len(still_pending)},
                 )
     await db.flush()
+    finished_at = now_utc()
+    summary["duration_ms"] = max(0, int((finished_at - swept_at).total_seconds() * 1000))
     return summary
 
 

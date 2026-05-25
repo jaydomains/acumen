@@ -53,6 +53,7 @@ from app.domain.ngram import compute_overlap, is_flagged
 from app.domain.weakness import identify_weakness
 from app.models import (
     SEED_TENANT_ID,
+    AppUser,
     Assignment,
     AssignmentAssignee,
     Attempt,
@@ -601,7 +602,137 @@ async def _weakness_report_by_id(
     return result.scalar_one_or_none()
 
 
-async def list_admin_queue(db: AsyncSession) -> list[dict[str, Any]]:
+_LOOP_STATUS_VALUES = frozenset(
+    {"review", "queued", "step-down", "material-served", "closed"}
+)
+
+
+async def _build_attempt_indexes(
+    db: AsyncSession,
+) -> tuple[dict[uuid.UUID, Attempt], dict[uuid.UUID, list[Attempt]]]:
+    """Single tenant-wide :class:`Attempt` scan that yields both the
+    ``by_id`` lookup AND the ``loop_driven`` children-by-parent index.
+
+    Built in one pass per Gitar PR-#49 review — loading the Attempt
+    table twice for the admin-queue surface doubled DB I/O + memory for
+    no behavioural gain. Both indexes derive from the same row set, so
+    we walk it once and split into the two shapes the caller needs.
+    """
+    result = await db.execute(select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID))
+    by_id: dict[uuid.UUID, Attempt] = {}
+    children: dict[uuid.UUID, list[Attempt]] = {}
+    for attempt in result.scalars().all():
+        by_id[attempt.id] = attempt
+        if (
+            attempt.parent_attempt_id is not None
+            and attempt.origin == AttemptOrigin.loop_driven
+        ):
+            children.setdefault(attempt.parent_attempt_id, []).append(attempt)
+    return by_id, children
+
+
+async def _materials_by_weakness(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[LearningMaterial]]:
+    result = await db.execute(
+        select(LearningMaterial).where(LearningMaterial.tenant_id == SEED_TENANT_ID)
+    )
+    index: dict[uuid.UUID, list[LearningMaterial]] = {}
+    for material in result.scalars().all():
+        if material.weakness_report_id is None:
+            continue
+        index.setdefault(material.weakness_report_id, []).append(material)
+    return index
+
+
+async def _users_index(db: AsyncSession) -> dict[uuid.UUID, AppUser]:
+    result = await db.execute(select(AppUser).where(AppUser.tenant_id == SEED_TENANT_ID))
+    return {u.id: u for u in result.scalars().all()}
+
+
+async def _assignments_index(db: AsyncSession) -> dict[uuid.UUID, Assignment]:
+    result = await db.execute(
+        select(Assignment).where(Assignment.tenant_id == SEED_TENANT_ID)
+    )
+    return {a.id: a for a in result.scalars().all()}
+
+
+async def _pills_index(db: AsyncSession) -> dict[uuid.UUID, Pill]:
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return {p.id: p for p in result.scalars().all()}
+
+
+async def _weakness_report_pills_by_report(
+    db: AsyncSession,
+) -> dict[uuid.UUID, list[WeaknessReportPill]]:
+    result = await db.execute(
+        select(WeaknessReportPill).where(WeaknessReportPill.tenant_id == SEED_TENANT_ID)
+    )
+    index: dict[uuid.UUID, list[WeaknessReportPill]] = {}
+    for row in result.scalars().all():
+        index.setdefault(row.weakness_report_id, []).append(row)
+    return index
+
+
+def _iteration_depth_from_index(
+    attempt: Attempt, attempts_by_id: dict[uuid.UUID, Attempt]
+) -> int:
+    """Walk the ``parent_attempt_id`` chain via the pre-loaded index and
+    return the 1-indexed loop depth for ``attempt``. The root (no
+    parent) is iteration 1; a follow-up to the root is iteration 2;
+    etc. Reuses the same tenant-scan ``_build_attempt_indexes`` already
+    performed for the caller — zero extra DB hits per Gitar PR-#49
+    review (the previous query-per-ancestor walk was the N+1 the
+    pre-fetch was designed to avoid)."""
+    current: Attempt | None = attempt
+    depth = 0
+    while current is not None and depth <= MAX_LOOP_DEPTH + 1:
+        depth += 1
+        if current.parent_attempt_id is None:
+            break
+        current = attempts_by_id.get(current.parent_attempt_id)
+    return depth
+
+
+def _derive_loop_status(
+    report: WeaknessReport,
+    children: list[Attempt],
+    materials: list[LearningMaterial],
+) -> str:
+    """Map the 5-value spec enum (review/queued/step-down/material-served/closed)
+    against WeaknessReport state. The locked spec lists the five values
+    at ``fe-specs/FE-9-admin-ops.md:984``; the derivation rules below
+    were confirmed against the Plan-mode review pass.
+
+      * ``closed`` — the admin has cleared ``routed_to_admin`` (the
+        flag flips on approve OR reject). Nothing more to do.
+      * ``review`` — flag set, no follow-up Attempt yet AND no
+        material served. The default state when a fresh report lands.
+      * ``queued`` — flag set, follow-up Attempt(s) created but none
+        submitted yet. Bridge state between approve and the testee
+        opening the follow-up.
+      * ``step-down`` — flag set, at least one follow-up Attempt has a
+        ``submitted_at``. The Testee has retried; the loop is making
+        progress regardless of pass/fail.
+      * ``material-served`` — flag set, LearningMaterial row(s) exist
+        for the report with ``served_at IS NOT NULL`` and no follow-up
+        attempt yet. The remediation pass has reached the Testee but
+        they have not opened the follow-up.
+    """
+    if not report.routed_to_admin:
+        return "closed"
+    if any(a.submitted_at is not None for a in children):
+        return "step-down"
+    if children:
+        return "queued"
+    if any(m.served_at is not None for m in materials):
+        return "material-served"
+    return "review"
+
+
+async def list_admin_queue(
+    db: AsyncSession, *, status: str | None = None
+) -> list[dict[str, Any]]:
     """List :class:`WeaknessReport` rows with ``routed_to_admin = True``
     (admin-reviewed loop queue per AC-D6). Oldest-first so the longest-
     waiting row surfaces at the top — matches the P6 grade-review queue
@@ -612,42 +743,76 @@ async def list_admin_queue(db: AsyncSession) -> list[dict[str, Any]]:
     parent attempt id + Testee + pill name + the weak-pill ids the AI
     identified + the parent attempt's overall_score.
 
+    Slice C row-enrichment (FE-9-admin-ops.md §H(a) item 1):
+    - ``testee_name``, ``loop_mode`` (from parent Assignment), the
+      ``iteration`` UI string ``"{n} of ∞"`` (the spec's locked
+      example), ``last_attempt_at`` (parent attempt's ``submitted_at``),
+      and a derived 5-value ``status``.
+    - The ``status`` parameter accepts any of the 5 enum values for
+      server-side filtering; an unknown value returns an empty list
+      rather than raising so the FE can pass through query strings
+      without bounds checking.
+
+    Pre-fetch pattern (Gitar PR-#49 review): every related table loads
+    once into an in-memory index — Attempt (split into by_id +
+    loop_driven children), Assignment, Pill, WeaknessReportPill,
+    LearningMaterial, AppUser. The per-report loop then enriches each
+    row in memory with zero per-row DB hits.
+
     Returns a list of dicts shaped for ``LoopQueueItem``. The caller
     (router) converts to Pydantic.
-
-    Equality-only walk — :func:`WeaknessReport.routed_to_admin` is a
-    boolean column and the harness only supports single-column
-    equality wheres, so we load and filter in Python (same pattern as
-    :func:`app.domain.competence._prior_attempts_on_pill`). At v1 scale
-    the admin queue is short — most reports route to autonomous mode —
-    so the cost is negligible.
     """
+    if status is not None and status not in _LOOP_STATUS_VALUES:
+        return []
     result = await db.execute(
         select(WeaknessReport).where(WeaknessReport.tenant_id == SEED_TENANT_ID)
     )
+    reports = list(result.scalars().all())
+    if not reports:
+        return []
+
+    attempts_by_id, children_index = await _build_attempt_indexes(db)
+    materials_index = await _materials_by_weakness(db)
+    users_index = await _users_index(db)
+    assignments_index = await _assignments_index(db)
+    pills_index = await _pills_index(db)
+    weakness_pills_index = await _weakness_report_pills_by_report(db)
+
     out: list[dict[str, Any]] = []
-    for report in result.scalars().all():
+    for report in reports:
         if not report.routed_to_admin:
             continue
-        attempt = await _attempt_by_id(db, report.attempt_id)
+        attempt = attempts_by_id.get(report.attempt_id)
         if attempt is None or attempt.assignment_id is None:
             continue
-        assignment = await _assignment(db, attempt.assignment_id)
+        assignment = assignments_index.get(attempt.assignment_id)
         if assignment is None or assignment.pill_id is None:
             continue
-        pill = await _pill(db, assignment.pill_id)
+        pill = pills_index.get(assignment.pill_id)
         if pill is None:
             continue
-        pill_rows = await _weakness_report_pills(db, report.id)
+        pill_rows = weakness_pills_index.get(report.id, [])
+        children = children_index.get(attempt.id, [])
+        materials = materials_index.get(report.id, [])
+        derived_status = _derive_loop_status(report, children, materials)
+        if status is not None and derived_status != status:
+            continue
+        iteration_depth = _iteration_depth_from_index(attempt, attempts_by_id)
+        testee = users_index.get(attempt.testee_id)
         out.append(
             {
                 "weakness_report_id": report.id,
                 "attempt_id": attempt.id,
                 "testee_id": attempt.testee_id,
+                "testee_name": testee.name if testee is not None else "",
                 "pill_id": pill.id,
                 "pill_name": pill.name,
                 "overall_score": attempt.overall_score,
                 "weak_pill_ids": [row.pill_id for row in pill_rows],
+                "loop_mode": assignment.loop_mode.value,
+                "iteration": f"{iteration_depth} of ∞",
+                "last_attempt_at": attempt.submitted_at,
+                "status": derived_status,
                 "created_at": report.created_at,
             }
         )
@@ -775,11 +940,18 @@ async def reject_admin_queue(
     db: AsyncSession,
     weakness_report_id: uuid.UUID,
     admin_id: uuid.UUID,
+    *,
+    reason: str | None = None,
 ) -> dict[str, Any]:
     """Reject a queued :class:`WeaknessReport`: clear ``routed_to_admin``
     without creating any follow-up. The Testee never sees a remediation
     pass for this attempt. Audit-logged so the rejection is traceable
     (operator review of admin action history).
+
+    Slice C row-enrichment (FE-9-admin-ops.md §H(a) item 1 sub-item):
+    the admin may supply a free-text ``reason`` that is captured in the
+    ``audit_log.detail`` payload so reviewers can later see why the
+    follow-up was dropped.
 
     Idempotency: the queue-resolve guard in ``_resolve_queue_row``
     raises 409 if ``routed_to_admin`` is already False, so a double-
@@ -792,12 +964,15 @@ async def reject_admin_queue(
 
     from app.domain.catalogue import record_audit
 
+    detail: dict[str, Any] = {"attempt_id": str(attempt.id)}
+    if reason is not None:
+        detail["reason"] = reason
     await record_audit(
         db,
         actor_id=admin_id,
         action="loop.queue.reject",
         target_entity="weakness_report",
         target_id=report.id,
-        detail={"attempt_id": str(attempt.id)},
+        detail=detail,
     )
     return {"weakness_report_id": report.id}

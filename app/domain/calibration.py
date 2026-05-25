@@ -1051,7 +1051,11 @@ async def list_flagged_anchors(db: AsyncSession) -> list[dict[str, Any]]:
     Oldest-first by ``created_at`` so the admin works through the
     backlog in arrival order — mirrors
     :func:`app.domain.grade_review.list_flagged_reviews` and
-    :func:`app.domain.loop.list_admin_queue`."""
+    :func:`app.domain.loop.list_admin_queue`.
+
+    Slice C row-enrichment (FE-9-admin-ops.md §H(a) item 1): each row
+    carries ``pill_name`` so the FE-9 calibration drift chart can group
+    flagged anchors by pill without a second round-trip."""
     result = await db.execute(
         select(AnchorQuestion).where(AnchorQuestion.tenant_id == SEED_TENANT_ID)
     )
@@ -1060,10 +1064,15 @@ async def list_flagged_anchors(db: AsyncSession) -> list[dict[str, Any]]:
     # (SQLAlchemy's ``True_`` element has no ``.value``).
     rows = [row for row in result.scalars().all() if row.needs_admin_attention]
     rows.sort(key=lambda a: a.created_at)
+    pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    pills_index = {p.id: p for p in pills_result.scalars().all()}
     return [
         {
             "anchor_question_id": row.id,
             "pill_id": row.pill_id,
+            "pill_name": (
+                pills_index[row.pill_id].name if row.pill_id in pills_index else ""
+            ),
             "band": row.band,
             "type": row.type.value,
             "config": row.config,

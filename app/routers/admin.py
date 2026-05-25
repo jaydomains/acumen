@@ -12,8 +12,9 @@ admin flag queue and the per-row resolution endpoint
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import engagement as engagement_domain
@@ -57,6 +58,7 @@ from app.schemas import (
     LoopApproveResult,
     LoopQueueItem,
     LoopQueueListResponse,
+    LoopRejectRequest,
     LoopRejectResult,
     SafetyLinkCheckResult,
     SweepResult,
@@ -107,12 +109,18 @@ async def grade_reviews_reconcile(
 async def grade_reviews_flagged(
     _admin: AppUser = Depends(_require_admin),
     db: AsyncSession = Depends(get_db),
+    verdict: Literal["flagged", "confirmed", "all"] = Query(default="flagged"),
 ) -> FlaggedGradeReviewListResponse:
-    """List flagged grade_review rows pending admin resolution
-    (AC-D19 v1.6 admin queue). Oldest-first; rows whose underlying
-    Grade has already been resolved (Grade.overridden_at IS NOT NULL)
-    drop off the queue."""
-    rows = await list_flagged_reviews(db)
+    """List grade_review rows pending admin resolution (AC-D19 v1.6
+    admin queue). Oldest-first; rows whose underlying Grade has
+    already been resolved (Grade.overridden_at IS NOT NULL) drop off
+    the queue.
+
+    Slice C row-enrichment adds the ``verdict`` query param so the
+    FE-9 queue page can flip between ``flagged`` (default), ``confirmed``,
+    or ``all`` without a second endpoint (FE-9-admin-ops.md §H(a)
+    item 1)."""
+    rows = await list_flagged_reviews(db, verdict=verdict)
     return FlaggedGradeReviewListResponse(
         data=[FlaggedGradeReviewItem(**row) for row in rows]
     )
@@ -149,12 +157,19 @@ async def grade_review_resolve(
 async def loop_queue(
     _admin: AppUser = Depends(_require_admin),
     db: AsyncSession = Depends(get_db),
+    status: Literal["review", "queued", "step-down", "material-served", "closed"]
+    | None = Query(default=None),
 ) -> LoopQueueListResponse:
     """List WeaknessReport rows in the admin-reviewed loop queue
     (AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose
     ``routed_to_admin`` flag has been cleared by a prior approve/reject
-    drop off the queue."""
-    rows = await list_admin_queue(db)
+    drop off the queue.
+
+    Slice C row-enrichment adds the ``status`` query param so the
+    FE-9 queue page can server-side-filter against the derived 5-value
+    enum (FE-9-admin-ops.md §H(a) item 1). Omitted = return every
+    routed-to-admin row regardless of derived status."""
+    rows = await list_admin_queue(db, status=status)
     return LoopQueueListResponse(data=[LoopQueueItem(**row) for row in rows])
 
 
@@ -231,13 +246,20 @@ async def anchors_generate(
 @router.post("/loop/queue/{weakness_report_id}/reject", status_code=201)
 async def loop_queue_reject(
     weakness_report_id: uuid.UUID,
+    body: LoopRejectRequest | None = None,
     admin: AppUser = Depends(_require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> LoopRejectResult:
     """Reject a queued WeaknessReport: clears ``routed_to_admin``
     without creating a follow-up. The Testee never sees a remediation
-    pass for this attempt. Audit-logged at ``loop.queue.reject``."""
-    result = await reject_admin_queue(db, weakness_report_id, admin.id)
+    pass for this attempt. Audit-logged at ``loop.queue.reject``.
+
+    Slice C row-enrichment accepts an optional ``{reason: str}`` body
+    captured into the audit_log detail for operator traceability
+    (FE-9-admin-ops.md §H(a) item 1 sub-item). Empty POST is still
+    accepted — the reason simply defaults to None."""
+    reason = body.reason if body is not None else None
+    result = await reject_admin_queue(db, weakness_report_id, admin.id, reason=reason)
     await db.commit()
     return LoopRejectResult(**result)
 

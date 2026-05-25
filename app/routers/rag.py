@@ -25,6 +25,7 @@ from app.domain.drive_rag import (
     aggregate_realism_flags,
     drive_index_status,
     ingest_drive_folder,
+    realism_status,
     record_realism_flag,
 )
 from app.models import SEED_TENANT_ID, AppUser, SystemSettings, get_db
@@ -39,6 +40,7 @@ from app.schemas import (
     DriveIngestResult,
     RealismAggregationResult,
     RealismFlagResult,
+    RealismStatusResponse,
 )
 
 router = APIRouter(prefix="/v1", tags=["rag"])
@@ -194,6 +196,26 @@ async def realism_aggregate(
         )
     await db.commit()
     return RealismAggregationResult(**telemetry)
+
+
+@router.get("/admin/realism/status")
+async def realism_status_endpoint(
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> RealismStatusResponse:
+    """Read-only telemetry roll-up for the FE-9 systems-page realism
+    aggregation card (FE-9-admin-systems.md §H(a) item 8).
+
+    Five fields per the locked spec contract: ``last_aggregated_at``,
+    ``flags_processed_last_run``, ``below_threshold_count``,
+    ``auto_suppressed_count``, ``total_flag_count_active``. No new
+    persistence — every value derives from ``audit_log`` (the
+    realism.aggregate row written by :func:`realism_aggregate`),
+    ``question.realism_flag_count``, the ``anchor_question.excluded``
+    + ``excluded_reason`` columns set by
+    :func:`app.domain.drive_rag.aggregate_realism_flags`, and the
+    ``realism_flag`` table itself."""
+    return RealismStatusResponse(**await realism_status(db))
 
 
 @router.get("/admin/drive/index")
