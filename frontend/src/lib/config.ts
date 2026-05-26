@@ -1,23 +1,43 @@
 /**
  * Frontend runtime config (AC-CD19).
  *
- * Two flavours of env var: `NEXT_PUBLIC_*` is shipped to the browser
- * (and inlined at build time); the rest is server-only.
+ * Values are fetched at app boot from same-origin /api/config rather
+ * than baked in at build time. The same Docker image deploys against
+ * any backend by changing the frontend container's runtime env — no
+ * rebuild needed (multi-tenant).
  *
- * The browser uses `apiBaseUrl`; server components / route handlers
- * may use `apiBaseUrlServer` to talk to the backend via the compose
- * network. The two are the same on a developer's laptop and diverge
- * inside docker compose.
+ * Flow: ConfigProvider mounts → fetches /api/config → calls
+ * `setRuntimeConfig` → children render. By construction no component
+ * reads config before it is set. The "accessed before bootstrap"
+ * throw exists to make a sequencing regression LOUD, not silent.
+ *
+ * NOTE: React Server Components must NOT call `getRuntimeConfig()` —
+ * the runtime store is per-process and unset on the server. RSCs that
+ * need the backend URL should read `process.env.API_BASE_URL` directly.
  */
 
-const required = (value: string | undefined, name: string): string => {
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
+export type RuntimeConfig = {
+  apiBaseUrl: string;
 };
 
-export const config = {
-  apiBaseUrl: required(process.env.NEXT_PUBLIC_API_BASE_URL, "NEXT_PUBLIC_API_BASE_URL"),
-  apiBaseUrlServer: process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL,
-} as const;
+let resolved: RuntimeConfig | null = null;
+
+export const setRuntimeConfig = (cfg: RuntimeConfig): void => {
+  resolved = cfg;
+};
+
+export const getRuntimeConfig = (): RuntimeConfig => {
+  if (!resolved) {
+    throw new Error("Runtime config accessed before bootstrap resolved");
+  }
+  return resolved;
+};
+
+/**
+ * MSW dev/test escape hatch. In `NEXT_PUBLIC_API_MOCKING=enabled`
+ * mode and under Vitest, the API base URL is a known static value;
+ * ConfigProvider short-circuits to this and never fetches.
+ */
+export const MSW_FALLBACK_CONFIG: RuntimeConfig = {
+  apiBaseUrl: "http://localhost:8000",
+};

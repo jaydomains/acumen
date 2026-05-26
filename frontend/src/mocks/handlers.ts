@@ -18,10 +18,13 @@
  */
 
 import { http, HttpResponse } from "msw";
-import { config } from "@/lib/config";
 import type { UserResponse } from "@/lib/api/types";
 
-const API = config.apiBaseUrl;
+// MSW only runs in dev / test, where the backend URL is known and
+// matches `MSW_FALLBACK_CONFIG` in src/lib/config.ts. Hardcoded here
+// so handler registration does not depend on the runtime config store
+// (which is populated asynchronously by ConfigProvider).
+const API = "http://localhost:8000";
 
 const baseFixtureUser: UserResponse = {
   id: "00000000-0000-0000-0000-000000000001",

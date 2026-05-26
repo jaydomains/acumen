@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Quicksand, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth/context";
+import { ConfigProvider } from "@/lib/config/ConfigProvider";
 import { MSWProvider } from "@/mocks/MSWProvider";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/theme/bootstrap";
@@ -44,9 +45,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <MSWProvider>
-          <QueryProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </QueryProvider>
+          <ConfigProvider>
+            <QueryProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </QueryProvider>
+          </ConfigProvider>
         </MSWProvider>
         <Toaster position="top-right" richColors closeButton />
       </body>

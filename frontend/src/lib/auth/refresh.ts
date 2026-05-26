@@ -10,7 +10,7 @@
  * which case the caller should clear identity and route to login).
  */
 
-import { config } from "@/lib/config";
+import { getRuntimeConfig } from "@/lib/config";
 import { clearTokens, getRefreshToken, setAccessToken } from "@/lib/auth/storage";
 
 let inflight: Promise<string | null> | null = null;
@@ -19,7 +19,7 @@ const doRefresh = async (): Promise<string | null> => {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return null;
 
-  const resp = await fetch(`${config.apiBaseUrl}/v1/auth/refresh`, {
+  const resp = await fetch(`${getRuntimeConfig().apiBaseUrl}/v1/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),

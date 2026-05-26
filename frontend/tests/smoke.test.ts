@@ -6,7 +6,7 @@
  * component coverage lands when real pages do.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   clearTokens,
   getAccessToken,
@@ -15,6 +15,7 @@ import {
   setRefreshToken,
 } from "@/lib/auth/storage";
 import { ApiError, apiErrorFromBody, parseError } from "@/lib/api/errors";
+import { MSW_FALLBACK_CONFIG, getRuntimeConfig, setRuntimeConfig } from "@/lib/config";
 
 describe("auth/storage", () => {
   beforeEach(() => {
@@ -91,14 +92,11 @@ describe("api/errors", () => {
 });
 
 describe("config", () => {
-  it("throws when NEXT_PUBLIC_API_BASE_URL is missing at import time", async () => {
-    // The config module is evaluated at import time, so we can't
-    // re-import without resetting modules. This is a sanity check on
-    // the `required` helper behaviour via dynamic import.
-    vi.resetModules();
-    const original = process.env.NEXT_PUBLIC_API_BASE_URL;
-    delete process.env.NEXT_PUBLIC_API_BASE_URL;
-    await expect(import("@/lib/config")).rejects.toThrow(/NEXT_PUBLIC_API_BASE_URL/);
-    process.env.NEXT_PUBLIC_API_BASE_URL = original ?? "http://localhost:8000";
+  it("getRuntimeConfig returns the value set by setRuntimeConfig", () => {
+    setRuntimeConfig({ apiBaseUrl: "https://example.test" });
+    expect(getRuntimeConfig().apiBaseUrl).toBe("https://example.test");
+    // Restore for downstream tests — tests/setup.ts primes the fallback
+    // in beforeAll; reset it here so per-file ordering doesn't matter.
+    setRuntimeConfig(MSW_FALLBACK_CONFIG);
   });
 });

@@ -9,12 +9,6 @@ export default defineConfig({
     globals: true,
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     setupFiles: ["./tests/setup.ts"],
-    env: {
-      // Required by src/lib/config at import time; tests should never
-      // hit a real URL — MSW intercepts in node, browser-only paths
-      // never execute under jsdom.
-      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000",
-    },
   },
   resolve: {
     alias: {

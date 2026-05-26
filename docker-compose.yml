@@ -95,9 +95,11 @@ services:
 
   # Next.js frontend (AC-CD19). Multi-stage build under frontend/ with
   # standalone output; runs as the non-root `nextjs` user on port 3000.
-  # NEXT_PUBLIC_API_BASE_URL is browser-visible (default points at the
-  # host-exposed acumen port); API_BASE_URL is the server-side URL used
-  # by RSC/route handlers inside the compose network.
+  # No NEXT_PUBLIC_* envs are baked in at build — runtime config is
+  # fetched at boot from /api/config (a Next.js route handler that
+  # reads this container's env). Same image deploys against any
+  # backend by changing API_BASE_URL_PUBLIC; no rebuild required.
+  # API_BASE_URL is the server-internal URL for RSC / route handlers.
   acumen-frontend:
     build:
       context: ./frontend
@@ -105,7 +107,7 @@ services:
       - path: frontend/.env
         required: false
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      API_BASE_URL_PUBLIC: ${API_BASE_URL_PUBLIC:-http://localhost:8000}
       API_BASE_URL: ${API_BASE_URL:-http://acumen:8000}
     depends_on:
       acumen:
