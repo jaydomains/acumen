@@ -254,7 +254,7 @@ Scenario: Back link returns to /login
 - New in this PR:
   - All Login-introduced auth primitives.
   - `PasswordRulesChecklist.tsx` — live 4-rule pass/fail UI (§C.1).
-  - `TokenErrorCard.tsx` — full card replacement for `token-expired`/`token-invalid`; CTA wording differs between reset and setup flows via `flow` prop.
+  - `TokenErrorCard.tsx` — full card replacement for `invalid_token`; CTA wording differs between reset and setup flows via `flow` prop (single `kind` since the backend collapses expired and invalid into one code — see §B.3.4 verification record).
 
 **3. API endpoints**
 
@@ -280,11 +280,10 @@ const resetSchema = z.object({
 ```
 
 Submit posts `{ token, new_password }`. Catches `ApiError` and discriminates by `err.code`:
-- `TOKEN_EXPIRED` → `TokenErrorCard kind="token-expired"`.
-- `TOKEN_INVALID` → `TokenErrorCard kind="token-invalid"`.
+- `invalid_token` (400) → `TokenErrorCard kind="invalid"`. Backend collapses expired and invalid into one code, so the UI shows one variant covering both. CTA → `/forgot`.
 - Validation echo (422) → `applyApiErrorToForm` projects onto `new_password`.
 
-> **Build-session verification — verify against `app/api/routers/auth.py` before implementing:** token-error codes (`TOKEN_EXPIRED`, `TOKEN_INVALID`) are **assumed**. The build session's opening verification step reads the reset-consume handler and confirms the code names. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR.
+> **Build-session verification (completed):** the FE-1 Slice C build session opened with a read of `app/routers/auth.py` and confirmed the token error codes. Backend reality (verified): `invalid_token` (400) for both expired and otherwise-invalid tokens across `/setup/consume`, `/setup/{token}/preview`, and `/password-reset/consume`. The original spec assumption of two distinct UPPER_CASE codes (`TOKEN_EXPIRED` / `TOKEN_INVALID`) diverged — the backend has a single collapsed code. Resolution: spec amended to use the single `invalid_token` code and a single `token-invalid` UI state across §B.3 and §B.4; `TokenErrorCard` exposes a single `kind="invalid"` (or `flow`-derived copy) covering both cases.
 
 **5. States**
 
@@ -296,8 +295,7 @@ Submit posts `{ token, new_password }`. Catches `ApiError` and discriminates by 
 | `mismatch` | zod refine fails on confirm | Inline error under confirm field. |
 | `weak` | zod base rules fail | Per-rule error from zod **plus** `<AuthNotice tone="warn">` "Almost there". |
 | `success` | 2xx | `<AuthNotice tone="ok">` "Password updated / Redirecting…". After 1500ms, `router.push("/login")`. |
-| `token-expired` | `err.code === "TOKEN_EXPIRED"` | Card → `TokenErrorCard` reset variant. CTA → `/forgot`. |
-| `token-invalid` | `err.code === "TOKEN_INVALID"` | Card → `TokenErrorCard` invalid variant. CTA → `/forgot`. |
+| `token-invalid` | `err.code === "invalid_token"` (400) | Card → `TokenErrorCard` (reset flow). CTA → `/forgot`. Copy covers both expired and otherwise-invalid since the backend doesn't distinguish. |
 
 **6. Acceptance criteria**
 
@@ -322,16 +320,10 @@ Scenario: Weak password
   And the "Almost there" warn notice renders on submit
   And no network call is fired
 
-Scenario: Token expired
-  Given the user is on /reset/<expired-token>
-  When submission returns 400 with code "TOKEN_EXPIRED"
-  Then the card replaces with the TokenErrorCard expired variant (reset copy)
-  And the CTA links to "/forgot"
-
-Scenario: Token invalid
+Scenario: Token expired or invalid
   Given the user is on /reset/<bad-token>
-  When submission returns 400 with code "TOKEN_INVALID"
-  Then the card replaces with the TokenErrorCard invalid variant
+  When submission returns 400 with code "invalid_token"
+  Then the card replaces with the TokenErrorCard (reset flow copy covering both expired and invalid)
   And the CTA links to "/forgot"
 ```
 
@@ -371,7 +363,7 @@ Page fires `useQuery(["setup-preview", token], () => unwrap(client.GET("/v1/auth
 
 **5. States**
 
-Identical to Reset (`idle` / `submitting` / `mismatch` / `weak` / `success` / `token-expired` / `token-invalid`).
+Identical to Reset (`idle` / `submitting` / `mismatch` / `weak` / `success` / `token-invalid`).
 
 Success transition differs: consume response returns `{status: "ok"}` only — no tokens. User is **not yet logged in** after setup; they must sign in fresh. Success → `/login` (NOT `/privacy` or `/`), with brief "You're all set / Taking you back to sign in…" notice. (Copy adjusted from the design's "Taking you in…" to accurately reflect that the user must re-authenticate — pure frontend copy decision, no spec amendment.)
 
@@ -386,18 +378,12 @@ Scenario: Successful account setup
   Then the "You're all set" success notice renders
   And after a short delay the router pushes to "/login"
 
-Scenario: Setup token expired (caught on preview)
-  Given the user is on /setup/<expired-token>
-  When the preview query returns 400 with code "TOKEN_EXPIRED"
-  Then the card replaces with the TokenErrorCard expired variant (setup copy)
+Scenario: Setup token expired or invalid (caught on preview)
+  Given the user is on /setup/<bad-token>
+  When the preview query returns 400 with code "invalid_token"
+  Then the card replaces with the TokenErrorCard (setup flow copy covering both expired and invalid)
   And the CTA reads "Ask for a new invitation" and does NOT link anywhere
        (no /forgot for setup — user must contact admin)
-  And the password form never renders
-
-Scenario: Setup token invalid (caught on preview)
-  Given the user is on /setup/<bad-token>
-  When the preview query returns 400 with code "TOKEN_INVALID"
-  Then the card replaces with the TokenErrorCard invalid variant (setup copy)
   And the password form never renders
 
 Scenario: Mismatch / weak / validation
@@ -764,7 +750,7 @@ The cross-walk surfaced 8 candidate items. After review, they're classified into
 The build session opens with a single verification step before any code lands: read `app/api/routers/auth.py` and the AC-CD6 error-code catalogue, confirm the assumed codes match the actual codes. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR.
 
 2. **Login error codes** — verified during the FE-1 build session against `app/routers/auth.py`. Backend uses `invalid_credentials` (401) and `account_deactivated` (403); no rate-limiter on `/v1/auth/login` (i.e. the originally-assumed `LOGIN_RATE_LIMITED` 429 path does not exist). Spec amended in the same branch as the FE-1 Slice B commit (lower_case codes, `locked` state and rate-limited Gherkin scenario removed).
-3. **Token error codes** — `TOKEN_EXPIRED`, `TOKEN_INVALID` (used by both reset-consume and setup-consume). _Verification deferred to FE-1 Slice C/D._
+3. **Token error codes** — verified during the FE-1 Slice C build session against `app/routers/auth.py`. Backend uses a single `invalid_token` (400) for both expired and otherwise-invalid tokens across `/setup/consume`, `/setup/{token}/preview`, and `/password-reset/consume` — there is no separate `token_expired` code. Spec amended in the same branch as the FE-1 Slice C commit (lower_case single code, `token-expired` / `token-invalid` UI states collapsed into one `token-invalid`, two Gherkin scenarios per flow collapsed into one).
 
 ### (c) APPROVED RESOLUTIONS — folded into the FE-1 build PR scope, captured in the build PR's handover
 
