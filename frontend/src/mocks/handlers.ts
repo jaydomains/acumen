@@ -61,12 +61,38 @@ export const meHandler = http.get(`${API}/v1/auth/me`, () => {
 });
 
 export const loginHandler = http.post(`${API}/v1/auth/login`, async ({ request }) => {
-  const body = (await request.json().catch(() => null)) as
-    | { email?: string; password?: string }
-    | null;
+  let body: { email?: unknown; password?: unknown } | null = null;
+  try {
+    body = (await request.json()) as { email?: unknown; password?: unknown };
+  } catch {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "bad_request",
+          message: "Invalid JSON body.",
+          detail: null,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const detail: { loc: string[]; msg: string; type: string }[] = [];
+  if (typeof body?.email !== "string" || !body.email) {
+    detail.push({ loc: ["body", "email"], msg: "field required", type: "missing" });
+  }
+  if (typeof body?.password !== "string" || !body.password) {
+    detail.push({
+      loc: ["body", "password"],
+      msg: "field required",
+      type: "missing",
+    });
+  }
+  if (detail.length > 0) {
+    return HttpResponse.json({ detail }, { status: 422 });
+  }
   mockSignedInAs = {
     ...baseFixtureUser,
-    email: body?.email ?? baseFixtureUser.email,
+    email: body.email as string,
   };
   return HttpResponse.json({
     access_token: "mock_access_token",

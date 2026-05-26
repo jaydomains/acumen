@@ -1,4 +1,6 @@
 import { AuthCard } from "@/components/auth/AuthCard";
+import { AuthCardTitle } from "@/components/auth/AuthCardTitle";
+import { AuthLogo } from "@/components/auth/AuthLogo";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { LoginForm } from "@/components/auth/LoginForm";
 
@@ -15,8 +17,11 @@ export const metadata = {
 export default function LoginPage() {
   return (
     <AuthShell>
+      <div className="mb-8">
+        <AuthLogo />
+      </div>
       <AuthCard>
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+        <AuthCardTitle>Sign in</AuthCardTitle>
         <p className="mt-1 text-sm text-gray-600">Welcome back to Acumen.</p>
         <div className="mt-6">
           <LoginForm />

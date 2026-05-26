@@ -1,10 +1,12 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Auth surface coloured-bar callout (FE-1 §C.1). Tone-driven banner
- * for transient or sticky messaging — `warn` for deactivated /
- * locked-out states, `danger` for hard failures, `info` for guidance,
- * `ok` for success confirmations.
+ * Auth surface coloured-bar callout (FE-1 §C.1). Tone-driven banner.
+ *
+ * `warn` / `danger` use ARIA `role="alert"` (assertive live region) —
+ * these announce immediately because the user needs to react. `info`
+ * and `ok` use `role="status"` (polite) so non-urgent messages don't
+ * interrupt screen reader output mid-sentence.
  */
 
 export type AuthNoticeTone = "warn" | "danger" | "info" | "ok";
@@ -16,17 +18,20 @@ const TONE_CLASSES: Record<AuthNoticeTone, string> = {
   ok: "border-emerald-400 bg-emerald-50 text-emerald-900",
 };
 
+const URGENT_TONES = new Set<AuthNoticeTone>(["warn", "danger"]);
+
 export type AuthNoticeProps = {
   tone: AuthNoticeTone;
-  title?: string;
+  title?: string | undefined;
   body: string;
   className?: string;
 };
 
 export function AuthNotice({ tone, title, body, className }: AuthNoticeProps) {
+  const role = URGENT_TONES.has(tone) ? "alert" : "status";
   return (
     <div
-      role="alert"
+      role={role}
       className={cn(
         "rounded-md border-l-4 p-3 text-sm",
         TONE_CLASSES[tone],

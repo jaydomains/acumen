@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
  * Auth submit button (FE-1 §C.1). Three-mode visual: idle (default
  * label + arrow glyph), submitting (pulse-dot + busy label, disabled),
  * success (transient "Done" label rendered until the post-submit
- * redirect fires).
+ * redirect fires — disabled to block a fast double-click during the
+ * brief window between request completion and route change).
  */
 
 export type SubmitButtonState = "idle" | "submitting" | "success";
@@ -37,7 +38,7 @@ export const SubmitButton = forwardRef<HTMLButtonElement, SubmitButtonProps>(
       <Button
         ref={ref}
         type="submit"
-        disabled={disabled || isSubmitting}
+        disabled={disabled || isSubmitting || isSuccess}
         aria-busy={isSubmitting || undefined}
         className={cn("gap-2", className)}
         {...rest}

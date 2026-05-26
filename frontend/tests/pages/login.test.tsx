@@ -1,15 +1,19 @@
 /**
  * /login integration coverage (FE-1 §B.1).
  *
- * Renders the real LoginForm inside a real AuthProvider against MSW
- * handlers — only next/navigation is mocked because Gate's routing is
- * verified in tests/lib/guards.test.tsx. Each Gherkin scenario maps to
- * one test (six total per the amended spec; the locked / rate-limited
- * scenario was removed in the prep commit because the backend has no
- * 429 path).
+ * Renders LoginPage inside its (auth)/Gate so the layout's posture
+ * matrix is part of the test surface: success paths assert the right
+ * `router.replace` target, not just token persistence. next/navigation
+ * is mocked because Vitest jsdom has no router; the auth context,
+ * applyApiErrorToForm, and MSW are real.
+ *
+ * Six tests mirror the six Gherkin scenarios in §B.1.6 (post-amendment
+ * — the LOGIN_RATE_LIMITED scenario was dropped because the backend
+ * has no 429 path).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Suspense } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -18,6 +22,7 @@ import { server } from "@/mocks/node";
 import { setMockUser } from "@/mocks/handlers";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
 import { AuthProvider } from "@/lib/auth/context";
+import { Gate } from "@/lib/auth/guards";
 import LoginPage from "@/app/(auth)/login/page";
 import type { UserResponse } from "@/lib/api/types";
 
@@ -60,14 +65,19 @@ const unackedUser: UserResponse = {
 const renderLogin = () =>
   render(
     <AuthProvider>
-      <LoginPage />
+      <Suspense fallback={null}>
+        <Gate posture="guest">
+          <LoginPage />
+        </Gate>
+      </Suspense>
     </AuthProvider>,
   );
 
-const waitForUnauthLoaded = async () => {
-  // AuthProvider boots with status="loading" then resolves to
-  // unauthenticated against the default 401 /me handler. The form
-  // renders inside the provider — wait for the email field to appear.
+const waitForFormReady = async () => {
+  // AuthProvider boots with status="loading" → AuthSkeleton renders.
+  // Once /v1/auth/me returns 401 (default handler), status flips to
+  // "unauthenticated", Gate allows the form to render. We wait for
+  // the email input to appear.
   await screen.findByLabelText(/email/i);
 };
 
@@ -82,7 +92,7 @@ describe("/login", () => {
     clearTokens();
   });
 
-  it("signs in an ack'd user and lets the (auth) guard route to the dashboard", async () => {
+  it("signs in an ack'd user, persists tokens, and the (auth) guard routes to the dashboard", async () => {
     server.use(
       http.post(`${API}/v1/auth/login`, () => {
         setMockUser(ackedUser);
@@ -95,7 +105,7 @@ describe("/login", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await waitForUnauthLoaded();
+    await waitForFormReady();
 
     await user.type(screen.getByLabelText(/email/i), ackedUser.email);
     await user.type(screen.getByLabelText(/password/i), "correct-horse");
@@ -103,9 +113,11 @@ describe("/login", () => {
 
     await waitFor(() => expect(getAccessToken()).toBe("acked-access"));
     expect(getRefreshToken()).toBe("acked-refresh");
+    // Gate's posture-5 redirect (ack'd, no ?next=) lands on dashboardPathFor("testee").
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
   });
 
-  it("signs in an un-ack'd user (auth context flips to authenticated with privacy_ack_at=null)", async () => {
+  it("signs in an un-ack'd user and the (auth) guard routes to /privacy (posture 3)", async () => {
     server.use(
       http.post(`${API}/v1/auth/login`, () => {
         setMockUser(unackedUser);
@@ -118,16 +130,15 @@ describe("/login", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await waitForUnauthLoaded();
+    await waitForFormReady();
 
     await user.type(screen.getByLabelText(/email/i), unackedUser.email);
     await user.type(screen.getByLabelText(/password/i), "correct-horse");
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-    // Tokens persist (Gate handles the /privacy bounce; covered in
-    // guards.test.tsx and the round-trip integration in Slice E).
     await waitFor(() => expect(getAccessToken()).toBe("unacked-access"));
     expect(getRefreshToken()).toBe("unacked-refresh");
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/privacy"));
   });
 
   it("shows an inline error under email on invalid_credentials and persists no tokens", async () => {
@@ -147,7 +158,7 @@ describe("/login", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await waitForUnauthLoaded();
+    await waitForFormReady();
 
     await user.type(screen.getByLabelText(/email/i), "wrong@example.com");
     await user.type(screen.getByLabelText(/password/i), "wrong");
@@ -157,17 +168,26 @@ describe("/login", () => {
     await waitFor(() => {
       expect(emailInput).toHaveAttribute("aria-invalid", "true");
     });
-    expect(screen.getByRole("alert").textContent).toMatch(/invalid email or password/i);
+    // The error message is rendered inline (no role="alert" — by
+    // design, aria-describedby drives the announcement when focus
+    // returns to the invalid input).
+    expect(
+      screen.getByText(/invalid email or password/i),
+    ).toBeInTheDocument();
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
     // Submit button is re-enabled after failure.
     expect(screen.getByRole("button", { name: /sign in/i })).not.toBeDisabled();
+    // No redirect fired.
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it("renders a sticky warn notice and disables submit on account_deactivated", async () => {
+  it("renders a sticky warn notice on account_deactivated and the form is not resubmittable from the same render", async () => {
+    let loginHits = 0;
     server.use(
-      http.post(`${API}/v1/auth/login`, () =>
-        HttpResponse.json(
+      http.post(`${API}/v1/auth/login`, () => {
+        loginHits++;
+        return HttpResponse.json(
           {
             error: {
               code: "account_deactivated",
@@ -176,12 +196,12 @@ describe("/login", () => {
             },
           },
           { status: 403 },
-        ),
-      ),
+        );
+      }),
     );
     const user = userEvent.setup();
     renderLogin();
-    await waitForUnauthLoaded();
+    await waitForFormReady();
 
     await user.type(screen.getByLabelText(/email/i), "dead@example.com");
     await user.type(screen.getByLabelText(/password/i), "anything");
@@ -189,8 +209,17 @@ describe("/login", () => {
 
     const notice = await screen.findByRole("alert");
     expect(notice.textContent).toMatch(/deactivated/i);
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeDisabled();
+
+    const submitBtn = screen.getByRole("button", { name: /sign in/i });
+    expect(submitBtn).toBeDisabled();
+    expect(loginHits).toBe(1);
+
+    // Attempt a second submit — the disabled button must not refire
+    // the login endpoint.
+    await user.click(submitBtn);
+    expect(loginHits).toBe(1);
     expect(getAccessToken()).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("does not fire a network call when the form is submitted empty", async () => {
@@ -203,24 +232,30 @@ describe("/login", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await waitForUnauthLoaded();
+    await waitForFormReady();
 
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
-    // Two zod errors appear (email + password); use findAllByRole to
-    // wait for the alerts.
+    // Two zod errors appear (email + password). They're plain <p>
+    // elements (no role="alert") — assert by content.
     await waitFor(() => {
-      expect(screen.getAllByRole("alert").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText(/enter a valid email address/i)).toBeInTheDocument();
+      expect(screen.getByText(/enter your password/i)).toBeInTheDocument();
     });
     expect(loginHits).toBe(0);
     expect(getAccessToken()).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it("renders the login form for an unauthenticated visitor (already-authed redirect is covered by the (auth) guard)", async () => {
+  it("redirects an already-authenticated visitor away from /login (Gate posture 3 or 5)", async () => {
+    // Preset the mock so the initial GET /v1/auth/me returns an
+    // ack'd user — the Gate's guest posture sees status='authenticated'
+    // and fires router.replace before the form ever mounts.
+    setMockUser(ackedUser);
     renderLogin();
-    await waitForUnauthLoaded();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+    // The form is never rendered for an already-authed visitor.
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
   });
 });

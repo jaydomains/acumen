@@ -9,16 +9,21 @@
  *  3. on success: persist tokens via storage.ts, call `refreshMe()` so
  *     the auth context flips to "authenticated" — the (auth)/layout
  *     guard then handles the redirect (posture 3 → /privacy, posture
- *     5 → safe `?next=` or dashboard).
+ *     5 → safe `?next=` or dashboard). RHF flips
+ *     `formState.isSubmitSuccessful` so the SubmitButton shows the
+ *     transient "Done" label until the layout's redirect unmounts us.
  *  4. on `account_deactivated`: render a sticky `<AuthNotice>` and
  *     lock the form (spec: "form is not resubmittable from the same
- *     render")
+ *     render"). Recovery is via page reload, by design.
  *  5. on `invalid_credentials`: route the message to the email field
  *     via applyApiErrorToForm's fieldMap — RHF renders it inline under
  *     the email input (matches design auth.jsx:288). Submit re-enables
  *     by virtue of formState.isSubmitting flipping back.
  *  6. on any other failure: applyApiErrorToForm routes to root, the
  *     form shows it via <AuthNotice tone="danger"> above the fields.
+ *
+ * Each submit clears prior RHF errors before firing so stale banners
+ * don't linger during the in-flight retry.
  */
 
 import { useState } from "react";
@@ -31,7 +36,10 @@ import { applyApiErrorToForm } from "@/lib/api/form-errors";
 import { loginSchema, type LoginInput } from "@/lib/auth/login-schema";
 import { AuthField } from "@/components/auth/AuthField";
 import { AuthNotice, type AuthNoticeTone } from "@/components/auth/AuthNotice";
-import { SubmitButton } from "@/components/auth/SubmitButton";
+import {
+  SubmitButton,
+  type SubmitButtonState,
+} from "@/components/auth/SubmitButton";
 
 type StickyNotice = {
   tone: AuthNoticeTone;
@@ -42,6 +50,12 @@ type StickyNotice = {
 export function LoginForm() {
   const { refreshMe } = useAuth();
   const [sticky, setSticky] = useState<StickyNotice | null>(null);
+  // Tracks the success-flash window between token persistence and the
+  // Gate-driven redirect. We can't rely on RHF's isSubmitSuccessful
+  // because it flips to true on any onSubmit that doesn't throw —
+  // including the handled-error paths (sticky deactivated banner,
+  // applyApiErrorToForm calls) which return normally.
+  const [submittedOk, setSubmittedOk] = useState(false);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -51,12 +65,18 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginInput) => {
     setSticky(null);
+    setSubmittedOk(false);
+    form.clearErrors();
     try {
       const tokens = await unwrap(
         client.POST("/v1/auth/login", { body: data }),
       );
       setAccessToken(tokens.access_token);
       setRefreshToken(tokens.refresh_token);
+      // Flash "Done" while refreshMe is in flight; the form unmounts
+      // when Gate sees status='authenticated' and redirects, so this
+      // is the transient success-state window §B.1.7 calls out.
+      setSubmittedOk(true);
       await refreshMe();
       // The (auth)/layout's <Gate posture="guest"> useEffect re-runs
       // when status flips to "authenticated" and routes us out — no
@@ -78,9 +98,14 @@ export function LoginForm() {
     }
   };
 
-  const submitting = form.formState.isSubmitting;
-  const rootError = form.formState.errors.root?.message;
+  const { isSubmitting, errors } = form.formState;
+  const rootError = errors.root?.message;
   const disabled = !!sticky;
+  const submitState: SubmitButtonState = isSubmitting
+    ? "submitting"
+    : submittedOk
+      ? "success"
+      : "idle";
 
   return (
     <form
@@ -99,21 +124,21 @@ export function LoginForm() {
         type="email"
         autoComplete="email"
         autoFocus
-        disabled={submitting || disabled}
-        error={form.formState.errors.email?.message}
+        disabled={isSubmitting || disabled}
+        error={errors.email?.message}
         {...form.register("email")}
       />
       <AuthField
         label="Password"
         type="password"
         autoComplete="current-password"
-        disabled={submitting || disabled}
-        error={form.formState.errors.password?.message}
+        disabled={isSubmitting || disabled}
+        error={errors.password?.message}
         {...form.register("password")}
       />
 
       <SubmitButton
-        state={submitting ? "submitting" : "idle"}
+        state={submitState}
         idleLabel="Sign in →"
         submittingLabel="Signing in…"
         disabled={disabled}
