@@ -78,6 +78,7 @@ export const unwrap = async <D, E>(
       result.response.status,
       result.response.statusText,
       result.error,
+      result.response.headers.get("x-acumen-trace"),
     );
   }
   return result.data as D;

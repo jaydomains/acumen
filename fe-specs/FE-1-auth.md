@@ -103,7 +103,7 @@ const form = useForm<LoginInput>({
 Submit handler:
 1. `unwrap(client.POST("/v1/auth/login", { body: data }))` inside try/catch.
 2. Success: `setAccessToken`; `setRefreshToken`; trigger post-login resolver (§C.4).
-3. `ApiError`: `applyApiErrorToForm(err, form, { fieldMap })` (§C.2). For login, `INVALID_CREDENTIALS` maps to a form-root error rendered as inline error under `email` per design (`auth.jsx:288`). `ACCOUNT_DEACTIVATED` and `LOGIN_RATE_LIMITED` render via `<AuthNotice>` above the fields and disable submit.
+3. `ApiError`: `applyApiErrorToForm(err, form, { fieldMap })` (§C.2). For login, `invalid_credentials` maps to a form-root error rendered as inline error under `email` per design (`auth.jsx:288`). `account_deactivated` renders via `<AuthNotice>` above the fields and disables submit.
 
 **5. States**
 
@@ -111,12 +111,11 @@ Submit handler:
 |---|---|---|
 | `idle` | Default | Empty fields, "Sign in →" enabled. |
 | `submitting` | `formState.isSubmitting` | Pulse-dot + "Signing in…", fields disabled. |
-| `invalid` | `err.code === "INVALID_CREDENTIALS"` (401) | Inline error under email: "We couldn't sign you in with that email and password." Submit re-enabled. |
-| `deactivated` | `err.code === "ACCOUNT_DEACTIVATED"` (403) | `<AuthNotice tone="warn">` above fields. Submit disabled. |
-| `locked` | `err.code === "LOGIN_RATE_LIMITED"` (429) | `<AuthNotice tone="warn">` "Too many tries / 10 minutes". Submit disabled. |
+| `invalid` | `err.code === "invalid_credentials"` (401) | Inline error under email: "We couldn't sign you in with that email and password." Submit re-enabled. |
+| `deactivated` | `err.code === "account_deactivated"` (403) | `<AuthNotice tone="warn">` above fields. Submit disabled. |
 | `success (transient)` | 200 | Button flashes "Done" briefly, redirect fires. |
 
-> **Build-session verification — verify against `app/api/routers/auth.py` before implementing:** the three login error codes (`INVALID_CREDENTIALS` / `ACCOUNT_DEACTIVATED` / `LOGIN_RATE_LIMITED`) are **assumed** from the design's three copy variants. The build session opens with a verification step: read the FastAPI `/v1/auth/login` handler + the AC-CD6 error-code catalogue, confirm the codes match. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR. Do not silently rename in the frontend.
+> **Build-session verification (completed):** the FE-1 build session opened with a read of `app/routers/auth.py` and confirmed the login error codes. Backend reality (verified at slice B): `invalid_credentials` (401) and `account_deactivated` (403). The original spec assumption of UPPER_CASE codes and a third `LOGIN_RATE_LIMITED` (429) state diverged from the backend — there is no rate-limiter on `/v1/auth/login`. Resolution: spec amended to match backend casing; `locked` state and "User is rate-limited" Gherkin scenario removed. Future rate-limiting work (if any) would re-introduce the state in a separate phase.
 
 **6. Acceptance criteria (Gherkin)**
 
@@ -137,23 +136,17 @@ Scenario: User signs in with valid credentials but has NOT acknowledged privacy
 
 Scenario: User submits invalid credentials
   Given the user is unauthenticated
-  When the backend returns 401 with { error: { code: "INVALID_CREDENTIALS", message } }
+  When the backend returns 401 with { error: { code: "invalid_credentials", message } }
   Then an inline error appears under the email field
   And the submit button is re-enabled
   And no tokens are persisted
 
 Scenario: User is deactivated
   Given the user is unauthenticated
-  When the backend returns 403 with { error: { code: "ACCOUNT_DEACTIVATED", message } }
+  When the backend returns 403 with { error: { code: "account_deactivated", message } }
   Then a warn notice "This account has been deactivated" renders above the fields
   And the submit button is disabled
   And the form is not resubmittable from the same render
-
-Scenario: User is rate-limited
-  Given the user is unauthenticated
-  When the backend returns 429 with { error: { code: "LOGIN_RATE_LIMITED", message } }
-  Then a warn notice "Too many tries" renders above the fields
-  And the submit button is disabled
 
 Scenario: Submitting empty fields
   Given the user is on /login with empty fields
@@ -261,7 +254,7 @@ Scenario: Back link returns to /login
 - New in this PR:
   - All Login-introduced auth primitives.
   - `PasswordRulesChecklist.tsx` — live 4-rule pass/fail UI (§C.1).
-  - `TokenErrorCard.tsx` — full card replacement for `token-expired`/`token-invalid`; CTA wording differs between reset and setup flows via `flow` prop.
+  - `TokenErrorCard.tsx` — full card replacement for `invalid_token`; CTA wording differs between reset and setup flows via `flow` prop (single `kind` since the backend collapses expired and invalid into one code — see §B.3.4 verification record).
 
 **3. API endpoints**
 
@@ -287,11 +280,10 @@ const resetSchema = z.object({
 ```
 
 Submit posts `{ token, new_password }`. Catches `ApiError` and discriminates by `err.code`:
-- `TOKEN_EXPIRED` → `TokenErrorCard kind="token-expired"`.
-- `TOKEN_INVALID` → `TokenErrorCard kind="token-invalid"`.
+- `invalid_token` (400) → `TokenErrorCard kind="invalid"`. Backend collapses expired and invalid into one code, so the UI shows one variant covering both. CTA → `/forgot`.
 - Validation echo (422) → `applyApiErrorToForm` projects onto `new_password`.
 
-> **Build-session verification — verify against `app/api/routers/auth.py` before implementing:** token-error codes (`TOKEN_EXPIRED`, `TOKEN_INVALID`) are **assumed**. The build session's opening verification step reads the reset-consume handler and confirms the code names. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR.
+> **Build-session verification (completed):** the FE-1 Slice C build session opened with a read of `app/routers/auth.py` and confirmed the token error codes. Backend reality (verified): `invalid_token` (400) for both expired and otherwise-invalid tokens across `/setup/consume`, `/setup/{token}/preview`, and `/password-reset/consume`. The original spec assumption of two distinct UPPER_CASE codes (`TOKEN_EXPIRED` / `TOKEN_INVALID`) diverged — the backend has a single collapsed code. Resolution: spec amended to use the single `invalid_token` code and a single `token-invalid` UI state across §B.3 and §B.4; `TokenErrorCard` exposes a single `kind="invalid"` (or `flow`-derived copy) covering both cases.
 
 **5. States**
 
@@ -303,8 +295,7 @@ Submit posts `{ token, new_password }`. Catches `ApiError` and discriminates by 
 | `mismatch` | zod refine fails on confirm | Inline error under confirm field. |
 | `weak` | zod base rules fail | Per-rule error from zod **plus** `<AuthNotice tone="warn">` "Almost there". |
 | `success` | 2xx | `<AuthNotice tone="ok">` "Password updated / Redirecting…". After 1500ms, `router.push("/login")`. |
-| `token-expired` | `err.code === "TOKEN_EXPIRED"` | Card → `TokenErrorCard` reset variant. CTA → `/forgot`. |
-| `token-invalid` | `err.code === "TOKEN_INVALID"` | Card → `TokenErrorCard` invalid variant. CTA → `/forgot`. |
+| `token-invalid` | `err.code === "invalid_token"` (400) | Card → `TokenErrorCard` (reset flow). CTA → `/forgot`. Copy covers both expired and otherwise-invalid since the backend doesn't distinguish. |
 
 **6. Acceptance criteria**
 
@@ -329,16 +320,10 @@ Scenario: Weak password
   And the "Almost there" warn notice renders on submit
   And no network call is fired
 
-Scenario: Token expired
-  Given the user is on /reset/<expired-token>
-  When submission returns 400 with code "TOKEN_EXPIRED"
-  Then the card replaces with the TokenErrorCard expired variant (reset copy)
-  And the CTA links to "/forgot"
-
-Scenario: Token invalid
+Scenario: Token expired or invalid
   Given the user is on /reset/<bad-token>
-  When submission returns 400 with code "TOKEN_INVALID"
-  Then the card replaces with the TokenErrorCard invalid variant
+  When submission returns 400 with code "invalid_token"
+  Then the card replaces with the TokenErrorCard (reset flow copy covering both expired and invalid)
   And the CTA links to "/forgot"
 ```
 
@@ -378,7 +363,7 @@ Page fires `useQuery(["setup-preview", token], () => unwrap(client.GET("/v1/auth
 
 **5. States**
 
-Identical to Reset (`idle` / `submitting` / `mismatch` / `weak` / `success` / `token-expired` / `token-invalid`).
+Identical to Reset (`idle` / `submitting` / `mismatch` / `weak` / `success` / `token-invalid`).
 
 Success transition differs: consume response returns `{status: "ok"}` only — no tokens. User is **not yet logged in** after setup; they must sign in fresh. Success → `/login` (NOT `/privacy` or `/`), with brief "You're all set / Taking you back to sign in…" notice. (Copy adjusted from the design's "Taking you in…" to accurately reflect that the user must re-authenticate — pure frontend copy decision, no spec amendment.)
 
@@ -393,18 +378,12 @@ Scenario: Successful account setup
   Then the "You're all set" success notice renders
   And after a short delay the router pushes to "/login"
 
-Scenario: Setup token expired (caught on preview)
-  Given the user is on /setup/<expired-token>
-  When the preview query returns 400 with code "TOKEN_EXPIRED"
-  Then the card replaces with the TokenErrorCard expired variant (setup copy)
+Scenario: Setup token expired or invalid (caught on preview)
+  Given the user is on /setup/<bad-token>
+  When the preview query returns 400 with code "invalid_token"
+  Then the card replaces with the TokenErrorCard (setup flow copy covering both expired and invalid)
   And the CTA reads "Ask for a new invitation" and does NOT link anywhere
        (no /forgot for setup — user must contact admin)
-  And the password form never renders
-
-Scenario: Setup token invalid (caught on preview)
-  Given the user is on /setup/<bad-token>
-  When the preview query returns 400 with code "TOKEN_INVALID"
-  Then the card replaces with the TokenErrorCard invalid variant (setup copy)
   And the password form never renders
 
 Scenario: Mismatch / weak / validation
@@ -551,8 +530,8 @@ import { ApiError } from "@/lib/api/errors";
  * Iterates that array, maps loc[-1] to a form field, calls form.setError.
  * Unknown fields fall through to root error.
  *
- * For non-422 errors (business codes like INVALID_CREDENTIALS), the
- * caller passes `{ fieldMap: { INVALID_CREDENTIALS: 'email' } }` or
+ * For non-422 errors (business codes like invalid_credentials), the
+ * caller passes `{ fieldMap: { invalid_credentials: 'email' } }` or
  * falls through to root.
  */
 export function applyApiErrorToForm<T extends FieldValues>(
@@ -770,8 +749,8 @@ The cross-walk surfaced 8 candidate items. After review, they're classified into
 
 The build session opens with a single verification step before any code lands: read `app/api/routers/auth.py` and the AC-CD6 error-code catalogue, confirm the assumed codes match the actual codes. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR.
 
-2. **Login error codes** — `INVALID_CREDENTIALS`, `ACCOUNT_DEACTIVATED`, `LOGIN_RATE_LIMITED`.
-3. **Token error codes** — `TOKEN_EXPIRED`, `TOKEN_INVALID` (used by both reset-consume and setup-consume).
+2. **Login error codes** — verified during the FE-1 build session against `app/routers/auth.py`. Backend uses `invalid_credentials` (401) and `account_deactivated` (403); no rate-limiter on `/v1/auth/login` (i.e. the originally-assumed `LOGIN_RATE_LIMITED` 429 path does not exist). Spec amended in the same branch as the FE-1 Slice B commit (lower_case codes, `locked` state and rate-limited Gherkin scenario removed).
+3. **Token error codes** — verified during the FE-1 Slice C build session against `app/routers/auth.py`. Backend uses a single `invalid_token` (400) for both expired and otherwise-invalid tokens across `/setup/consume`, `/setup/{token}/preview`, and `/password-reset/consume` — there is no separate `token_expired` code. Spec amended in the same branch as the FE-1 Slice C commit (lower_case single code, `token-expired` / `token-invalid` UI states collapsed into one `token-invalid`, two Gherkin scenarios per flow collapsed into one).
 
 ### (c) APPROVED RESOLUTIONS — folded into the FE-1 build PR scope, captured in the build PR's handover
 

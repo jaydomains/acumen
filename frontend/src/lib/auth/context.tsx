@@ -1,44 +1,108 @@
 "use client";
 
 /**
- * Auth identity context (AC-CD19).
+ * Auth identity context (AC-CD19, FE-1 §C.4).
  *
  * On mount, attempts to resolve the current user by hitting
  * `/v1/auth/me`. If the in-memory access token is unset (page reload)
  * but a refresh token exists in localStorage, the refresh-coordinator
  * fires first to obtain an access token, then `/v1/auth/me` runs.
  *
+ * A monotonic generation counter (`generationRef`) tags each in-flight
+ * `refreshMe` call. Subsequent `logout()`s and component unmount
+ * advance the generation so a slow `/v1/auth/me` response can't
+ * resurrect a signed-out session or write to an unmounted provider.
+ *
  * Exposes:
  *  - `user`: the resolved `UserResponse`, or `null` if unauthenticated.
  *  - `status`: "loading" | "authenticated" | "unauthenticated".
+ *  - `privacy_ack_at`, `role`: narrowed projections from `user`.
  *  - `logout()`: clears tokens, hits `/v1/auth/logout` (advisory).
- *
- * Login UI itself is out of scope for the scaffold PR — added in the
- * follow-up PR that builds the login page.
+ *  - `refreshMe()`: re-pulls `/v1/auth/me`. Login + privacy-ack call
+ *     this after success so the context reflects the new state.
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { ApiError, client, unwrap } from "@/lib/api/client";
 import type { UserResponse } from "@/lib/api/types";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+export type AuthRole = "testee" | "admin";
 
 type AuthContextValue = {
   user: UserResponse | null;
   status: AuthStatus;
+  privacy_ack_at: string | null;
+  role: AuthRole | null;
   logout: () => Promise<void>;
+  /**
+   * Re-pull `/v1/auth/me`. Resolves to `true` when the call succeeds
+   * and identity is now authenticated; `false` otherwise (401, 5xx,
+   * stale-generation drop). Callers like LoginForm use the return
+   * value to distinguish "tokens stored AND identity loaded" from
+   * "tokens stored but /me failed transiently" so the post-login UI
+   * doesn't get stuck on a success state the Gate can't actually
+   * route off of.
+   */
+  refreshMe: () => Promise<boolean>;
+  /**
+   * Patch the in-context user's `privacy_ack_at` without re-pulling
+   * `/v1/auth/me`. The privacy-ack flow already knows the new value
+   * from the acknowledge response; this lets the page flip the user
+   * to "ack'd" eagerly so the next Gate render allows the dashboard.
+   * No-op when there is no current user.
+   */
+  setUserPrivacyAck: (ackedAt: string) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const narrowRole = (r: string | undefined | null): AuthRole | null =>
+  r === "admin" || r === "testee" ? r : null;
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
+  // Each refreshMe call captures the current generation; logout and
+  // unmount advance it so stale /v1/auth/me responses are dropped
+  // instead of resurrecting a signed-out session.
+  const generationRef = useRef(0);
+
+  const refreshMe = useCallback(async (): Promise<boolean> => {
+    const ticket = ++generationRef.current;
+    try {
+      const me = await unwrap(client.GET("/v1/auth/me"));
+      if (ticket !== generationRef.current) return false;
+      setUser(me);
+      setStatus("authenticated");
+      return true;
+    } catch (err) {
+      if (ticket !== generationRef.current) return false;
+      if (err instanceof ApiError && err.status !== 401) {
+        // Non-auth error (e.g. 503): surface to console but stay
+        // in the unauthenticated state — a login attempt will
+        // re-trigger the request.
+        // eslint-disable-next-line no-console
+        console.error("auth/me failed:", err);
+      }
+      setUser(null);
+      setStatus("unauthenticated");
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
     const resolve = async () => {
       if (!getAccessToken() && getRefreshToken()) {
         try {
@@ -52,33 +116,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.warn("auth/refresh failed:", err);
         }
       }
-      try {
-        const me = await unwrap(client.GET("/v1/auth/me"));
-        if (!cancelled) {
-          setUser(me);
-          setStatus("authenticated");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (err instanceof ApiError && err.status !== 401) {
-            // Non-auth error (e.g. 503): surface to console but stay
-            // in the unauthenticated state — a login attempt will
-            // re-trigger the request.
-            // eslint-disable-next-line no-console
-            console.error("auth/me failed:", err);
-          }
-          setUser(null);
-          setStatus("unauthenticated");
-        }
-      }
+      await refreshMe();
     };
     void resolve();
     return () => {
-      cancelled = true;
+      // Invalidate any in-flight refreshMe so its setUser/setStatus is
+      // a no-op against the unmounted provider. The exhaustive-deps
+      // rule targets DOM-node refs whose .current may have detached;
+      // generationRef holds a plain counter, so mutating it here is
+      // exactly the intent.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      generationRef.current++;
     };
-  }, []);
+  }, [refreshMe]);
 
-  const logout = async () => {
+  const logout = useCallback(async (): Promise<void> => {
+    // Invalidate before the await so a concurrent refreshMe can't
+    // re-authenticate the user after we clear the session.
+    generationRef.current++;
     try {
       await unwrap(client.POST("/v1/auth/logout"));
     } catch {
@@ -87,13 +142,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     clearTokens();
     setUser(null);
     setStatus("unauthenticated");
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, status, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const setUserPrivacyAck = useCallback((ackedAt: string): void => {
+    setUser((u) => (u ? { ...u, privacy_ack_at: ackedAt } : u));
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      status,
+      privacy_ack_at: user?.privacy_ack_at ?? null,
+      role: narrowRole(user?.role),
+      logout,
+      refreshMe,
+      setUserPrivacyAck,
+    }),
+    [user, status, logout, refreshMe, setUserPrivacyAck],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextValue => {
