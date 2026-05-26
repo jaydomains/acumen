@@ -1499,36 +1499,51 @@ PR review enforces this discipline beyond the test as well; the test catches the
 
 ### C.4 Route-group composition (the layout tree)
 
+> **Build-session amendment (Slice 4):** the spec authoring placed
+> `(testee)/` and `(admin)/` as *siblings* of `(authed)/`. The build
+> session shipped them as *nested* children of `(authed)/` per user
+> directive — `(authed)/layout.tsx` keeps the auth + privacy gate at the
+> outer layer; `(authed)/(testee)/layout.tsx` and
+> `(authed)/(admin)/layout.tsx` add the role gate and mount the shell
+> chrome. The nested form avoids re-evaluating the (authed) posture
+> inside the role layouts. The privacy page also moved out of
+> `(authed)/` in the FE-1 build (it lives at `app/privacy/` with its own
+> `Gate posture="privacy"`) to break the recursive-redirect trap that
+> would occur if `/privacy` were inside `(authed)/`. The layout tree
+> below reflects the as-shipped form.
+
 ```
 app/
-  layout.tsx                   # FE-1 BUILD: AuthProvider + QueryClient + Toaster
-                               # FE-2 add: data-theme="paper" on <html> + inline FOUC <script>
-  page.tsx                     # FE-0 placeholder; FE-2 BUILD: relocate to (testee)/page.tsx
-  not-found.tsx                # FE-2 (B.15) — full-page 404
-  error.tsx                    # FE-2 (B.16 root variant) — full-page 500
-  403/page.tsx                 # FE-2 (B.17) — refined from FE-1 placeholder
+  layout.tsx                       # FE-1 BUILD: AuthProvider + QueryClient + Toaster
+                                   # FE-2 add: data-theme="paper" on <html> + inline FOUC <script>
+                                   #          + next/font/google variables
+  not-found.tsx                    # FE-2 (B.15) — full-page 404
+  error.tsx                        # FE-2 (B.16 root variant) — full-page 500
+  403/page.tsx                     # FE-2 (B.17) — refined from FE-1 placeholder
   (auth)/
-    layout.tsx                 # FE-1 — auth-group guard
-    error.tsx                  # FE-1 (existing) — full-page (auth) error
-    login/page.tsx             # FE-1
-    forgot/page.tsx            # FE-1
-    reset/[token]/page.tsx     # FE-1
-    setup/[token]/page.tsx     # FE-1
+    layout.tsx                     # FE-1 — auth-group guard
+    error.tsx                      # FE-1 (existing) — full-page (auth) error
+    login/page.tsx                 # FE-1
+    forgot/page.tsx                # FE-1
+    reset/[token]/page.tsx         # FE-1
+    setup/[token]/page.tsx         # FE-1
+  privacy/                         # FE-1 — root-level (NOT inside (authed))
+    layout.tsx                     #   to avoid the recursive-redirect trap
+    page.tsx
   (authed)/
-    layout.tsx                 # FE-2 (B.12) — auth gate + privacy gate
-    error.tsx                  # FE-2 (B.16 (authed) variant) — full-page (no shell mounted here)
-    loading.tsx                # FE-2 (B.18 (authed) variant) — centered pulse-dot
-    privacy/page.tsx           # FE-1 page, RELOCATED here per §H bucket (a) blocker #2
-  (testee)/
-    layout.tsx                 # FE-2 (B.13) — composed (authed) + role check + shell mount
-    error.tsx                  # FE-2 (B.16 (testee) variant) — in-shell
-    loading.tsx                # FE-2 (B.18 (testee) variant) — in-shell skeleton
-    page.tsx                   # FE-2 (B.13) — empty dashboard at /
-  (admin)/
-    layout.tsx                 # FE-2 (B.14) — composed (authed) + role check + shell mount
-    error.tsx                  # FE-2 (B.16 (admin) variant) — in-shell
-    loading.tsx                # FE-2 (B.18 (admin) variant) — in-shell skeleton
-    ops/page.tsx               # FE-2 (B.14) — empty ops at /ops
+    layout.tsx                     # FE-1 — auth gate + privacy gate
+    error.tsx                      # FE-2 (B.16 (authed) variant) — full-page (no shell)
+    loading.tsx                    # FE-2 (B.18 (authed) variant) — centered pulse-dot
+    (testee)/
+      layout.tsx                   # FE-2 (B.13) — role gate + shell mount
+      error.tsx                    # FE-2 (B.16 (testee) variant) — in-shell
+      loading.tsx                  # FE-2 (B.18 (testee) variant) — in-shell skeleton
+      page.tsx                     # FE-2 (B.13) — empty dashboard at /
+    (admin)/
+      layout.tsx                   # FE-2 (B.14) — role gate + shell mount
+      error.tsx                    # FE-2 (B.16 (admin) variant) — in-shell
+      loading.tsx                  # FE-2 (B.18 (admin) variant) — in-shell skeleton
+      ops/page.tsx                 # FE-2 (B.14) — empty ops at /ops
 ```
 
 ### C.5 Toast surfaces (sonner + shadcn coexistence)

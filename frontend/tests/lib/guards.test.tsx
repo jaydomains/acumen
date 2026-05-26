@@ -194,6 +194,116 @@ describe("useAuthRedirect", () => {
   });
 });
 
+describe("useAuthRedirect — role gate (FE-2 §B.13 / §B.14, posture 4)", () => {
+  beforeEach(() => {
+    mockReplace.mockClear();
+    mockUseAuth.mockReset();
+    mockPathname = "/some/path";
+    mockSearchParams = new URLSearchParams();
+  });
+
+  it("redirects a testee to /403 with the denied route in ?from= when the route requires admin", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "testee",
+    });
+    mockPathname = "/ops";
+    const { result } = renderHook(() => useAuthRedirect("authed", "admin"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith("/403?from=%2Fops&required=admin");
+  });
+
+  it("redirects an admin to /403 with the denied route + required=testee", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "admin",
+    });
+    mockPathname = "/secret-testee-only";
+    const { result } = renderHook(() => useAuthRedirect("authed", "testee"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith(
+      "/403?from=%2Fsecret-testee-only&required=testee",
+    );
+  });
+
+  it("allows a testee on a testee-required route", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "testee",
+    });
+    const { result } = renderHook(() => useAuthRedirect("authed", "testee"));
+    expect(result.current.allow).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("allows an admin on an admin-required route", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "admin",
+    });
+    const { result } = renderHook(() => useAuthRedirect("authed", "admin"));
+    expect(result.current.allow).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("privacy gate still wins over role gate when un-ack'd", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: null,
+      role: "testee",
+    });
+    const { result } = renderHook(() => useAuthRedirect("authed", "testee"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith("/privacy");
+    expect(mockReplace).not.toHaveBeenCalledWith(expect.stringContaining("/403"));
+  });
+
+  it("auth gate still wins over role gate when unauthenticated", () => {
+    mockUseAuth.mockReturnValue({
+      status: "unauthenticated",
+      privacy_ack_at: null,
+      role: null,
+    });
+    mockPathname = "/ops";
+    const { result } = renderHook(() => useAuthRedirect("authed", "admin"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith(expect.stringContaining("/login?next="));
+  });
+});
+
+describe("useAuthRedirect — dashboardPathFor admin → /ops (FE-2 §H decision)", () => {
+  beforeEach(() => {
+    mockReplace.mockClear();
+    mockUseAuth.mockReset();
+    mockPathname = "/some/path";
+    mockSearchParams = new URLSearchParams();
+  });
+
+  it("guest posture sends an ack'd admin to /ops on landing", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "admin",
+    });
+    renderHook(() => useAuthRedirect("guest"));
+    expect(mockReplace).toHaveBeenCalledWith("/ops");
+  });
+
+  it("guest posture sends an ack'd testee to /", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "testee",
+    });
+    renderHook(() => useAuthRedirect("guest"));
+    expect(mockReplace).toHaveBeenCalledWith("/");
+  });
+});
+
 describe("isSafeRedirectPath", () => {
   it("accepts a same-origin path", () => {
     expect(isSafeRedirectPath("/dashboard")).toBe(true);

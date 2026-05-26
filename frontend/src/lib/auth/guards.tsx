@@ -13,14 +13,15 @@
  *                A safe `?next=` (same-origin path) takes precedence
  *                over the dashboard default for posture 5.
  *  - "authed"  → (authed)/layout.tsx: authed surfaces. Unauth →
- *                /login?next=, un-ack'd → /privacy. Role-gating is
- *                added by FE-2's RequireAuth.
+ *                /login?next=, un-ack'd → /privacy. Optional role gate
+ *                (Slice 4) redirects to /403 when role mismatches.
  *  - "privacy" → privacy/layout.tsx: bypass subgate. Authed un-ack'd
  *                users render the page; unauth → /login; authed AND
  *                ack'd → role dashboard (so /privacy isn't a leak path
  *                back to the legal copy after acknowledgement).
  *
- * `RequireAuth` is a placeholder for FE-2's role-gated wrapper.
+ * Slice 4 adds the optional `requiredRole` parameter that powers the
+ * (testee)/(admin) layout groups' role-mismatch redirect to /403.
  */
 
 import { useEffect, type ReactNode } from "react";
@@ -29,6 +30,7 @@ import { useAuth } from "@/lib/auth/context";
 import { AuthSkeleton } from "@/components/auth/AuthSkeleton";
 
 export type GuardPosture = "guest" | "authed" | "privacy";
+export type RequiredRole = "testee" | "admin";
 
 export type GuardResult = {
   allow: boolean;
@@ -36,9 +38,7 @@ export type GuardResult = {
 };
 
 const dashboardPathFor = (role: "testee" | "admin" | null): string => {
-  // FE-2 owns /dashboard and /ops; until they exist the redirect
-  // lands on the existing scaffold home at /.
-  if (role === "admin") return "/";
+  if (role === "admin") return "/ops";
   return "/";
 };
 
@@ -58,7 +58,10 @@ export const isSafeRedirectPath = (next: string | null | undefined): next is str
   return true;
 };
 
-export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
+export const useAuthRedirect = (
+  posture: GuardPosture,
+  requiredRole?: RequiredRole,
+): GuardResult => {
   const { status, privacy_ack_at, role } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -107,8 +110,23 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
     }
     if (privacy_ack_at === null) {
       router.replace("/privacy");
+      return;
     }
-  }, [status, posture, privacy_ack_at, role, router, pathname, nextParam]);
+    // Posture 4 (role mismatch). Only fires when (a) authed + ack'd,
+    // and (b) the layout specified a required role. Without
+    // requiredRole the gate behaves exactly as FE-1 shipped it.
+    // The denied route + the required role ride along as `?from=` +
+    // `?required=` so the 403 page can surface them dynamically.
+    // Without `from`, usePathname() on /403 just returns "/403"
+    // (useless diagnostic); without `required`, the 403 copy is
+    // hardcoded to "administrators" which is wrong when an admin
+    // hits a testee-only route.
+    if (requiredRole && role !== requiredRole) {
+      const from = encodeURIComponent(pathname ?? "/");
+      router.replace(`/403?from=${from}&required=${requiredRole}`);
+      return;
+    }
+  }, [status, posture, privacy_ack_at, role, router, pathname, nextParam, requiredRole]);
 
   let allow = false;
   if (status === "authenticated") {
@@ -119,7 +137,9 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
       // ack'd users get redirected away above.
       allow = privacy_ack_at === null;
     } else {
-      allow = privacy_ack_at !== null;
+      const ackOk = privacy_ack_at !== null;
+      const roleOk = !requiredRole || role === requiredRole;
+      allow = ackOk && roleOk;
     }
   } else if (status === "unauthenticated") {
     allow = posture === "guest";
@@ -131,15 +151,21 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
 /**
  * Shared layout gate. Layouts wrap this in <Suspense> so Next 15
  * accepts the useSearchParams() call inside useAuthRedirect.
+ *
+ * The optional `role` prop opt-ins to FE-2's posture-4 role check —
+ * authed-and-ack'd users whose role doesn't match get redirected to
+ * /403 instead of rendering children.
  */
 export function Gate({
   posture,
+  role,
   children,
 }: {
   posture: GuardPosture;
+  role?: RequiredRole;
   children: ReactNode;
 }) {
-  const { allow, fallback } = useAuthRedirect(posture);
+  const { allow, fallback } = useAuthRedirect(posture, role);
   if (!allow) return <>{fallback}</>;
   return <>{children}</>;
 }

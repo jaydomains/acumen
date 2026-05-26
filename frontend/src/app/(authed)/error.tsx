@@ -1,24 +1,20 @@
 "use client";
 
 /**
- * Root 500 boundary (Pattern C, FE-1 §C.6 + FE-2 §B.16). Catches errors
- * that bubble past every route group. Full-page posture — no shell, no
- * auth chrome — because this fires for unauth surfaces too.
- *
- * BoundaryFrame surfaces `error.code` (when `error instanceof ApiError`)
- * + `error.traceId` (populated by `unwrap()` from the `x-acumen-trace`
- * response header) + `error.digest` (Next.js per-error ID) inside the
- * collapsible footer.
+ * (authed) error boundary — full-page posture because the (authed)
+ * layout itself does not mount the shell (Rail + TopBar live one layer
+ * deeper in (testee)/(admin)/layout.tsx). Fires for errors thrown by
+ * (authed)/layout.tsx itself or by direct (authed) children not nested
+ * under a role layout.
  */
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
 import { Icon } from "@/components/primitives/Icon";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
 import { Button } from "@/components/ui/button";
 
-export default function GlobalError({
+export default function AuthedError({
   error,
   reset,
 }: {
@@ -27,17 +23,6 @@ export default function GlobalError({
 }) {
   const router = useRouter();
   const apiErr = error instanceof ApiError ? error : null;
-
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.error("Pattern C root boundary caught:", {
-      message: error.message,
-      digest: error.digest,
-      code: apiErr?.code,
-      traceId: apiErr?.traceId,
-    });
-  }, [error, apiErr]);
-
   return (
     <BoundaryFrame
       glyph={<Icon name="wave" size={26} />}
@@ -47,16 +32,12 @@ export default function GlobalError({
           We hit <span className="serif-it">a snag</span>
         </>
       }
-      body="The issue has been logged. Try again, or contact support if it persists."
+      body="The issue has been logged. Try again, or head back to the dashboard."
       actions={
         <>
           <Button onClick={reset}>Try again →</Button>
           <Button variant="outline" onClick={() => router.push("/")}>
             Go to dashboard
-          </Button>
-          {/* TODO(v1.x): wire real support channel */}
-          <Button variant="ghost" disabled>
-            Contact support
           </Button>
         </>
       }
@@ -86,10 +67,6 @@ export default function GlobalError({
               </dd>
             </div>
           ) : null}
-          <div className="flex gap-2">
-            <dt className="text-ink-3">message</dt>
-            <dd className="break-all">{error.message || "(empty)"}</dd>
-          </div>
         </dl>
       }
     />
