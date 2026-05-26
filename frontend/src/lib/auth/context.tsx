@@ -46,7 +46,16 @@ type AuthContextValue = {
   privacy_ack_at: string | null;
   role: AuthRole | null;
   logout: () => Promise<void>;
-  refreshMe: () => Promise<void>;
+  /**
+   * Re-pull `/v1/auth/me`. Resolves to `true` when the call succeeds
+   * and identity is now authenticated; `false` otherwise (401, 5xx,
+   * stale-generation drop). Callers like LoginForm use the return
+   * value to distinguish "tokens stored AND identity loaded" from
+   * "tokens stored but /me failed transiently" so the post-login UI
+   * doesn't get stuck on a success state the Gate can't actually
+   * route off of.
+   */
+  refreshMe: () => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -62,15 +71,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // instead of resurrecting a signed-out session.
   const generationRef = useRef(0);
 
-  const refreshMe = useCallback(async (): Promise<void> => {
+  const refreshMe = useCallback(async (): Promise<boolean> => {
     const ticket = ++generationRef.current;
     try {
       const me = await unwrap(client.GET("/v1/auth/me"));
-      if (ticket !== generationRef.current) return;
+      if (ticket !== generationRef.current) return false;
       setUser(me);
       setStatus("authenticated");
+      return true;
     } catch (err) {
-      if (ticket !== generationRef.current) return;
+      if (ticket !== generationRef.current) return false;
       if (err instanceof ApiError && err.status !== 401) {
         // Non-auth error (e.g. 503): surface to console but stay
         // in the unauthenticated state — a login attempt will
@@ -80,6 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setUser(null);
       setStatus("unauthenticated");
+      return false;
     }
   }, []);
 

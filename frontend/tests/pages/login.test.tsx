@@ -9,7 +9,10 @@
  *
  * Six tests mirror the six Gherkin scenarios in §B.1.6 (post-amendment
  * — the LOGIN_RATE_LIMITED scenario was dropped because the backend
- * has no 429 path).
+ * has no 429 path). A seventh regression test (PR#50 Gitar review)
+ * covers the edge case where /v1/auth/login succeeds but the immediate
+ * /v1/auth/me fails transiently — the UI must not get stuck on the
+ * "Done" success state.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -242,6 +245,47 @@ describe("/login", () => {
     });
     expect(loginHits).toBe(0);
     expect(getAccessToken()).toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a root banner if /v1/auth/me fails after a successful login (no stuck 'Done' state)", async () => {
+    // Regression for gitar review on PR#50: login 200 → /me 503 used
+    // to leave the SubmitButton frozen on 'Done' because submittedOk was
+    // set before refreshMe completed. refreshMe now returns a success
+    // boolean and LoginForm only flashes 'Done' if identity loaded.
+    server.use(
+      http.post(`${API}/v1/auth/login`, () => {
+        // Note: deliberately do NOT call setMockUser, so the next
+        // /v1/auth/me from this scenario's override fires unauth/5xx.
+        return HttpResponse.json({
+          access_token: "transient-access",
+          refresh_token: "transient-refresh",
+          token_type: "bearer",
+        });
+      }),
+      http.get(`${API}/v1/auth/me`, () =>
+        HttpResponse.json(
+          {
+            error: { code: "service_unavailable", message: "down", detail: null },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderLogin();
+    await waitForFormReady();
+
+    await user.type(screen.getByLabelText(/email/i), "ok@example.com");
+    await user.type(screen.getByLabelText(/password/i), "correct-horse");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    // Tokens persist (so a reload recovers).
+    await waitFor(() => expect(getAccessToken()).toBe("transient-access"));
+    // Root banner explains the partial-success state.
+    expect(await screen.findByText(/couldn't load your profile/i)).toBeInTheDocument();
+    // Submit button is back to "Sign in →" (not stuck on "Done").
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
   });
 

@@ -68,11 +68,21 @@ export function LoginForm() {
       const tokens = await unwrap(client.POST("/v1/auth/login", { body: data }));
       setAccessToken(tokens.access_token);
       setRefreshToken(tokens.refresh_token);
-      // Flash "Done" while refreshMe is in flight; the form unmounts
-      // when Gate sees status='authenticated' and redirects, so this
-      // is the transient success-state window §B.1.7 calls out.
+      // Wait for /v1/auth/me to confirm identity BEFORE flashing "Done".
+      // If /me fails transiently (e.g. 503), refreshMe swallows the error
+      // and leaves status='unauthenticated' — Gate never redirects. We
+      // surface a root banner instead of a misleading success state; the
+      // tokens persist, so a reload (or retry) recovers identity.
+      const authed = await refreshMe();
+      if (!authed) {
+        form.setError("root", {
+          type: "server",
+          message:
+            "Signed in, but we couldn't load your profile. Please refresh and try again.",
+        });
+        return;
+      }
       setSubmittedOk(true);
-      await refreshMe();
       // The (auth)/layout's <Gate posture="guest"> useEffect re-runs
       // when status flips to "authenticated" and routes us out — no
       // explicit router.replace needed here. Posture 3 (un-ack'd) sends
