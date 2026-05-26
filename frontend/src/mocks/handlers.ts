@@ -106,4 +106,43 @@ export const logoutHandler = http.post(`${API}/v1/auth/logout`, () => {
   return HttpResponse.json({ status: "ok" });
 });
 
-export const handlers = [meHandler, loginHandler, logoutHandler];
+/**
+ * Password lifecycle handlers (Slice C).
+ *
+ * Defaults are stateless happy-path:
+ *  - /password-reset/request → always 200 (privacy-preserving per spec)
+ *  - /password-reset/consume → 200 ok
+ *  - /setup/{token}/preview → 200 with a fixture email
+ *  - /setup/consume → 200 ok
+ *
+ * Tests override per-scenario via `server.use(...)` to inject
+ * invalid_token, weak-password, and transient failures.
+ */
+
+export const passwordResetRequestHandler = http.post(
+  `${API}/v1/auth/password-reset/request`,
+  () => HttpResponse.json({ status: "ok" }),
+);
+
+export const passwordResetConsumeHandler = http.post(
+  `${API}/v1/auth/password-reset/consume`,
+  () => HttpResponse.json({ status: "ok" }),
+);
+
+export const setupPreviewHandler = http.get(`${API}/v1/auth/setup/:token/preview`, () =>
+  HttpResponse.json({ email: "invitee@example.com" }),
+);
+
+export const setupConsumeHandler = http.post(`${API}/v1/auth/setup/consume`, () =>
+  HttpResponse.json({ status: "ok" }),
+);
+
+export const handlers = [
+  meHandler,
+  loginHandler,
+  logoutHandler,
+  passwordResetRequestHandler,
+  passwordResetConsumeHandler,
+  setupPreviewHandler,
+  setupConsumeHandler,
+];
