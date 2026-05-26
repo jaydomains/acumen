@@ -47,9 +47,7 @@ const dashboardPathFor = (role: "testee" | "admin" | null): string => {
  * accepted shape is a path starting with a single `/` followed by a
  * path character (not a backslash or another slash).
  */
-export const isSafeRedirectPath = (
-  next: string | null | undefined,
-): next is string => {
+export const isSafeRedirectPath = (next: string | null | undefined): next is string => {
   if (typeof next !== "string" || next.length < 2) return false;
   if (next[0] !== "/") return false;
   // Block protocol-relative (//host) and backslash tricks.
@@ -80,9 +78,7 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
         router.replace("/privacy");
         return;
       }
-      const target = isSafeRedirectPath(nextParam)
-        ? nextParam
-        : dashboardPathFor(role);
+      const target = isSafeRedirectPath(nextParam) ? nextParam : dashboardPathFor(role);
       router.replace(target);
       return;
     }

@@ -36,10 +36,7 @@ import { applyApiErrorToForm } from "@/lib/api/form-errors";
 import { loginSchema, type LoginInput } from "@/lib/auth/login-schema";
 import { AuthField } from "@/components/auth/AuthField";
 import { AuthNotice, type AuthNoticeTone } from "@/components/auth/AuthNotice";
-import {
-  SubmitButton,
-  type SubmitButtonState,
-} from "@/components/auth/SubmitButton";
+import { SubmitButton, type SubmitButtonState } from "@/components/auth/SubmitButton";
 
 type StickyNotice = {
   tone: AuthNoticeTone;
@@ -68,9 +65,7 @@ export function LoginForm() {
     setSubmittedOk(false);
     form.clearErrors();
     try {
-      const tokens = await unwrap(
-        client.POST("/v1/auth/login", { body: data }),
-      );
+      const tokens = await unwrap(client.POST("/v1/auth/login", { body: data }));
       setAccessToken(tokens.access_token);
       setRefreshToken(tokens.refresh_token);
       // Flash "Done" while refreshMe is in flight; the form unmounts
@@ -108,11 +103,7 @@ export function LoginForm() {
       : "idle";
 
   return (
-    <form
-      onSubmit={form.handleSubmit(onSubmit)}
-      noValidate
-      className="space-y-4"
-    >
+    <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
       {sticky ? (
         <AuthNotice tone={sticky.tone} title={sticky.title} body={sticky.body} />
       ) : rootError ? (

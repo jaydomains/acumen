@@ -28,14 +28,10 @@ type FastApiValidationItem = {
 const isValidationItem = (v: unknown): v is FastApiValidationItem => {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return (
-    Array.isArray(o.loc) && typeof o.msg === "string" && typeof o.type === "string"
-  );
+  return Array.isArray(o.loc) && typeof o.msg === "string" && typeof o.type === "string";
 };
 
-const extractValidationItems = (
-  detail: unknown,
-): FastApiValidationItem[] | null => {
+const extractValidationItems = (detail: unknown): FastApiValidationItem[] | null => {
   // FastAPI 422 body is `{detail: [...]}`. apiErrorFromBody stores the
   // whole body in err.detail when the AC-CD6 envelope isn't present, so
   // the array is nested one level.
@@ -59,8 +55,7 @@ const extractValidationItems = (
  */
 const fieldFromLoc = (loc: (string | number)[]): string | null => {
   const first = loc[0];
-  const start =
-    first === "body" || first === "query" || first === "path" ? 1 : 0;
+  const start = first === "body" || first === "query" || first === "path" ? 1 : 0;
   const segments = loc.slice(start);
   if (segments.length === 0) return null;
   return segments.map(String).join(".");

@@ -171,9 +171,7 @@ describe("/login", () => {
     // The error message is rendered inline (no role="alert" — by
     // design, aria-describedby drives the announcement when focus
     // returns to the invalid input).
-    expect(
-      screen.getByText(/invalid email or password/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/invalid email or password/i)).toBeInTheDocument();
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
     // Submit button is re-enabled after failure.

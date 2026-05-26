@@ -32,11 +32,7 @@ export function AuthNotice({ tone, title, body, className }: AuthNoticeProps) {
   return (
     <div
       role={role}
-      className={cn(
-        "rounded-md border-l-4 p-3 text-sm",
-        TONE_CLASSES[tone],
-        className,
-      )}
+      className={cn("rounded-md border-l-4 p-3 text-sm", TONE_CLASSES[tone], className)}
     >
       {title ? <p className="font-medium">{title}</p> : null}
       <p className={title ? "mt-1" : undefined}>{body}</p>

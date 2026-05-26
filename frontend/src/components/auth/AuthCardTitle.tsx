@@ -15,10 +15,7 @@ export const AuthCardTitle = forwardRef<
 >(({ className, ...props }, ref) => (
   <h1
     ref={ref}
-    className={cn(
-      "font-serif text-2xl italic tracking-tight text-gray-900",
-      className,
-    )}
+    className={cn("font-serif text-2xl italic tracking-tight text-gray-900", className)}
     {...props}
   />
 ));
