@@ -103,7 +103,7 @@ const form = useForm<LoginInput>({
 Submit handler:
 1. `unwrap(client.POST("/v1/auth/login", { body: data }))` inside try/catch.
 2. Success: `setAccessToken`; `setRefreshToken`; trigger post-login resolver (§C.4).
-3. `ApiError`: `applyApiErrorToForm(err, form, { fieldMap })` (§C.2). For login, `INVALID_CREDENTIALS` maps to a form-root error rendered as inline error under `email` per design (`auth.jsx:288`). `ACCOUNT_DEACTIVATED` and `LOGIN_RATE_LIMITED` render via `<AuthNotice>` above the fields and disable submit.
+3. `ApiError`: `applyApiErrorToForm(err, form, { fieldMap })` (§C.2). For login, `invalid_credentials` maps to a form-root error rendered as inline error under `email` per design (`auth.jsx:288`). `account_deactivated` renders via `<AuthNotice>` above the fields and disables submit.
 
 **5. States**
 
@@ -111,12 +111,11 @@ Submit handler:
 |---|---|---|
 | `idle` | Default | Empty fields, "Sign in →" enabled. |
 | `submitting` | `formState.isSubmitting` | Pulse-dot + "Signing in…", fields disabled. |
-| `invalid` | `err.code === "INVALID_CREDENTIALS"` (401) | Inline error under email: "We couldn't sign you in with that email and password." Submit re-enabled. |
-| `deactivated` | `err.code === "ACCOUNT_DEACTIVATED"` (403) | `<AuthNotice tone="warn">` above fields. Submit disabled. |
-| `locked` | `err.code === "LOGIN_RATE_LIMITED"` (429) | `<AuthNotice tone="warn">` "Too many tries / 10 minutes". Submit disabled. |
+| `invalid` | `err.code === "invalid_credentials"` (401) | Inline error under email: "We couldn't sign you in with that email and password." Submit re-enabled. |
+| `deactivated` | `err.code === "account_deactivated"` (403) | `<AuthNotice tone="warn">` above fields. Submit disabled. |
 | `success (transient)` | 200 | Button flashes "Done" briefly, redirect fires. |
 
-> **Build-session verification — verify against `app/api/routers/auth.py` before implementing:** the three login error codes (`INVALID_CREDENTIALS` / `ACCOUNT_DEACTIVATED` / `LOGIN_RATE_LIMITED`) are **assumed** from the design's three copy variants. The build session opens with a verification step: read the FastAPI `/v1/auth/login` handler + the AC-CD6 error-code catalogue, confirm the codes match. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR. Do not silently rename in the frontend.
+> **Build-session verification (completed):** the FE-1 build session opened with a read of `app/routers/auth.py` and confirmed the login error codes. Backend reality (verified at slice B): `invalid_credentials` (401) and `account_deactivated` (403). The original spec assumption of UPPER_CASE codes and a third `LOGIN_RATE_LIMITED` (429) state diverged from the backend — there is no rate-limiter on `/v1/auth/login`. Resolution: spec amended to match backend casing; `locked` state and "User is rate-limited" Gherkin scenario removed. Future rate-limiting work (if any) would re-introduce the state in a separate phase.
 
 **6. Acceptance criteria (Gherkin)**
 
@@ -137,23 +136,17 @@ Scenario: User signs in with valid credentials but has NOT acknowledged privacy
 
 Scenario: User submits invalid credentials
   Given the user is unauthenticated
-  When the backend returns 401 with { error: { code: "INVALID_CREDENTIALS", message } }
+  When the backend returns 401 with { error: { code: "invalid_credentials", message } }
   Then an inline error appears under the email field
   And the submit button is re-enabled
   And no tokens are persisted
 
 Scenario: User is deactivated
   Given the user is unauthenticated
-  When the backend returns 403 with { error: { code: "ACCOUNT_DEACTIVATED", message } }
+  When the backend returns 403 with { error: { code: "account_deactivated", message } }
   Then a warn notice "This account has been deactivated" renders above the fields
   And the submit button is disabled
   And the form is not resubmittable from the same render
-
-Scenario: User is rate-limited
-  Given the user is unauthenticated
-  When the backend returns 429 with { error: { code: "LOGIN_RATE_LIMITED", message } }
-  Then a warn notice "Too many tries" renders above the fields
-  And the submit button is disabled
 
 Scenario: Submitting empty fields
   Given the user is on /login with empty fields
@@ -551,8 +544,8 @@ import { ApiError } from "@/lib/api/errors";
  * Iterates that array, maps loc[-1] to a form field, calls form.setError.
  * Unknown fields fall through to root error.
  *
- * For non-422 errors (business codes like INVALID_CREDENTIALS), the
- * caller passes `{ fieldMap: { INVALID_CREDENTIALS: 'email' } }` or
+ * For non-422 errors (business codes like invalid_credentials), the
+ * caller passes `{ fieldMap: { invalid_credentials: 'email' } }` or
  * falls through to root.
  */
 export function applyApiErrorToForm<T extends FieldValues>(
@@ -770,8 +763,8 @@ The cross-walk surfaced 8 candidate items. After review, they're classified into
 
 The build session opens with a single verification step before any code lands: read `app/api/routers/auth.py` and the AC-CD6 error-code catalogue, confirm the assumed codes match the actual codes. If they match, proceed. If any diverge, halt and surface for a spec-clarification PR.
 
-2. **Login error codes** — `INVALID_CREDENTIALS`, `ACCOUNT_DEACTIVATED`, `LOGIN_RATE_LIMITED`.
-3. **Token error codes** — `TOKEN_EXPIRED`, `TOKEN_INVALID` (used by both reset-consume and setup-consume).
+2. **Login error codes** — verified during the FE-1 build session against `app/routers/auth.py`. Backend uses `invalid_credentials` (401) and `account_deactivated` (403); no rate-limiter on `/v1/auth/login` (i.e. the originally-assumed `LOGIN_RATE_LIMITED` 429 path does not exist). Spec amended in the same branch as the FE-1 Slice B commit (lower_case codes, `locked` state and rate-limited Gherkin scenario removed).
+3. **Token error codes** — `TOKEN_EXPIRED`, `TOKEN_INVALID` (used by both reset-consume and setup-consume). _Verification deferred to FE-1 Slice C/D._
 
 ### (c) APPROVED RESOLUTIONS — folded into the FE-1 build PR scope, captured in the build PR's handover
 
