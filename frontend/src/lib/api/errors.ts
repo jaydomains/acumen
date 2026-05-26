@@ -6,6 +6,9 @@
  *
  * `ApiError` surfaces all three fields plus the HTTP status so callers
  * can branch on either the structured code (preferred) or the status.
+ * `traceId` carries the backend's per-request `x-acumen-trace` header
+ * when present (FE-1 §C.6) so the Pattern C error boundary can show
+ * support a stable correlation id.
  */
 
 export type ApiErrorBody = {
@@ -20,13 +23,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: unknown;
+  readonly traceId: string | null;
 
-  constructor(status: number, code: string, message: string, detail: unknown) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    detail: unknown,
+    traceId: string | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.detail = detail;
+    this.traceId = traceId;
   }
 }
 
@@ -42,11 +53,18 @@ export const apiErrorFromBody = (
   status: number,
   statusText: string,
   body: unknown,
+  traceId: string | null = null,
 ): ApiError => {
   if (isErrorBody(body)) {
-    return new ApiError(status, body.error.code, body.error.message, body.error.detail);
+    return new ApiError(
+      status,
+      body.error.code,
+      body.error.message,
+      body.error.detail,
+      traceId,
+    );
   }
-  return new ApiError(status, "unknown", `HTTP ${status} ${statusText}`, body);
+  return new ApiError(status, "unknown", `HTTP ${status} ${statusText}`, body, traceId);
 };
 
 export const parseError = async (resp: Response): Promise<ApiError> => {
@@ -56,5 +74,10 @@ export const parseError = async (resp: Response): Promise<ApiError> => {
   } catch {
     /* no body or non-JSON; fall through */
   }
-  return apiErrorFromBody(resp.status, resp.statusText, body);
+  return apiErrorFromBody(
+    resp.status,
+    resp.statusText,
+    body,
+    resp.headers.get("x-acumen-trace"),
+  );
 };
