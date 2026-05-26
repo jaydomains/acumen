@@ -4,11 +4,7 @@ import { PillCard } from "@/components/catalogue/PillCard";
 import type { PillResponse } from "@/lib/queries/catalogue";
 
 vi.mock("next/link", () => ({
-  default: ({
-    href,
-    children,
-    ...rest
-  }: React.PropsWithChildren<{ href: string }>) => (
+  default: ({ href, children, ...rest }: React.PropsWithChildren<{ href: string }>) => (
     <a href={href} {...rest}>
       {children}
     </a>

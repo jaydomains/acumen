@@ -27,10 +27,7 @@ export function PillCard({ pill }: PillCardProps) {
   const ctaLabel = pill.safety_relevant ? "Open links" : "Practice";
 
   return (
-    <Card
-      data-testid={`pill-card-${pill.id}`}
-      className="flex flex-col gap-3.5 p-5"
-    >
+    <Card data-testid={`pill-card-${pill.id}`} className="flex flex-col gap-3.5 p-5">
       <div className="flex items-baseline justify-between gap-2">
         <span
           className="font-mono text-[11px] tracking-[0.04em] uppercase"

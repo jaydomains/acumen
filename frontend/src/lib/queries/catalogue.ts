@@ -47,10 +47,7 @@ const PAGE_SIZE = 50;
  * `pillQueryKeys.detail(pill.id)` so navigating from catalogue to
  * `/pills/[id]` skips a redundant fetch (FE-3 §D.3, spec D.3).
  */
-export function useCataloguePills(
-  params: PillsQueryParams,
-  queryClient: QueryClient,
-) {
+export function useCataloguePills(params: PillsQueryParams, queryClient: QueryClient) {
   return useInfiniteQuery({
     queryKey: catalogueQueryKeys.pills(params),
     initialPageParam: undefined as string | undefined,
@@ -78,9 +75,7 @@ export function useCataloguePills(
 }
 
 /** Flatten infinite pages → single pill array. */
-export function flattenPills(
-  data: InfiniteData<PillsPage> | undefined,
-): PillResponse[] {
+export function flattenPills(data: InfiniteData<PillsPage> | undefined): PillResponse[] {
   if (!data) return [];
   return data.pages.flatMap((p) => p.data);
 }

@@ -63,7 +63,5 @@ export function serializeFilterState(state: CatalogueFilterState): string {
 }
 
 export function isFilterStateEmpty(state: CatalogueFilterState): boolean {
-  return (
-    !state.search && !state.subject_id && typeof state.difficulty !== "number"
-  );
+  return !state.search && !state.subject_id && typeof state.difficulty !== "number";
 }

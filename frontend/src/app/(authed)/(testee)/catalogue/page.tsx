@@ -22,10 +22,7 @@ import { Button } from "@/components/ui/button";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
 import { Icon } from "@/components/primitives/Icon";
 import { FilterBar } from "@/components/catalogue/FilterBar";
-import {
-  CatalogueGrid,
-  PillCardSkeleton,
-} from "@/components/catalogue/CatalogueGrid";
+import { CatalogueGrid, PillCardSkeleton } from "@/components/catalogue/CatalogueGrid";
 import {
   useCataloguePills,
   flattenPills,
@@ -99,10 +96,7 @@ export default function CataloguePage() {
   const query = useCataloguePills(filterState, queryClient);
 
   const pills = useMemo(() => flattenPills(query.data), [query.data]);
-  const subjects = useMemo(
-    () => deriveSubjects(pills),
-    [pills],
-  );
+  const subjects = useMemo(() => deriveSubjects(pills), [pills]);
   const filterIsActive = !isFilterStateEmpty(filterState);
   const totalLabel = query.data
     ? `Catalogue · ${pills.length}${query.hasNextPage ? "+" : ""} pill${

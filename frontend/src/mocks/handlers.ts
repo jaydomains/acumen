@@ -265,8 +265,7 @@ const matchesFilter = (
       return false;
   }
   if (filter.search) {
-    if (!pill.name.toLowerCase().includes(filter.search.toLowerCase()))
-      return false;
+    if (!pill.name.toLowerCase().includes(filter.search.toLowerCase())) return false;
   }
   return true;
 };

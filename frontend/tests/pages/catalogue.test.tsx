@@ -8,23 +8,14 @@
  * per scenario).
  */
 
-import {
-  cleanup,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "@/mocks/node";
-import {
-  resetMockCatalogue,
-  setMockCatalogue,
-  getMockCatalogue,
-} from "@/mocks/handlers";
+import { resetMockCatalogue, setMockCatalogue, getMockCatalogue } from "@/mocks/handlers";
 import CataloguePage from "@/app/(authed)/(testee)/catalogue/page";
 
 const mockReplace = vi.fn();
@@ -145,10 +136,7 @@ describe("Catalogue page", () => {
     render(mountTree(<CataloguePage />));
     await screen.findByText("Reference Panels");
 
-    await user.type(
-      screen.getByTestId("catalogue-search-input"),
-      "nonexistent-query",
-    );
+    await user.type(screen.getByTestId("catalogue-search-input"), "nonexistent-query");
 
     const empty = await screen.findByTestId("catalogue-empty");
     expect(empty).toHaveTextContent(/no pills match/i);
@@ -206,8 +194,6 @@ describe("Catalogue page", () => {
     const empty = await screen.findByTestId("catalogue-empty");
     expect(empty).toHaveTextContent(/no pills in the catalogue yet/i);
     // No Clear-filters in the unfiltered empty state.
-    expect(
-      screen.queryByTestId("catalogue-clear-filters"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("catalogue-clear-filters")).not.toBeInTheDocument();
   });
 });

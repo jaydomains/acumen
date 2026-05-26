@@ -60,9 +60,7 @@ export function CatalogueGrid({
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           aria-hidden={!isFetchingNextPage}
         >
-          {isFetchingNextPage
-            ? [0, 1, 2].map((i) => <PillCardSkeleton key={i} />)
-            : null}
+          {isFetchingNextPage ? [0, 1, 2].map((i) => <PillCardSkeleton key={i} />) : null}
         </div>
       ) : null}
     </>

@@ -31,9 +31,9 @@ describe("FilterBar", () => {
         onSearchInputChange={vi.fn()}
       />,
     );
-    expect(screen.getByTestId("catalogue-subject-marine").getAttribute("data-active")).toBe(
-      "true",
-    );
+    expect(
+      screen.getByTestId("catalogue-subject-marine").getAttribute("data-active"),
+    ).toBe("true");
     expect(screen.getByTestId("catalogue-subject-all").getAttribute("data-active")).toBe(
       "false",
     );

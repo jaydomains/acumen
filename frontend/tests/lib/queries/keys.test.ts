@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import {
-  catalogueQueryKeys,
-  pillQueryKeys,
-  meQueryKeys,
-} from "@/lib/queries";
+import { catalogueQueryKeys, pillQueryKeys, meQueryKeys } from "@/lib/queries";
 
 describe("query-key conventions (FE-3 §B.5)", () => {
   it("catalogue.all is the domain root", () => {
@@ -53,12 +49,8 @@ describe("query-key conventions (FE-3 §B.5)", () => {
     expect(
       qc.getQueryState(catalogueQueryKeys.pills({ search: "b" }))?.isInvalidated,
     ).toBe(true);
-    expect(
-      qc.getQueryState(catalogueQueryKeys.subjects())?.isInvalidated,
-    ).toBe(true);
-    expect(qc.getQueryState(pillQueryKeys.detail("X"))?.isInvalidated).toBe(
-      false,
-    );
+    expect(qc.getQueryState(catalogueQueryKeys.subjects())?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(pillQueryKeys.detail("X"))?.isInvalidated).toBe(false);
   });
 
   it("invalidating pill.detail(id) clears both detail AND learningMaterial for that pill", () => {
@@ -70,11 +62,9 @@ describe("query-key conventions (FE-3 §B.5)", () => {
     qc.invalidateQueries({ queryKey: pillQueryKeys.detail("X") });
 
     expect(qc.getQueryState(pillQueryKeys.detail("X"))?.isInvalidated).toBe(true);
-    expect(
-      qc.getQueryState(pillQueryKeys.learningMaterial("X"))?.isInvalidated,
-    ).toBe(true);
-    expect(qc.getQueryState(pillQueryKeys.detail("Y"))?.isInvalidated).toBe(
-      false,
+    expect(qc.getQueryState(pillQueryKeys.learningMaterial("X"))?.isInvalidated).toBe(
+      true,
     );
+    expect(qc.getQueryState(pillQueryKeys.detail("Y"))?.isInvalidated).toBe(false);
   });
 });

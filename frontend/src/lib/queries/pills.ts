@@ -31,8 +31,7 @@
 import type { components } from "@/lib/api/types";
 
 export type PillResponse = components["schemas"]["PillResponse"];
-export type LearningMaterialResponse =
-  components["schemas"]["LearningMaterialResponse"];
+export type LearningMaterialResponse = components["schemas"]["LearningMaterialResponse"];
 export type SafetyLinkResponse = components["schemas"]["SafetyLinkResponse"];
 
 export const pillQueryKeys = {
