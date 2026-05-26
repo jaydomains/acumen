@@ -113,9 +113,9 @@ describe("FE-2 shell round-trip", () => {
 
     // Wait for the (testee) Gate to authenticate + render the shell.
     // Multiple "Acumen" matches (rail brand + topbar crumb segment);
-    // wait on the role tag in the rail brand block instead — unique
-    // per layout variant.
-    await screen.findByText(/Testee|Administrator/);
+    // wait on the dashboard's h1 instead — FE-3 introduced enough
+    // body copy that "Testee" now matches multiple nodes.
+    await screen.findByRole("heading", { level: 1 });
 
     // Rail renders with the testee nav + Dashboard active.
     const dashboardLink = screen.getByRole("link", { name: /dashboard/i });
@@ -129,11 +129,12 @@ describe("FE-2 shell round-trip", () => {
     expect(avatar).toHaveTextContent("A");
     expect(screen.getByPlaceholderText("Search pills…")).toBeInTheDocument();
 
-    // PageHeader renders the empty-state copy.
+    // FE-3 dashboard greets the testee and renders the assignments
+    // placeholder card while /v1/me/assignments is unmounted.
     expect(
-      screen.getByRole("heading", { name: /welcome, asha patel/i }),
+      screen.getByRole("heading", { name: /welcome back, asha patel\./i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/you have no assignments yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId("assignments-card")).toBeInTheDocument();
 
     // Avatar dropdown opens with a single Sign out item.
     await user.click(avatar);

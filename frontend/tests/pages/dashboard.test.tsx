@@ -1,0 +1,121 @@
+/**
+ * Dashboard integration test (FE-3 §B.1, §B.6).
+ *
+ * Critical invariant: NO request to `/v1/me/competence`, `assignments`,
+ * or `attempts` fires from this page in v1. The MSW server is configured
+ * with `onUnhandledRequest: "error"` (tests/setup.ts), so any spurious
+ * request to those endpoints would fail the test loudly.
+ */
+
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Suspense } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setMockUser, resetMockAuthState } from "@/mocks/handlers";
+import { AuthProvider } from "@/lib/auth/context";
+import { setAccessToken, clearTokens } from "@/lib/auth/storage";
+import type { UserResponse } from "@/lib/api/types";
+import TesteeDashboardPage from "@/app/(authed)/(testee)/page";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    replace: vi.fn(),
+    push: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: Object.assign(vi.fn(), { error: vi.fn() }),
+}));
+import { toast } from "sonner";
+
+const USER: UserResponse = {
+  id: "00000000-0000-0000-0000-000000000099",
+  email: "jordan@acumen.test",
+  name: "Jordan New-Hire",
+  role: "testee",
+  status: "active",
+  privacy_ack_at: "2026-05-01T00:00:00Z",
+  created_at: "2026-01-01T00:00:00Z",
+};
+
+function mountTree(node: React.ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <Suspense fallback={null}>{node}</Suspense>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+beforeEach(() => {
+  setAccessToken("dashboard-test-token");
+  setMockUser(USER);
+  vi.mocked(toast).mockClear();
+});
+
+afterEach(() => {
+  cleanup();
+  clearTokens();
+  resetMockAuthState();
+});
+
+describe("Testee dashboard page", () => {
+  it("greets the signed-in user by name", async () => {
+    render(mountTree(<TesteeDashboardPage />));
+    expect(
+      await screen.findByRole("heading", { name: /welcome back, jordan new-hire\./i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders TodaysReading + AssignmentsCard + AdaptiveLoopCard", async () => {
+    render(mountTree(<TesteeDashboardPage />));
+    expect(await screen.findByTestId("todays-reading")).toBeInTheDocument();
+    expect(screen.getByTestId("assignments-card")).toBeInTheDocument();
+    expect(screen.getByTestId("adaptive-loop-card")).toBeInTheDocument();
+  });
+
+  it("does NOT render RecentAttemptsCard (flag default false)", () => {
+    render(mountTree(<TesteeDashboardPage />));
+    expect(screen.queryByTestId("recent-attempts-card")).not.toBeInTheDocument();
+  });
+
+  it("hero placeholders render '—' (no /v1/me/competence fires under onUnhandledRequest=error)", () => {
+    // The mere fact that this test runs without MSW erroring confirms
+    // no /v1/me/* request fired (the global setup uses onUnhandledRequest:
+    // "error"). Belt-and-braces: assert three placeholder values.
+    render(mountTree(<TesteeDashboardPage />));
+    const values = screen.getAllByTestId("stat-value");
+    expect(values).toHaveLength(3);
+    values.forEach((v) => expect(v).toHaveTextContent("—"));
+  });
+
+  it("adaptive-loop CTAs toast (placeholder until v1.x wiring)", async () => {
+    const user = userEvent.setup();
+    render(mountTree(<TesteeDashboardPage />));
+    await user.click(screen.getByTestId("adaptive-loop-explainer"));
+    expect(toast).toHaveBeenCalled();
+    vi.mocked(toast).mockClear();
+    await user.click(screen.getByTestId("adaptive-loop-defer"));
+    expect(toast).toHaveBeenCalled();
+  });
+
+  it("falls back to email-local-part when user.name is empty", async () => {
+    setMockUser({ ...USER, name: "" });
+    render(mountTree(<TesteeDashboardPage />));
+    expect(
+      await screen.findByRole("heading", { name: /welcome back, jordan\./i }),
+    ).toBeInTheDocument();
+  });
+});

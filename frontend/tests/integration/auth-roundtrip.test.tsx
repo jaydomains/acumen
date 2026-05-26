@@ -205,14 +205,13 @@ describe("FE-1 auth round-trip", () => {
 
     // Wait for the AuthProvider to settle so the welcome heading reads
     // the resolved user name rather than the loading-state fallback.
-    // FE-2's dashboard is an empty PageHeader; the body only shows
-    // "Welcome, {name}" + the empty-state subtitle. Email/role meta
-    // moves to FE-3's real dashboard.
+    // FE-3 dashboard greets "Welcome back, {name}." and renders the
+    // AssignmentsCard placeholder while /v1/me/assignments is unmounted.
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
         new RegExp(NAME, "i"),
       );
     });
-    expect(screen.getByText(/you have no assignments yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId("assignments-card")).toBeInTheDocument();
   });
 });

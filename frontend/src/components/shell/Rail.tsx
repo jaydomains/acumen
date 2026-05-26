@@ -31,7 +31,7 @@ export type NavItem = {
 export const TESTEE_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/" },
   { id: "attempt", label: "In Progress", icon: "attempt", href: "/attempts", count: 0 },
-  { id: "catalogue", label: "Discover", icon: "compass", href: "/discover" },
+  { id: "catalogue", label: "Discover", icon: "compass", href: "/catalogue" },
   { id: "results", label: "Latest Result", icon: "graph", href: "/results" },
   { id: "profile", label: "Competency", icon: "constellation", href: "/profile" },
   { id: "history", label: "History", icon: "history", href: "/history" },
