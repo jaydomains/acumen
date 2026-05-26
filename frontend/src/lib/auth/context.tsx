@@ -17,25 +17,58 @@
  * follow-up PR that builds the login page.
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { ApiError, client, unwrap } from "@/lib/api/client";
 import type { UserResponse } from "@/lib/api/types";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+export type AuthRole = "testee" | "admin";
 
 type AuthContextValue = {
   user: UserResponse | null;
   status: AuthStatus;
+  privacy_ack_at: string | null;
+  role: AuthRole | null;
   logout: () => Promise<void>;
+  refreshMe: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const narrowRole = (r: string | undefined | null): AuthRole | null =>
+  r === "admin" || r === "testee" ? r : null;
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
+
+  const refreshMe = useCallback(async (): Promise<void> => {
+    try {
+      const me = await unwrap(client.GET("/v1/auth/me"));
+      setUser(me);
+      setStatus("authenticated");
+    } catch (err) {
+      if (err instanceof ApiError && err.status !== 401) {
+        // Non-auth error (e.g. 503): surface to console but stay
+        // in the unauthenticated state — a login attempt will
+        // re-trigger the request.
+        // eslint-disable-next-line no-console
+        console.error("auth/me failed:", err);
+      }
+      setUser(null);
+      setStatus("unauthenticated");
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,33 +85,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.warn("auth/refresh failed:", err);
         }
       }
-      try {
-        const me = await unwrap(client.GET("/v1/auth/me"));
-        if (!cancelled) {
-          setUser(me);
-          setStatus("authenticated");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (err instanceof ApiError && err.status !== 401) {
-            // Non-auth error (e.g. 503): surface to console but stay
-            // in the unauthenticated state — a login attempt will
-            // re-trigger the request.
-            // eslint-disable-next-line no-console
-            console.error("auth/me failed:", err);
-          }
-          setUser(null);
-          setStatus("unauthenticated");
-        }
-      }
+      if (cancelled) return;
+      await refreshMe();
     };
     void resolve();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshMe]);
 
-  const logout = async () => {
+  const logout = useCallback(async (): Promise<void> => {
     try {
       await unwrap(client.POST("/v1/auth/logout"));
     } catch {
@@ -87,13 +103,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     clearTokens();
     setUser(null);
     setStatus("unauthenticated");
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, status, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      status,
+      privacy_ack_at: user?.privacy_ack_at ?? null,
+      role: narrowRole(user?.role),
+      logout,
+      refreshMe,
+    }),
+    [user, status, logout, refreshMe],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextValue => {
