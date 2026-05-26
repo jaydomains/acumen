@@ -11,8 +11,10 @@
  * because module imports hoist above any top-level statements here.
  */
 
+import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "@/mocks/node";
+import { resetMockAuthState } from "@/mocks/handlers";
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -20,6 +22,7 @@ beforeAll(() => {
 
 afterEach(() => {
   server.resetHandlers();
+  resetMockAuthState();
 });
 
 afterAll(() => {
