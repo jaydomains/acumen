@@ -28,6 +28,8 @@
  * find yourself reaching for this exception elsewhere.
  */
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { client, unwrap } from "@/lib/api/client";
 import type { components } from "@/lib/api/types";
 
 export type PillResponse = components["schemas"]["PillResponse"];
@@ -84,4 +86,65 @@ export function narrowMaterial(m: LearningMaterialResponse): NarrowedMaterial {
   throw new Error(
     `LearningMaterialResponse: unknown source='${m.source}' (pill_id=${m.pill_id})`,
   );
+}
+
+/**
+ * Testee-facing pill detail. The catalogue list primes this entry
+ * in Slice 1, so navigating from catalogue → /pills/[id] hits the
+ * cache; bare deep-links fetch fresh.
+ */
+export function usePillDetail(pillId: string) {
+  return useQuery({
+    queryKey: pillQueryKeys.detail(pillId),
+    queryFn: () =>
+      unwrap(
+        client.GET("/v1/catalogue/pills/{pill_id}", {
+          params: { path: { pill_id: pillId } },
+        }),
+      ),
+  });
+}
+
+/**
+ * Learning-material POST-as-page-load-fetch (documented exception,
+ * see file header). Default global `retry: false` would leave a
+ * permanent loading state on first-paint failure; we override to
+ * `retry: 1` here so a transient blip recovers without user action,
+ * while Pattern-A inline retry still surfaces if both attempts fail.
+ */
+export function useLearningMaterial(pillId: string) {
+  return useQuery({
+    queryKey: pillQueryKeys.learningMaterial(pillId),
+    queryFn: () =>
+      unwrap(
+        client.POST("/v1/pills/{pill_id}/learning-material", {
+          params: { path: { pill_id: pillId } },
+        }),
+      ),
+    retry: 1,
+  });
+}
+
+/**
+ * Regenerate the learning material (force-fresh, bypasses cache).
+ * Fires `?regenerate=true`; on success, invalidates the
+ * learningMaterial cache so the panel re-renders the fresh payload
+ * without an extra fetch.
+ */
+export function useRegenerateLearningMaterial(pillId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      unwrap(
+        client.POST("/v1/pills/{pill_id}/learning-material", {
+          params: {
+            path: { pill_id: pillId },
+            query: { regenerate: true },
+          },
+        }),
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(pillQueryKeys.learningMaterial(pillId), data);
+    },
+  });
 }

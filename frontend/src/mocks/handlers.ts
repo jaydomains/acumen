@@ -184,7 +184,12 @@ const ISO_2026 = "2026-05-01T00:00:00Z";
 const pillId = (n: number): string =>
   `aaaaaaaa-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
 
-const subjectUuid = (slug: string): string => `s-${slug}`;
+// MSW returns subject_id as the bare slug so that `subjectById()`
+// (lib/catalogue/subjects.ts) resolves to a populated name + colour
+// instead of the unknown fallback. Real backend will emit a UUID;
+// when that lands we either inject a name into the catalogue page
+// or extend subjectById to accept UUID → slug mappings.
+const subjectUuid = (slug: string): string => slug;
 
 const buildFixturePill = (input: {
   n: number;

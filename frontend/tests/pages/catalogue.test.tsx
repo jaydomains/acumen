@@ -105,8 +105,8 @@ describe("Catalogue page", () => {
     await screen.findByText("Antifouling Systems");
 
     mockReplace.mockClear();
-    await user.click(screen.getByTestId("catalogue-subject-s-marine"));
-    expect(mockReplace).toHaveBeenCalledWith("/catalogue?subject=s-marine");
+    await user.click(screen.getByTestId("catalogue-subject-marine"));
+    expect(mockReplace).toHaveBeenCalledWith("/catalogue?subject=marine");
 
     // Grid narrows to the marine subset.
     await waitFor(() => {
@@ -116,11 +116,11 @@ describe("Catalogue page", () => {
   });
 
   it("hydrates filter state from URL searchParams on first render", async () => {
-    mockSearch = new URLSearchParams("subject=s-safety");
+    mockSearch = new URLSearchParams("subject=safety");
     render(mountTree(<CataloguePage />));
 
     // Safety subject button is the active one.
-    const safetyBtn = await screen.findByTestId("catalogue-subject-s-safety");
+    const safetyBtn = await screen.findByTestId("catalogue-subject-safety");
     expect(safetyBtn.getAttribute("data-active")).toBe("true");
     expect(screen.getByTestId("catalogue-subject-all").getAttribute("data-active")).toBe(
       "false",
