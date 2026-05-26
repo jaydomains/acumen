@@ -68,8 +68,12 @@ describe("FilterBar", () => {
       />,
     );
     await user.click(screen.getByTestId("catalogue-subject-all"));
-    // Search is preserved; only subject_id is cleared.
-    expect(onChange).toHaveBeenCalledWith({ search: "anti", subject_id: undefined });
+    // Search is preserved; subject_id is omitted entirely (rest-spread
+    // drops the key — it's not present as `undefined`). Matters under
+    // `exactOptionalPropertyTypes` and any Object.keys()-based check.
+    expect(onChange).toHaveBeenCalledWith({ search: "anti" });
+    const arg = onChange.mock.calls[0]![0] as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(arg, "subject_id")).toBe(false);
   });
 
   it("echoes search input via onSearchInputChange (no debounce inside FilterBar)", async () => {
