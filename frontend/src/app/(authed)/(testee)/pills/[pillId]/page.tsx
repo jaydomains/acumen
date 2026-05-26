@@ -153,7 +153,29 @@ function RightColumn({
     );
   }
 
-  const narrowed = narrowMaterial(materialQuery.data);
+  let narrowed: ReturnType<typeof narrowMaterial>;
+  try {
+    narrowed = narrowMaterial(materialQuery.data);
+  } catch (err) {
+    // Contract violation (e.g. backend ships a new `source` enum we
+    // don't know yet). Render inline boundary instead of letting the
+    // throw escape into the route-level error.tsx — keeps the meta
+    // card visible so the user can retry without losing context.
+    console.warn("narrowMaterial failed:", err);
+    return (
+      <BoundaryFrame
+        glyph={<Icon name="flag" size={24} />}
+        eyebrow="LEARNING MATERIAL"
+        title="Unexpected material format."
+        body="The server returned a format we don't recognise. Try refreshing the material — your progress isn't affected."
+        actions={
+          <Button onClick={() => materialQuery.refetch()} variant="outline" size="sm">
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
 
   if (pill.safety_relevant && narrowed.kind !== "safety") {
     // Drift: pill says safety, material payload says ai. Trust pill

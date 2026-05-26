@@ -102,6 +102,10 @@ export function usePillDetail(pillId: string) {
           params: { path: { pill_id: pillId } },
         }),
       ),
+    // Defensive: `useParams` should always populate the segment in a
+    // dynamic route, but an empty id under SSR hydration mismatch or
+    // a misuse from tests would otherwise GET /v1/catalogue/pills/.
+    enabled: !!pillId,
   });
 }
 
@@ -122,6 +126,7 @@ export function useLearningMaterial(pillId: string) {
         }),
       ),
     retry: 1,
+    enabled: !!pillId,
   });
 }
 

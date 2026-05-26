@@ -127,6 +127,25 @@ describe("useLearningMaterial + useRegenerateLearningMaterial", () => {
     );
   });
 
+  it("does NOT fire when pillId is empty (defensive `enabled` guard)", async () => {
+    server.use(
+      http.post(`${API}/v1/pills//learning-material`, () => {
+        hits.push({ regenerate: false });
+        return HttpResponse.json({ ...baseAiBody, cached: true });
+      }),
+    );
+    const client = makeClient();
+    render(
+      <QueryClientProvider client={client}>
+        <HookHarness id="" />
+      </QueryClientProvider>,
+    );
+    // Give React a tick so any spurious fetch would have fired.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(hits.length).toBe(0);
+    expect(screen.getByTestId("kind")).toHaveTextContent("loading");
+  });
+
   it("retries once on a 500 (override of global retry: false)", async () => {
     let count = 0;
     server.use(

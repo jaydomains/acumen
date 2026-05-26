@@ -197,6 +197,38 @@ describe("Pill detail page · safety branch", () => {
   });
 });
 
+describe("Pill detail page · contract violations", () => {
+  it("catches narrowMaterial throw and surfaces inline boundary (no route remount)", async () => {
+    server.use(
+      http.post(`${API}/v1/pills/${STANDARD_PILL_ID}/learning-material`, () =>
+        HttpResponse.json({
+          id: "lm-1",
+          pill_id: STANDARD_PILL_ID,
+          source: "from-mars",
+          content: null,
+          safety_links: null,
+          served_at: null,
+          created_at: "2026-05-01T00:00:00Z",
+          cached: false,
+        }),
+      ),
+    );
+    // narrowMaterial logs a console.warn before returning the inline
+    // boundary; swallow it so the test output stays clean.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(mountTree(<PillDetailPage />));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: /unexpected material format/i }),
+      ).toBeInTheDocument(),
+    );
+    // PillMetaCard still rendered — only RightColumn fell back.
+    expect(screen.getByTestId("pill-meta-card")).toBeInTheDocument();
+    warnSpy.mockRestore();
+  });
+});
+
 describe("Pill detail page · errors", () => {
   it("surfaces the inline boundary when /v1/catalogue/pills/{id} fails", async () => {
     server.use(
