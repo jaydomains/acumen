@@ -68,6 +68,26 @@ export default function SetupAccountPage({
     );
   }
 
+  // Non-invalid_token preview failure (500, network drop, etc.). Without
+  // this branch the component falls through to the form with an empty
+  // readonly email — the user could submit against a token the backend
+  // never confirmed. Gitar review on PR#50.
+  if (previewQuery.isError) {
+    return (
+      <AuthShell>
+        <div className="mb-8">
+          <AuthLogo />
+        </div>
+        <AuthCard>
+          <AuthCardTitle>Something went wrong</AuthCardTitle>
+          <p className="mt-2 text-sm text-gray-600">
+            We couldn&apos;t load this invitation. Please try again in a moment.
+          </p>
+        </AuthCard>
+      </AuthShell>
+    );
+  }
+
   if (previewQuery.isPending) {
     return (
       <AuthShell>

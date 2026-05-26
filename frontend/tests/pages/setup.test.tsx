@@ -178,4 +178,31 @@ describe("/setup/[token]", () => {
     });
     expect(consumeHits).toBe(0);
   });
+
+  it("renders a generic 'Something went wrong' card on non-invalid_token preview failure (Gitar PR#50 regression)", async () => {
+    // Without the dedicated 500-branch the page would fall through to
+    // render the form with an empty readonly email — user could submit
+    // against a token the backend never confirmed.
+    server.use(
+      http.get(`${API}/v1/auth/setup/:token/preview`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "service_unavailable",
+              message: "down",
+              detail: null,
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    renderSetup();
+
+    await screen.findByText(/something went wrong/i);
+    // Form never renders.
+    expect(screen.queryByLabelText(/^new password$/i)).toBeNull();
+    // Not the token-invalid copy either.
+    expect(screen.queryByText(/this invitation doesn't work/i)).toBeNull();
+  });
 });
