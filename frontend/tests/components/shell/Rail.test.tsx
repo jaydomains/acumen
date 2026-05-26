@@ -31,7 +31,7 @@ describe("Rail", () => {
   });
 
   it("matches active route exactly (not by prefix)", () => {
-    render(<Rail role="testee" activeRoute="/discover" />);
+    render(<Rail role="testee" activeRoute="/catalogue" />);
     const dashboard = screen.getByText("Dashboard").closest("a");
     expect(dashboard?.getAttribute("data-active")).toBe("false");
     const discover = screen.getByText("Discover").closest("a");
@@ -63,7 +63,7 @@ describe("Rail", () => {
     expect(TESTEE_NAV.map((n) => n.href)).toEqual([
       "/",
       "/attempts",
-      "/discover",
+      "/catalogue",
       "/results",
       "/profile",
       "/history",

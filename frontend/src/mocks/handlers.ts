@@ -18,7 +18,7 @@
  */
 
 import { http, HttpResponse } from "msw";
-import type { UserResponse } from "@/lib/api/types";
+import type { UserResponse, components } from "@/lib/api/types";
 
 // MSW only runs in dev / test, where the backend URL is known and
 // matches `MSW_FALLBACK_CONFIG` in src/lib/config.ts. Hardcoded here
@@ -161,6 +161,233 @@ export const privacyAcknowledgeHandler = http.post(
   },
 );
 
+/**
+ * Catalogue + pill detail + learning-material handlers (FE-3 §B.2/§B.3/§B.4).
+ *
+ * The fixture catalogue is exposed via `setMockCatalogue([...])` so
+ * individual tests can shape the list (subject mix, safety pills, empty
+ * state). The default population mirrors the prototype's PILLS array
+ * shape — same subject ids consumed by the subject-colour helper.
+ *
+ * Pagination is cursor-based per AC-CD21 + FE-3 §C.5: pages of up to
+ * `limit` (default 50) pills; `meta.next_cursor` is the index of the
+ * next slice's first item, or null when exhausted.
+ */
+
+type PillResponse = components["schemas"]["PillResponse"];
+type LearningMaterialResponse = components["schemas"]["LearningMaterialResponse"];
+type SafetyLinkResponse = components["schemas"]["SafetyLinkResponse"];
+
+const ISO_2026 = "2026-05-01T00:00:00Z";
+
+// Stable UUIDs so tests can match by id without computing them.
+const pillId = (n: number): string =>
+  `aaaaaaaa-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
+
+const subjectUuid = (slug: string): string => `s-${slug}`;
+
+const buildFixturePill = (input: {
+  n: number;
+  subject_slug: string;
+  name: string;
+  safety_relevant?: boolean;
+  description?: string | null;
+  min?: number;
+  max?: number;
+}): PillResponse => ({
+  id: pillId(input.n),
+  subject_id: subjectUuid(input.subject_slug),
+  name: input.name,
+  description: input.description ?? `Practice and learning for ${input.name}.`,
+  available_difficulty_min: input.min ?? 1,
+  available_difficulty_max: input.max ?? 10,
+  discoverable: true,
+  safety_relevant: input.safety_relevant ?? false,
+  safety_relevant_overridden_at: null,
+  estimated_minutes: 8,
+  retired_at: null,
+  created_at: ISO_2026,
+  updated_at: ISO_2026,
+});
+
+const DEFAULT_FIXTURE_PILLS: PillResponse[] = [
+  buildFixturePill({ n: 1, subject_slug: "paint-qa", name: "Reference Panels" }),
+  buildFixturePill({ n: 2, subject_slug: "paint-qa", name: "Batch Tracking" }),
+  buildFixturePill({ n: 3, subject_slug: "paint-qa", name: "DFT Measurement" }),
+  buildFixturePill({ n: 4, subject_slug: "paint-qa", name: "Adhesion Testing" }),
+  buildFixturePill({ n: 5, subject_slug: "marine", name: "Antifouling Systems" }),
+  buildFixturePill({ n: 6, subject_slug: "marine", name: "Immersion Service" }),
+  buildFixturePill({ n: 7, subject_slug: "marine", name: "Cathodic Protection" }),
+  buildFixturePill({ n: 8, subject_slug: "nace", name: "Corrosion Mechanisms" }),
+  buildFixturePill({ n: 9, subject_slug: "nace", name: "Passivation" }),
+  buildFixturePill({ n: 10, subject_slug: "qs", name: "BoQ Preparation" }),
+  buildFixturePill({ n: 11, subject_slug: "qs", name: "Take-offs" }),
+  buildFixturePill({
+    n: 12,
+    subject_slug: "safety",
+    name: "Confined Space Entry",
+    safety_relevant: true,
+    description: "Safety-tagged: curated industry sources only (AC-D21).",
+  }),
+  buildFixturePill({
+    n: 13,
+    subject_slug: "safety",
+    name: "Working at Height",
+    safety_relevant: true,
+    description: "Safety-tagged: curated industry sources only (AC-D21).",
+  }),
+  buildFixturePill({ n: 14, subject_slug: "pm", name: "RFI Management" }),
+  buildFixturePill({ n: 15, subject_slug: "pm", name: "Site Coordination" }),
+];
+
+let mockCatalogue: PillResponse[] = [...DEFAULT_FIXTURE_PILLS];
+
+export const setMockCatalogue = (pills: PillResponse[]): void => {
+  mockCatalogue = [...pills];
+};
+
+export const resetMockCatalogue = (): void => {
+  mockCatalogue = [...DEFAULT_FIXTURE_PILLS];
+};
+
+export const getMockCatalogue = (): PillResponse[] => [...mockCatalogue];
+
+const matchesFilter = (
+  pill: PillResponse,
+  filter: { subject_id: string | null; difficulty: number | null; search: string | null },
+): boolean => {
+  if (filter.subject_id && pill.subject_id !== filter.subject_id) return false;
+  if (filter.difficulty !== null) {
+    if (
+      filter.difficulty < pill.available_difficulty_min ||
+      filter.difficulty > pill.available_difficulty_max
+    )
+      return false;
+  }
+  if (filter.search) {
+    if (!pill.name.toLowerCase().includes(filter.search.toLowerCase()))
+      return false;
+  }
+  return true;
+};
+
+export const cataloguePillsHandler = http.get(
+  `${API}/v1/catalogue/pills`,
+  ({ request }) => {
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+    const filter = {
+      subject_id: url.searchParams.get("subject_id"),
+      difficulty: url.searchParams.get("difficulty")
+        ? Number(url.searchParams.get("difficulty"))
+        : null,
+      search: url.searchParams.get("search"),
+    };
+
+    const matched = mockCatalogue
+      .filter((p) => p.discoverable)
+      .filter((p) => matchesFilter(p, filter));
+
+    const start = cursor ? Number(cursor) : 0;
+    const slice = matched.slice(start, start + limit);
+    const nextStart = start + slice.length;
+    const next_cursor = nextStart < matched.length ? String(nextStart) : null;
+
+    return HttpResponse.json({ data: slice, meta: { next_cursor } });
+  },
+);
+
+export const cataloguePillDetailHandler = http.get(
+  `${API}/v1/catalogue/pills/:pill_id`,
+  ({ params }) => {
+    const pill = mockCatalogue.find(
+      (p) => p.id === params.pill_id && p.discoverable && p.retired_at === null,
+    );
+    if (!pill) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "not_found",
+            message: "Pill not found.",
+            detail: null,
+          },
+        },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(pill);
+  },
+);
+
+const defaultAiContent = (pillName: string): string =>
+  `## What this pill covers\n\n${pillName} is a core competency. This is the v1 fixture explainer surfaced via POST /v1/pills/{id}/learning-material.\n\nThe response carries \`source: 'ai_generated'\` and the rendered prose lives in \`content\`. Regenerating fires the same POST with \`?regenerate=true\` to bypass the cache.`;
+
+const defaultSafetyLinks = (): SafetyLinkResponse[] => [
+  {
+    url: "https://www.osha.gov/confined-spaces",
+    title: "OSHA · Confined Spaces overview",
+    source: "OSHA",
+    last_verified_at: ISO_2026,
+  },
+  {
+    url: "https://www.hse.gov.uk/confinedspace/",
+    title: "HSE · Confined spaces approved code of practice",
+    source: "HSE UK",
+    last_verified_at: ISO_2026,
+  },
+  {
+    url: "https://www.nfpa.org/codes-and-standards/1/3/0/nfpa-350",
+    title: "NFPA 350 · Guide for safe confined space entry",
+    source: "NFPA",
+    last_verified_at: ISO_2026,
+  },
+];
+
+export const learningMaterialHandler = http.post(
+  `${API}/v1/pills/:pill_id/learning-material`,
+  ({ params, request }) => {
+    const pill = mockCatalogue.find((p) => p.id === params.pill_id);
+    const url = new URL(request.url);
+    const regenerate = url.searchParams.get("regenerate") === "true";
+    if (!pill) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "not_found",
+            message: "Pill not found.",
+            detail: null,
+          },
+        },
+        { status: 404 },
+      );
+    }
+    const body: LearningMaterialResponse = pill.safety_relevant
+      ? {
+          id: `lm-${pill.id}`,
+          pill_id: pill.id,
+          source: "curated_safety_links",
+          content: null,
+          safety_links: defaultSafetyLinks(),
+          served_at: ISO_2026,
+          created_at: ISO_2026,
+          cached: !regenerate,
+        }
+      : {
+          id: `lm-${pill.id}`,
+          pill_id: pill.id,
+          source: "ai_generated",
+          content: defaultAiContent(pill.name),
+          safety_links: null,
+          served_at: ISO_2026,
+          created_at: ISO_2026,
+          cached: !regenerate,
+        };
+    return HttpResponse.json(body);
+  },
+);
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -170,4 +397,7 @@ export const handlers = [
   setupPreviewHandler,
   setupConsumeHandler,
   privacyAcknowledgeHandler,
+  cataloguePillsHandler,
+  cataloguePillDetailHandler,
+  learningMaterialHandler,
 ];
