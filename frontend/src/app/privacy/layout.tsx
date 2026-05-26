@@ -7,11 +7,14 @@
  * unauth users get bounced (to /login).
  */
 
-import type { ReactNode } from "react";
-import { useAuthRedirect } from "@/lib/auth/guards";
+import { Suspense, type ReactNode } from "react";
+import { Gate } from "@/lib/auth/guards";
+import { AuthSkeleton } from "@/components/auth/AuthSkeleton";
 
 export default function PrivacyLayout({ children }: { children: ReactNode }) {
-  const { allow, fallback } = useAuthRedirect("privacy");
-  if (!allow) return <>{fallback}</>;
-  return <>{children}</>;
+  return (
+    <Suspense fallback={<AuthSkeleton />}>
+      <Gate posture="privacy">{children}</Gate>
+    </Suspense>
+  );
 }

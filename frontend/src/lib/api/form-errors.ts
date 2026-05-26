@@ -3,14 +3,17 @@
  *
  * Two error shapes reach the client:
  *  1. FastAPI 422 — body `{detail: [{loc, msg, type}, ...]}`. Mapped
- *     field-by-field; `loc[1]` (or the last string segment) is the
- *     field name. Unknown fields fall through to `opts.fieldMap`, then
- *     to "root".
+ *     field-by-field; the `loc` array's first segment is FastAPI's
+ *     section tag ("body"/"query"/"path") and is stripped. Remaining
+ *     segments (including numeric indices for array fields) are joined
+ *     with dots to produce the RHF field path (e.g. `items.0.email`).
+ *     A `loc` that only carries the section tag falls through to
+ *     `root`. Unknown fields can be remapped via `opts.fieldMap`.
  *  2. AC-CD6 envelope — `{error: {code, message, detail}}`. Caller
  *     supplies `opts.fieldMap[code]` to route a business code at a
- *     specific field; otherwise the message lands on "root".
+ *     specific field; otherwise the message lands on `root`.
  *
- * Non-ApiError values (network failures) → generic "root" banner.
+ * Non-ApiError values (network failures) → generic `root` banner.
  */
 
 import type { FieldValues, Path, UseFormReturn } from "react-hook-form";
@@ -48,16 +51,19 @@ const extractValidationItems = (
   return null;
 };
 
-const fieldFromLoc = (loc: (string | number)[]): string => {
-  // FastAPI prefixes with "body" / "query" / "path"; the field name is
-  // the remaining string segment(s) joined with dots.
-  const fields = loc.filter(
-    (p): p is string =>
-      typeof p === "string" && p !== "body" && p !== "query" && p !== "path",
-  );
-  if (fields.length > 0) return fields.join(".");
-  const last = loc[loc.length - 1];
-  return last === undefined ? "" : String(last);
+/**
+ * Convert a FastAPI loc array into an RHF field path, preserving
+ * numeric indices for array fields. Returns null when only the
+ * section tag is present (e.g. `["body"]`) so the caller can fall
+ * through to the root error.
+ */
+const fieldFromLoc = (loc: (string | number)[]): string | null => {
+  const first = loc[0];
+  const start =
+    first === "body" || first === "query" || first === "path" ? 1 : 0;
+  const segments = loc.slice(start);
+  if (segments.length === 0) return null;
+  return segments.map(String).join(".");
 };
 
 export type ApplyApiErrorOpts<T extends FieldValues> = {
@@ -84,6 +90,10 @@ export function applyApiErrorToForm<T extends FieldValues>(
     if (items && items.length > 0) {
       for (const item of items) {
         const rawField = fieldFromLoc(item.loc);
+        if (rawField === null) {
+          form.setError("root", { type: "server", message: item.msg });
+          continue;
+        }
         const target = fieldMap[rawField] ?? rawField;
         form.setError(target as Path<T>, { type: "server", message: item.msg });
       }
