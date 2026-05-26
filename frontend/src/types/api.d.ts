@@ -49,7 +49,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/anchors/flagged": {
+    "/v1/config": {
         parameters: {
             query?: never;
             header?: never;
@@ -57,15 +57,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Anchors Flagged
-         * @description List :class:`AnchorQuestion` rows pending admin resolution
-         *     (AC-D23 — anchors that failed 3 generate+review cycles in
-         *     bootstrap, plus any ``keep``-only ack pendings). Oldest-first
-         *     by ``created_at``; rows resolved via ``reject`` keep
-         *     ``excluded=True`` but clear ``needs_admin_attention`` so they
-         *     fall off the queue.
+         * Runtime Config
+         * @description Public runtime config probe — no auth required.
+         *
+         *     Returns the values direct API consumers (mobile, third-party,
+         *     documentation) need to talk to this deployment. The Acumen
+         *     frontend has its own same-origin /api/config that reads its
+         *     container env at runtime, so frontend boot does not depend on
+         *     this endpoint; this is the canonical source of truth for
+         *     anyone else.
          */
-        get: operations["anchors_flagged_v1_admin_anchors_flagged_get"];
+        get: operations["runtime_config_v1_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -74,7 +76,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/anchors/{anchor_id}/resolve": {
+    "/v1/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -83,23 +85,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Anchors Resolve
-         * @description Resolve one flagged anchor (AC-D23). Three actions:
-         *     ``keep`` (accept AI wording), ``substitute_wording`` (replace
-         *     ``config`` from ``new_config`` — admin is the authoritative
-         *     reviewer of their own substitution, so this does NOT auto-rerun
-         *     self-review), ``reject`` (acknowledge the excluded slot stays
-         *     excluded). Audit-logged at ``anchors.resolve``.
-         */
-        post: operations["anchors_resolve_v1_admin_anchors__anchor_id__resolve_post"];
+        /** Login */
+        post: operations["login_v1_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/bootstrap/run": {
+    "/v1/auth/refresh": {
         parameters: {
             query?: never;
             header?: never;
@@ -108,34 +102,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Bootstrap Run
-         * @description Run the AC-D23 idempotent bootstrap orchestrator once and
-         *     return aggregate telemetry (P11 Slice 4).
-         *
-         *     Four steps per AC-D23 prose: anchor pool top-up across every
-         *     active pill (step 1; self-review inline so step 2 is integrated);
-         *     safety-link curation for every safety-tagged pill below quota
-         *     (step 3); Drive RAG ingest if a folder is configured (step 4).
-         *     A re-run on an already-populated deployment returns near-zero
-         *     counters (the idempotency contract — AC-CD7).
-         *
-         *     Synchronous endpoint at v1 scale (≤30 pills). Production-scale
-         *     runs (hundreds of pills, thousands of anchors) should route
-         *     through the Celery task wrapper to escape the ASGI timeout
-         *     (precedent: PR-#20 anchor-bootstrap timeout warning).
-         *
-         *     Audit-logged at ``bootstrap.run`` with the full telemetry so the
-         *     operator's audit trail captures every bootstrap event.
-         */
-        post: operations["bootstrap_run_v1_admin_bootstrap_run_post"];
+        /** Refresh */
+        post: operations["refresh_v1_auth_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/calibration/run": {
+    "/v1/auth/logout": {
         parameters: {
             query?: never;
             header?: never;
@@ -144,22 +119,32 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Calibration Run
-         * @description Run one pass of the §12 anchor calibration sweep synchronously
-         *     and return the counts (AC-D27). Identical body to the P11 Celery
-         *     beat task; the admin trigger gives operators a manual lever for
-         *     on-demand recompute (mirrors the P6 grade-review reconcile + P4
-         *     engagement sweep precedent).
-         */
-        post: operations["calibration_run_v1_admin_calibration_run_post"];
+        /** Logout */
+        post: operations["logout_v1_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/cost/summary": {
+    "/v1/auth/setup/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Setup Consume */
+        post: operations["setup_consume_v1_auth_setup_consume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/setup/{token}/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -167,29 +152,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Cost Summary
-         * @description Rolling current-month AI spend (AC-D18).
-         *
-         *     Returns:
-         *
-         *     * ``total_usd`` — monthly total across every provenance-bearing
-         *       entity.
-         *     * ``by_provider`` — split by ``anthropic`` / ``openai`` /
-         *       ``stub`` (and ``(unknown)`` for any legacy rows missing
-         *       provenance).
-         *     * ``by_model`` — split by model ID so the AC-CD18 env-overridable
-         *       model defaults can be evaluated against actual spend.
-         *     * ``monthly_budget`` — the configured ``system_settings.monthly_ai_budget``
-         *       or ``null``.
-         *     * ``percent_of_budget`` — ``total_usd / monthly_budget * 100`` or
-         *       ``null`` if no budget is configured.
-         *     * ``alerts_fired_this_month`` — list of thresholds already
-         *       emitted this calendar month (so the admin UI can render the
-         *       pre-emitted state without re-sending).
-         *     * ``since`` — first instant of the current calendar month
-         *       (the aggregation window).
+         * Setup Preview
+         * @description Read-only sibling of ``POST /setup/consume`` — exposes the
+         *     invitee email so the activation form can pre-fill a read-only
+         *     email field (FE-1 §B activation flow). Same invalid-token opacity
+         *     as ``setup/consume``: 400 ``invalid_token`` for missing / expired
+         *     / used tokens; the email leaks nothing the holder of a valid token
+         *     didn't already have.
          */
-        get: operations["cost_summary_v1_admin_cost_summary_get"];
+        get: operations["setup_preview_v1_auth_setup__token__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -198,22 +169,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/drive/index": {
+    "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Drive Index
-         * @description Read-only dashboard surface: chunk count + distinct file count
-         *     + ``max(indexed_at)``. Operators inspect this to verify AC-D23
-         *     step 4 actually completed and to spot a stale index (P11 wires
-         *     the daily cron; until then this read confirms the operator's
-         *     manual ``POST /v1/admin/drive/ingest`` did what they expected).
-         */
-        get: operations["drive_index_v1_admin_drive_index_get"];
+        get?: never;
+        put?: never;
+        /** Password Reset Request */
+        post: operations["password_reset_request_v1_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/password-reset/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Password Reset Consume */
+        post: operations["password_reset_consume_v1_auth_password_reset_consume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/privacy/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Privacy Acknowledge */
+        post: operations["privacy_acknowledge_v1_auth_privacy_acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Me */
+        get: operations["me_v1_auth_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -222,7 +237,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/drive/ingest": {
+    "/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_v1_users_get"];
+        put?: never;
+        /** Admin Create User */
+        post: operations["admin_create_user_v1_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get User */
+        get: operations["get_user_v1_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update User */
+        patch: operations["update_user_v1_users__user_id__patch"];
+        trace?: never;
+    };
+    "/v1/users/{user_id}/deactivate": {
         parameters: {
             query?: never;
             header?: never;
@@ -231,45 +282,165 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Drive Ingest
-         * @description Run one Drive RAG ingest sweep synchronously and return the
-         *     counts (AC-D22 / AC-D23 step 4). Identical body to the P11 Celery
-         *     beat task; the admin trigger gives operators a manual lever for
-         *     on-demand re-index (mirrors the P6 grade-review reconcile + P8
-         *     calibration sweep precedent).
-         *
-         *     Returns 409 ``drive_folder_unconfigured`` when
-         *     ``system_settings.drive_folder_id`` is unset — the deployment has
-         *     not completed AC-D23 step 4 (initial folder bootstrap) yet.
-         *
-         *     Audit-logged at ``drive.ingest`` so a re-run records the operator
-         *     + timestamp + telemetry counters for the embed-spend trail.
-         *
-         *     **HTTP timeout warning** (PR-#21 Slice 2 deliberate deviation,
-         *     mirrors the PR-#20 anchor-bootstrap warning): a folder with
-         *     hundreds of files emits hundreds of sequential embed calls. At
-         *     typical 100–500 ms embed latencies that's tens of seconds —
-         *     inside default ASGI timeouts but the warning belongs here so a
-         *     future deployment with thousands of files routes through the
-         *     P11 Celery wrapper rather than the admin endpoint.
-         */
-        post: operations["drive_ingest_v1_admin_drive_ingest_post"];
+        /** Deactivate User */
+        post: operations["deactivate_user_v1_users__user_id__deactivate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/engagement/pending": {
+    "/v1/users/{user_id}/reactivate": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Engagement Pending */
-        get: operations["engagement_pending_v1_admin_engagement_pending_get"];
+        get?: never;
+        put?: never;
+        /** Reactivate User */
+        post: operations["reactivate_user_v1_users__user_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Subjects */
+        get: operations["list_subjects_v1_subjects_get"];
+        put?: never;
+        /** Create Subject */
+        post: operations["create_subject_v1_subjects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/subjects/{subject_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Subject */
+        get: operations["get_subject_v1_subjects__subject_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Subject */
+        delete: operations["delete_subject_v1_subjects__subject_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Subject */
+        patch: operations["update_subject_v1_subjects__subject_id__patch"];
+        trace?: never;
+    };
+    "/v1/pills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pills */
+        get: operations["list_pills_v1_pills_get"];
+        put?: never;
+        /** Create Pill */
+        post: operations["create_pill_v1_pills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pills/{pill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pill */
+        get: operations["get_pill_v1_pills__pill_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Pill */
+        delete: operations["delete_pill_v1_pills__pill_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Pill */
+        patch: operations["update_pill_v1_pills__pill_id__patch"];
+        trace?: never;
+    };
+    "/v1/pills/{pill_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Pill */
+        post: operations["retire_pill_v1_pills__pill_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pills/{pill_id}/safety": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Override Pill Safety */
+        patch: operations["override_pill_safety_v1_pills__pill_id__safety_patch"];
+        trace?: never;
+    };
+    "/v1/pills/{pill_id}/learning-material": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Pill Learning Material */
+        post: operations["request_pill_learning_material_v1_pills__pill_id__learning_material_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/catalogue/pills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discover Pills */
+        get: operations["discover_pills_v1_catalogue_pills_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -278,24 +449,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/engagement/sweep": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Engagement Sweep */
-        post: operations["engagement_sweep_v1_admin_engagement_sweep_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/grade-reviews/flagged": {
+    "/v1/catalogue/pills/{pill_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -303,18 +457,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Grade Reviews Flagged
-         * @description List grade_review rows pending admin resolution (AC-D19 v1.6
-         *     admin queue). Oldest-first; rows whose underlying Grade has
-         *     already been resolved (Grade.overridden_at IS NOT NULL) drop off
-         *     the queue.
-         *
-         *     Slice C row-enrichment adds the ``verdict`` query param so the
-         *     FE-9 queue page can flip between ``flagged`` (default), ``confirmed``,
-         *     or ``all`` without a second endpoint (FE-9-admin-ops.md §H(a)
-         *     item 1).
+         * Get Discoverable Pill Detail
+         * @description Testee-facing single-pill detail (AC-D8). Mirrors the discovery
+         *     list filter — non-discoverable and retired pills 404 here just as
+         *     they hide from the list.
          */
-        get: operations["grade_reviews_flagged_v1_admin_grade_reviews_flagged_get"];
+        get: operations["get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -323,7 +471,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/grade-reviews/reconcile": {
+    "/v1/pill-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pill Proposals */
+        get: operations["list_pill_proposals_v1_pill_proposals_get"];
+        put?: never;
+        /** Create Pill Proposal */
+        post: operations["create_pill_proposal_v1_pill_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pill-proposals/{proposal_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -332,24 +498,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Grade Reviews Reconcile
-         * @description Run one pass of the §8.9 grade-review reconcile sweep
-         *     synchronously and return the counts. Identical to the body the
-         *     P11 Celery beat will invoke on a 5-minute schedule (AC-D19 v1.6 /
-         *     AC-CD11 v1.7); the admin trigger gives operators a manual lever
-         *     when a known provider outage has cleared and they want pending
-         *     rows resolved immediately rather than waiting for the next cron
-         *     pass.
-         */
-        post: operations["grade_reviews_reconcile_v1_admin_grade_reviews_reconcile_post"];
+        /** Approve Pill Proposal */
+        post: operations["approve_pill_proposal_v1_pill_proposals__proposal_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/grade-reviews/{grade_review_id}/resolve": {
+    "/v1/pill-proposals/{proposal_id}/reject": {
         parameters: {
             query?: never;
             header?: never;
@@ -358,21 +515,141 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Grade Review Resolve
-         * @description Resolve one flagged grade_review (AC-D19 v1.6 / AC-D2 override
-         *     mechanism). Writes the override columns on the underlying Grade,
-         *     recomputes ``overall_score`` for the attempt, and writes an
-         *     audit-log entry.
-         */
-        post: operations["grade_review_resolve_v1_admin_grade_reviews__grade_review_id__resolve_post"];
+        /** Reject Pill Proposal */
+        post: operations["reject_pill_proposal_v1_pill_proposals__proposal_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/loop/queue": {
+    "/v1/learning-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Paths */
+        get: operations["list_paths_v1_learning_paths_get"];
+        put?: never;
+        /** Create Path */
+        post: operations["create_path_v1_learning_paths_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/learning-paths/{path_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Path */
+        get: operations["get_path_v1_learning_paths__path_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Path */
+        delete: operations["delete_path_v1_learning_paths__path_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Path */
+        patch: operations["update_path_v1_learning_paths__path_id__patch"];
+        trace?: never;
+    };
+    "/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Groups */
+        get: operations["list_groups_v1_groups_get"];
+        put?: never;
+        /** Create Group */
+        post: operations["create_group_v1_groups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Group */
+        get: operations["get_group_v1_groups__group_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Group */
+        delete: operations["delete_group_v1_groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Group */
+        patch: operations["update_group_v1_groups__group_id__patch"];
+        trace?: never;
+    };
+    "/v1/groups/{group_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Member */
+        post: operations["add_member_v1_groups__group_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/groups/{group_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Member */
+        delete: operations["remove_member_v1_groups__group_id__members__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tests */
+        get: operations["list_tests_v1_tests_get"];
+        put?: never;
+        /** Create Test */
+        post: operations["create_test_v1_tests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/resolve": {
         parameters: {
             query?: never;
             header?: never;
@@ -380,18 +657,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Loop Queue
-         * @description List WeaknessReport rows in the admin-reviewed loop queue
-         *     (AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose
-         *     ``routed_to_admin`` flag has been cleared by a prior approve/reject
-         *     drop off the queue.
-         *
-         *     Slice C row-enrichment adds the ``status`` query param so the
-         *     FE-9 queue page can server-side-filter against the derived 5-value
-         *     enum (FE-9-admin-ops.md §H(a) item 1). Omitted = return every
-         *     routed-to-admin row regardless of derived status.
+         * Resolve Test
+         * @description Slice B B.3 — testee-facing find-only resolver for the FE-3
+         *     pill-detail "Practice at D{n}" CTA. Returns the test_id of a
+         *     published single-pill test matching (pill_id, difficulty); 404
+         *     when no match exists. Find-or-generate is filed as a follow-up
+         *     (separate ``POST /v1/tests/generate``).
          */
-        get: operations["loop_queue_v1_admin_loop_queue_get"];
+        get: operations["resolve_test_v1_tests_resolve_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -400,157 +673,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/admin/loop/queue/{weakness_report_id}/approve": {
+    "/v1/tests/{test_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /**
-         * Loop Queue Approve
-         * @description Approve a queued WeaknessReport: clears ``routed_to_admin`` AND
-         *     creates the follow-up (material per non-safety weak pill +
-         *     per_testee Test + Assignment + Assignee + loop_driven Attempt) —
-         *     same flow the autonomous mode runs inline at submit. 201 Created
-         *     matches the AC-CD16 admin-write convention used by
-         *     grade_review_resolve.
-         */
-        post: operations["loop_queue_approve_v1_admin_loop_queue__weakness_report_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/loop/queue/{weakness_report_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Loop Queue Reject
-         * @description Reject a queued WeaknessReport: clears ``routed_to_admin``
-         *     without creating a follow-up. The Testee never sees a remediation
-         *     pass for this attempt. Audit-logged at ``loop.queue.reject``.
-         *
-         *     Slice C row-enrichment accepts an optional ``{reason: str}`` body
-         *     captured into the audit_log detail for operator traceability
-         *     (FE-9-admin-ops.md §H(a) item 1 sub-item). Empty POST is still
-         *     accepted — the reason simply defaults to None.
-         */
-        post: operations["loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/pills/{pill_id}/anchors/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Anchors Generate
-         * @description Bootstrap the anchor pool for one pill (AC-D23 bootstrap #1).
-         *
-         *     Generates ``system_settings.anchor_pool_size_per_band`` anchors per
-         *     band in ``pill.available_difficulty_min .. max``. Each anchor passes
-         *     a cross-family self-review (AC-D23) and regenerates up to 3 times
-         *     before being written as ``excluded`` for admin attention. Returns
-         *     409 ``anchors_exist`` on re-run — drain the flagged queue first
-         *     (Slice 4 resolve actions); P11 ships idempotent top-up.
-         *
-         *     Audit-logged at ``anchors.bootstrap`` so a fat-fingered re-run
-         *     that hits the 409 still records the operator + timestamp.
-         *
-         *     **HTTP timeout warning** (Gitar PR-#20 Slice 2 finding #2): the
-         *     synchronous call can emit up to 360 sequential AI calls per pill
-         *     at default ``anchor_pool_size_per_band = 20`` over a 3-band pill,
-         *     well beyond typical reverse-proxy / ASGI timeouts. For production
-         *     use against real pools, wrap this through the P11 Celery task
-         *     (the same wrapper hosting the AC-D23 cross-pill orchestrator).
-         *     See :func:`app.domain.calibration.generate_anchor_pool_for_pill`
-         *     for the workaround pattern until P11 lands.
-         */
-        post: operations["anchors_generate_v1_admin_pills__pill_id__anchors_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/realism/aggregate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Realism Aggregate
-         * @description Run one pass of the realism aggregation sweep synchronously
-         *     (AC-D22 — "Feedback aggregation runs nightly and produces a
-         *     'low-realism' question pool"). Admin-triggered in P9; the P11
-         *     beat task wraps the same callable on a 24-hour schedule (mirrors
-         *     P6 reconcile + P8 calibration sweep precedent).
-         *
-         *     Audit-logged at ``realism.aggregate`` with the full telemetry
-         *     dict so the operator can correlate a sweep with the resulting
-         *     realism_flag_count changes on the dashboard.
-         */
-        post: operations["realism_aggregate_v1_admin_realism_aggregate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/admin/realism/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Realism Status Endpoint
-         * @description Read-only telemetry roll-up for the FE-9 systems-page realism
-         *     aggregation card (FE-9-admin-systems.md §H(a) item 8).
-         *
-         *     Five fields per the locked spec contract: ``last_aggregated_at``,
-         *     ``flags_processed_last_run``, ``below_threshold_count``,
-         *     ``auto_suppressed_count``, ``total_flag_count_active``. No new
-         *     persistence — every value derives from ``audit_log`` (the
-         *     realism.aggregate row written by :func:`realism_aggregate`),
-         *     ``question.realism_flag_count``, the ``anchor_question.excluded``
-         *     + ``excluded_reason`` columns set by
-         *     :func:`app.domain.drive_rag.aggregate_realism_flags`, and the
-         *     ``realism_flag`` table itself.
-         */
-        get: operations["realism_status_endpoint_v1_admin_realism_status_get"];
+        /** Get Test */
+        get: operations["get_test_v1_tests__test_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Test */
+        delete: operations["delete_test_v1_tests__test_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Test */
+        patch: operations["update_test_v1_tests__test_id__patch"];
         trace?: never;
     };
-    "/v1/admin/safety-links/check": {
+    "/v1/tests/{test_id}/publish": {
         parameters: {
             query?: never;
             header?: never;
@@ -559,24 +701,82 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Safety Links Check
-         * @description Run one pass of the AC-D21 monthly safety-link verification
-         *     sweep synchronously and return the counts. Identical body to the
-         *     P11 ``safety_links.check`` Celery beat task on a monthly schedule;
-         *     the admin trigger gives operators a manual lever for on-demand
-         *     verification after curating new safety pills (mirrors the P6
-         *     grade-review reconcile + P8 calibration sweep precedent).
-         *
-         *     Audit-logged at ``safety_links.check`` so a re-run records the
-         *     operator + timestamp + telemetry counters for the operational
-         *     trail.
-         */
-        post: operations["safety_links_check_v1_admin_safety_links_check_post"];
+        /** Publish Test */
+        post: operations["publish_test_v1_tests__test_id__publish_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/{test_id}/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lock Campaign */
+        post: operations["lock_campaign_v1_tests__test_id__lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/{test_id}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock Campaign */
+        post: operations["unlock_campaign_v1_tests__test_id__unlock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/{test_id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Questions */
+        get: operations["list_questions_v1_tests__test_id__questions_get"];
+        put?: never;
+        /** Add Question */
+        post: operations["add_question_v1_tests__test_id__questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tests/{test_id}/questions/{question_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Question */
+        delete: operations["delete_question_v1_tests__test_id__questions__question_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Question */
+        patch: operations["update_question_v1_tests__test_id__questions__question_id__patch"];
         trace?: never;
     };
     "/v1/assignments": {
@@ -674,6 +874,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/attempts/{attempt_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause Attempt */
+        post: operations["pause_attempt_v1_attempts__attempt_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attempts/{attempt_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Attempt */
+        post: operations["resume_attempt_v1_attempts__attempt_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attempts/{attempt_id}/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Next Question */
+        post: operations["next_question_v1_attempts__attempt_id__next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attempts/{attempt_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Attempt */
+        post: operations["submit_attempt_v1_attempts__attempt_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attempts/{attempt_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Attempt Result
+         * @description F14 result-display gate. A fully-deterministic attempt returns
+         *     the grades + overall outcome immediately; any AI-graded item flips
+         *     the response to ``status = "review_pending"`` until P6 review
+         *     closes the gate.
+         */
+        get: operations["attempt_result_v1_attempts__attempt_id__result_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/attempts/{attempt_id}/export.pdf": {
         parameters: {
             query?: never;
@@ -700,24 +991,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/attempts/{attempt_id}/next": {
+    "/v1/attempts/{attempt_id}/stream": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Stream Attempt
+         * @description P10 SSE stream of per-Testee Q1..QN (AC-D25 v1.8 / AC-CD10
+         *     v1.8). Replays persisted Question rows with ``attempt_position >
+         *     cursor`` then runs the orchestrator for unfilled positions.
+         *     Cursor precedence: ``?since=N`` (FE explicit) wins over
+         *     ``Last-Event-ID`` header (browser auto-reconnect default). Defensive
+         *     default if neither: cursor = 0 (replay everything from position 1).
+         *
+         *     Benchmark / frozen / hand-authored attempts return 409
+         *     ``not_per_testee`` — they have no streaming generation.
+         */
+        get: operations["stream_attempt_v1_attempts__attempt_id__stream_get"];
         put?: never;
-        /** Next Question */
-        post: operations["next_question_v1_attempts__attempt_id__next_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/attempts/{attempt_id}/pause": {
+    "/v1/admin/engagement/sweep": {
         parameters: {
             query?: never;
             header?: never;
@@ -726,8 +1028,485 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pause Attempt */
-        post: operations["pause_attempt_v1_attempts__attempt_id__pause_post"];
+        /** Engagement Sweep */
+        post: operations["engagement_sweep_v1_admin_engagement_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/engagement/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engagement Pending */
+        get: operations["engagement_pending_v1_admin_engagement_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/grade-reviews/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grade Reviews Reconcile
+         * @description Run one pass of the §8.9 grade-review reconcile sweep
+         *     synchronously and return the counts. Identical to the body the
+         *     P11 Celery beat will invoke on a 5-minute schedule (AC-D19 v1.6 /
+         *     AC-CD11 v1.7); the admin trigger gives operators a manual lever
+         *     when a known provider outage has cleared and they want pending
+         *     rows resolved immediately rather than waiting for the next cron
+         *     pass.
+         */
+        post: operations["grade_reviews_reconcile_v1_admin_grade_reviews_reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/grade-reviews/flagged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Grade Reviews Flagged
+         * @description List grade_review rows pending admin resolution (AC-D19 v1.6
+         *     admin queue). Oldest-first; rows whose underlying Grade has
+         *     already been resolved (Grade.overridden_at IS NOT NULL) drop off
+         *     the queue.
+         *
+         *     Slice C row-enrichment adds the ``verdict`` query param so the
+         *     FE-9 queue page can flip between ``flagged`` (default), ``confirmed``,
+         *     or ``all`` without a second endpoint (FE-9-admin-ops.md §H(a)
+         *     item 1).
+         */
+        get: operations["grade_reviews_flagged_v1_admin_grade_reviews_flagged_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/grade-reviews/{grade_review_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grade Review Resolve
+         * @description Resolve one flagged grade_review (AC-D19 v1.6 / AC-D2 override
+         *     mechanism). Writes the override columns on the underlying Grade,
+         *     recomputes ``overall_score`` for the attempt, and writes an
+         *     audit-log entry.
+         */
+        post: operations["grade_review_resolve_v1_admin_grade_reviews__grade_review_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/loop/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loop Queue
+         * @description List WeaknessReport rows in the admin-reviewed loop queue
+         *     (AC-D6 ``loop_mode = admin_reviewed``). Oldest-first; rows whose
+         *     ``routed_to_admin`` flag has been cleared by a prior approve/reject
+         *     drop off the queue.
+         *
+         *     Slice C row-enrichment adds the ``status`` query param so the
+         *     FE-9 queue page can server-side-filter against the derived 5-value
+         *     enum (FE-9-admin-ops.md §H(a) item 1). Omitted = return every
+         *     routed-to-admin row regardless of derived status.
+         */
+        get: operations["loop_queue_v1_admin_loop_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/loop/queue/{weakness_report_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Loop Queue Approve
+         * @description Approve a queued WeaknessReport: clears ``routed_to_admin`` AND
+         *     creates the follow-up (material per non-safety weak pill +
+         *     per_testee Test + Assignment + Assignee + loop_driven Attempt) —
+         *     same flow the autonomous mode runs inline at submit. 201 Created
+         *     matches the AC-CD16 admin-write convention used by
+         *     grade_review_resolve.
+         */
+        post: operations["loop_queue_approve_v1_admin_loop_queue__weakness_report_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pills/{pill_id}/anchors/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anchors Generate
+         * @description Bootstrap the anchor pool for one pill (AC-D23 bootstrap #1).
+         *
+         *     Generates ``system_settings.anchor_pool_size_per_band`` anchors per
+         *     band in ``pill.available_difficulty_min .. max``. Each anchor passes
+         *     a cross-family self-review (AC-D23) and regenerates up to 3 times
+         *     before being written as ``excluded`` for admin attention. Returns
+         *     409 ``anchors_exist`` on re-run — drain the flagged queue first
+         *     (Slice 4 resolve actions); P11 ships idempotent top-up.
+         *
+         *     Audit-logged at ``anchors.bootstrap`` so a fat-fingered re-run
+         *     that hits the 409 still records the operator + timestamp.
+         *
+         *     **HTTP timeout warning** (Gitar PR-#20 Slice 2 finding #2): the
+         *     synchronous call can emit up to 360 sequential AI calls per pill
+         *     at default ``anchor_pool_size_per_band = 20`` over a 3-band pill,
+         *     well beyond typical reverse-proxy / ASGI timeouts. For production
+         *     use against real pools, wrap this through the P11 Celery task
+         *     (the same wrapper hosting the AC-D23 cross-pill orchestrator).
+         *     See :func:`app.domain.calibration.generate_anchor_pool_for_pill`
+         *     for the workaround pattern until P11 lands.
+         */
+        post: operations["anchors_generate_v1_admin_pills__pill_id__anchors_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/loop/queue/{weakness_report_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Loop Queue Reject
+         * @description Reject a queued WeaknessReport: clears ``routed_to_admin``
+         *     without creating a follow-up. The Testee never sees a remediation
+         *     pass for this attempt. Audit-logged at ``loop.queue.reject``.
+         *
+         *     Slice C row-enrichment accepts an optional ``{reason: str}`` body
+         *     captured into the audit_log detail for operator traceability
+         *     (FE-9-admin-ops.md §H(a) item 1 sub-item). Empty POST is still
+         *     accepted — the reason simply defaults to None.
+         */
+        post: operations["loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calibration/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Calibration Run
+         * @description Run one pass of the §12 anchor calibration sweep synchronously
+         *     and return the counts (AC-D27). Identical body to the P11 Celery
+         *     beat task; the admin trigger gives operators a manual lever for
+         *     on-demand recompute (mirrors the P6 grade-review reconcile + P4
+         *     engagement sweep precedent).
+         */
+        post: operations["calibration_run_v1_admin_calibration_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/anchors/flagged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Anchors Flagged
+         * @description List :class:`AnchorQuestion` rows pending admin resolution
+         *     (AC-D23 — anchors that failed 3 generate+review cycles in
+         *     bootstrap, plus any ``keep``-only ack pendings). Oldest-first
+         *     by ``created_at``; rows resolved via ``reject`` keep
+         *     ``excluded=True`` but clear ``needs_admin_attention`` so they
+         *     fall off the queue.
+         */
+        get: operations["anchors_flagged_v1_admin_anchors_flagged_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/anchors/{anchor_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anchors Resolve
+         * @description Resolve one flagged anchor (AC-D23). Three actions:
+         *     ``keep`` (accept AI wording), ``substitute_wording`` (replace
+         *     ``config`` from ``new_config`` — admin is the authoritative
+         *     reviewer of their own substitution, so this does NOT auto-rerun
+         *     self-review), ``reject`` (acknowledge the excluded slot stays
+         *     excluded). Audit-logged at ``anchors.resolve``.
+         */
+        post: operations["anchors_resolve_v1_admin_anchors__anchor_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/bootstrap/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bootstrap Run
+         * @description Run the AC-D23 idempotent bootstrap orchestrator once and
+         *     return aggregate telemetry (P11 Slice 4).
+         *
+         *     Four steps per AC-D23 prose: anchor pool top-up across every
+         *     active pill (step 1; self-review inline so step 2 is integrated);
+         *     safety-link curation for every safety-tagged pill below quota
+         *     (step 3); Drive RAG ingest if a folder is configured (step 4).
+         *     A re-run on an already-populated deployment returns near-zero
+         *     counters (the idempotency contract — AC-CD7).
+         *
+         *     Synchronous endpoint at v1 scale (≤30 pills). Production-scale
+         *     runs (hundreds of pills, thousands of anchors) should route
+         *     through the Celery task wrapper to escape the ASGI timeout
+         *     (precedent: PR-#20 anchor-bootstrap timeout warning).
+         *
+         *     Audit-logged at ``bootstrap.run`` with the full telemetry so the
+         *     operator's audit trail captures every bootstrap event.
+         */
+        post: operations["bootstrap_run_v1_admin_bootstrap_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/safety-links/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Safety Links Check
+         * @description Run one pass of the AC-D21 monthly safety-link verification
+         *     sweep synchronously and return the counts. Identical body to the
+         *     P11 ``safety_links.check`` Celery beat task on a monthly schedule;
+         *     the admin trigger gives operators a manual lever for on-demand
+         *     verification after curating new safety pills (mirrors the P6
+         *     grade-review reconcile + P8 calibration sweep precedent).
+         *
+         *     Audit-logged at ``safety_links.check`` so a re-run records the
+         *     operator + timestamp + telemetry counters for the operational
+         *     trail.
+         */
+        post: operations["safety_links_check_v1_admin_safety_links_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/competence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Competence
+         * @description Testee's own per-pill competency profile. Empty
+         *     ``{ "pills": [] }`` for a testee with no CompetencyProfile rows
+         *     (new account).
+         */
+        get: operations["get_my_competence_v1_me_competence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/cost/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cost Summary
+         * @description Rolling current-month AI spend (AC-D18).
+         *
+         *     Returns:
+         *
+         *     * ``total_usd`` — monthly total across every provenance-bearing
+         *       entity.
+         *     * ``by_provider`` — split by ``anthropic`` / ``openai`` /
+         *       ``stub`` (and ``(unknown)`` for any legacy rows missing
+         *       provenance).
+         *     * ``by_model`` — split by model ID so the AC-CD18 env-overridable
+         *       model defaults can be evaluated against actual spend.
+         *     * ``monthly_budget`` — the configured ``system_settings.monthly_ai_budget``
+         *       or ``null``.
+         *     * ``percent_of_budget`` — ``total_usd / monthly_budget * 100`` or
+         *       ``null`` if no budget is configured.
+         *     * ``alerts_fired_this_month`` — list of thresholds already
+         *       emitted this calendar month (so the admin UI can render the
+         *       pre-emitted state without re-sending).
+         *     * ``since`` — first instant of the current calendar month
+         *       (the aggregation window).
+         */
+        get: operations["cost_summary_v1_admin_cost_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/calibration/pills/{pill_id}/bands/{band}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Band State
+         * @description ``preliminary -> confident`` display state for one (pill, band)
+         *     (AC-D27 #3 / AC-D20). Returns ``state='preliminary'`` when the
+         *     aggregate observation count is below
+         *     ``system_settings.anchor_calibration_confidence_threshold``
+         *     (default 20), ``state='confident'`` once it crosses (inclusive
+         *     boundary).
+         */
+        get: operations["band_state_v1_calibration_pills__pill_id__bands__band__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/drive/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drive Ingest
+         * @description Run one Drive RAG ingest sweep synchronously and return the
+         *     counts (AC-D22 / AC-D23 step 4). Identical body to the P11 Celery
+         *     beat task; the admin trigger gives operators a manual lever for
+         *     on-demand re-index (mirrors the P6 grade-review reconcile + P8
+         *     calibration sweep precedent).
+         *
+         *     Returns 409 ``drive_folder_unconfigured`` when
+         *     ``system_settings.drive_folder_id`` is unset — the deployment has
+         *     not completed AC-D23 step 4 (initial folder bootstrap) yet.
+         *
+         *     Audit-logged at ``drive.ingest`` so a re-run records the operator
+         *     + timestamp + telemetry counters for the embed-spend trail.
+         *
+         *     **HTTP timeout warning** (PR-#21 Slice 2 deliberate deviation,
+         *     mirrors the PR-#20 anchor-bootstrap warning): a folder with
+         *     hundreds of files emits hundreds of sequential embed calls. At
+         *     typical 100–500 ms embed latencies that's tens of seconds —
+         *     inside default ASGI timeouts but the warning belongs here so a
+         *     future deployment with thousands of files routes through the
+         *     P11 Celery wrapper rather than the admin endpoint.
+         */
+        post: operations["drive_ingest_v1_admin_drive_ingest_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -784,30 +1563,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/attempts/{attempt_id}/result": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Attempt Result
-         * @description F14 result-display gate. A fully-deterministic attempt returns
-         *     the grades + overall outcome immediately; any AI-graded item flips
-         *     the response to ``status = "review_pending"`` until P6 review
-         *     closes the gate.
-         */
-        get: operations["attempt_result_v1_attempts__attempt_id__result_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/attempts/{attempt_id}/resume": {
+    "/v1/admin/realism/aggregate": {
         parameters: {
             query?: never;
             header?: never;
@@ -816,196 +1572,26 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resume Attempt */
-        post: operations["resume_attempt_v1_attempts__attempt_id__resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/attempts/{attempt_id}/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * Stream Attempt
-         * @description P10 SSE stream of per-Testee Q1..QN (AC-D25 v1.8 / AC-CD10
-         *     v1.8). Replays persisted Question rows with ``attempt_position >
-         *     cursor`` then runs the orchestrator for unfilled positions.
-         *     Cursor precedence: ``?since=N`` (FE explicit) wins over
-         *     ``Last-Event-ID`` header (browser auto-reconnect default). Defensive
-         *     default if neither: cursor = 0 (replay everything from position 1).
+         * Realism Aggregate
+         * @description Run one pass of the realism aggregation sweep synchronously
+         *     (AC-D22 — "Feedback aggregation runs nightly and produces a
+         *     'low-realism' question pool"). Admin-triggered in P9; the P11
+         *     beat task wraps the same callable on a 24-hour schedule (mirrors
+         *     P6 reconcile + P8 calibration sweep precedent).
          *
-         *     Benchmark / frozen / hand-authored attempts return 409
-         *     ``not_per_testee`` — they have no streaming generation.
+         *     Audit-logged at ``realism.aggregate`` with the full telemetry
+         *     dict so the operator can correlate a sweep with the resulting
+         *     realism_flag_count changes on the dashboard.
          */
-        get: operations["stream_attempt_v1_attempts__attempt_id__stream_get"];
-        put?: never;
-        post?: never;
+        post: operations["realism_aggregate_v1_admin_realism_aggregate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/attempts/{attempt_id}/submit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Submit Attempt */
-        post: operations["submit_attempt_v1_attempts__attempt_id__submit_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Login */
-        post: operations["login_v1_auth_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Logout */
-        post: operations["logout_v1_auth_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Me */
-        get: operations["me_v1_auth_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/password-reset/consume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Password Reset Consume */
-        post: operations["password_reset_consume_v1_auth_password_reset_consume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/password-reset/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Password Reset Request */
-        post: operations["password_reset_request_v1_auth_password_reset_request_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/privacy/acknowledge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Privacy Acknowledge */
-        post: operations["privacy_acknowledge_v1_auth_privacy_acknowledge_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh */
-        post: operations["refresh_v1_auth_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/setup/consume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Setup Consume */
-        post: operations["setup_consume_v1_auth_setup_consume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/auth/setup/{token}/preview": {
+    "/v1/admin/realism/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -1013,15 +1599,21 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Setup Preview
-         * @description Read-only sibling of ``POST /setup/consume`` — exposes the
-         *     invitee email so the activation form can pre-fill a read-only
-         *     email field (FE-1 §B activation flow). Same invalid-token opacity
-         *     as ``setup/consume``: 400 ``invalid_token`` for missing / expired
-         *     / used tokens; the email leaks nothing the holder of a valid token
-         *     didn't already have.
+         * Realism Status Endpoint
+         * @description Read-only telemetry roll-up for the FE-9 systems-page realism
+         *     aggregation card (FE-9-admin-systems.md §H(a) item 8).
+         *
+         *     Five fields per the locked spec contract: ``last_aggregated_at``,
+         *     ``flags_processed_last_run``, ``below_threshold_count``,
+         *     ``auto_suppressed_count``, ``total_flag_count_active``. No new
+         *     persistence — every value derives from ``audit_log`` (the
+         *     realism.aggregate row written by :func:`realism_aggregate`),
+         *     ``question.realism_flag_count``, the ``anchor_question.excluded``
+         *     + ``excluded_reason`` columns set by
+         *     :func:`app.domain.drive_rag.aggregate_realism_flags`, and the
+         *     ``realism_flag`` table itself.
          */
-        get: operations["setup_preview_v1_auth_setup__token__preview_get"];
+        get: operations["realism_status_endpoint_v1_admin_realism_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1030,7 +1622,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/calibration/pills/{pill_id}/bands/{band}": {
+    "/v1/admin/drive/index": {
         parameters: {
             query?: never;
             header?: never;
@@ -1038,581 +1630,16 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Band State
-         * @description ``preliminary -> confident`` display state for one (pill, band)
-         *     (AC-D27 #3 / AC-D20). Returns ``state='preliminary'`` when the
-         *     aggregate observation count is below
-         *     ``system_settings.anchor_calibration_confidence_threshold``
-         *     (default 20), ``state='confident'`` once it crosses (inclusive
-         *     boundary).
+         * Drive Index
+         * @description Read-only dashboard surface: chunk count + distinct file count
+         *     + ``max(indexed_at)``. Operators inspect this to verify AC-D23
+         *     step 4 actually completed and to spot a stale index (P11 wires
+         *     the daily cron; until then this read confirms the operator's
+         *     manual ``POST /v1/admin/drive/ingest`` did what they expected).
          */
-        get: operations["band_state_v1_calibration_pills__pill_id__bands__band__get"];
+        get: operations["drive_index_v1_admin_drive_index_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/catalogue/pills": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Discover Pills */
-        get: operations["discover_pills_v1_catalogue_pills_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/catalogue/pills/{pill_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Discoverable Pill Detail
-         * @description Testee-facing single-pill detail (AC-D8). Mirrors the discovery
-         *     list filter — non-discoverable and retired pills 404 here just as
-         *     they hide from the list.
-         */
-        get: operations["get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Groups */
-        get: operations["list_groups_v1_groups_get"];
-        put?: never;
-        /** Create Group */
-        post: operations["create_group_v1_groups_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/groups/{group_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Group */
-        get: operations["get_group_v1_groups__group_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Group */
-        delete: operations["delete_group_v1_groups__group_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Group */
-        patch: operations["update_group_v1_groups__group_id__patch"];
-        trace?: never;
-    };
-    "/v1/groups/{group_id}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add Member */
-        post: operations["add_member_v1_groups__group_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/groups/{group_id}/members/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove Member */
-        delete: operations["remove_member_v1_groups__group_id__members__user_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/learning-paths": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Paths */
-        get: operations["list_paths_v1_learning_paths_get"];
-        put?: never;
-        /** Create Path */
-        post: operations["create_path_v1_learning_paths_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/learning-paths/{path_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Path */
-        get: operations["get_path_v1_learning_paths__path_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Path */
-        delete: operations["delete_path_v1_learning_paths__path_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Path */
-        patch: operations["update_path_v1_learning_paths__path_id__patch"];
-        trace?: never;
-    };
-    "/v1/me/competence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My Competence
-         * @description Testee's own per-pill competency profile. Empty
-         *     ``{ "pills": [] }`` for a testee with no CompetencyProfile rows
-         *     (new account).
-         */
-        get: operations["get_my_competence_v1_me_competence_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pill-proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Pill Proposals */
-        get: operations["list_pill_proposals_v1_pill_proposals_get"];
-        put?: never;
-        /** Create Pill Proposal */
-        post: operations["create_pill_proposal_v1_pill_proposals_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pill-proposals/{proposal_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve Pill Proposal */
-        post: operations["approve_pill_proposal_v1_pill_proposals__proposal_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pill-proposals/{proposal_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject Pill Proposal */
-        post: operations["reject_pill_proposal_v1_pill_proposals__proposal_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pills": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Pills */
-        get: operations["list_pills_v1_pills_get"];
-        put?: never;
-        /** Create Pill */
-        post: operations["create_pill_v1_pills_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pills/{pill_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Pill */
-        get: operations["get_pill_v1_pills__pill_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Pill */
-        delete: operations["delete_pill_v1_pills__pill_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Pill */
-        patch: operations["update_pill_v1_pills__pill_id__patch"];
-        trace?: never;
-    };
-    "/v1/pills/{pill_id}/learning-material": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request Pill Learning Material */
-        post: operations["request_pill_learning_material_v1_pills__pill_id__learning_material_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pills/{pill_id}/retire": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retire Pill */
-        post: operations["retire_pill_v1_pills__pill_id__retire_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/pills/{pill_id}/safety": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Override Pill Safety */
-        patch: operations["override_pill_safety_v1_pills__pill_id__safety_patch"];
-        trace?: never;
-    };
-    "/v1/subjects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Subjects */
-        get: operations["list_subjects_v1_subjects_get"];
-        put?: never;
-        /** Create Subject */
-        post: operations["create_subject_v1_subjects_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/subjects/{subject_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Subject */
-        get: operations["get_subject_v1_subjects__subject_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Subject */
-        delete: operations["delete_subject_v1_subjects__subject_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Subject */
-        patch: operations["update_subject_v1_subjects__subject_id__patch"];
-        trace?: never;
-    };
-    "/v1/tests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Tests */
-        get: operations["list_tests_v1_tests_get"];
-        put?: never;
-        /** Create Test */
-        post: operations["create_test_v1_tests_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tests/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Resolve Test
-         * @description Slice B B.3 — testee-facing find-only resolver for the FE-3
-         *     pill-detail "Practice at D{n}" CTA. Returns the test_id of a
-         *     published single-pill test matching (pill_id, difficulty); 404
-         *     when no match exists. Find-or-generate is filed as a follow-up
-         *     (separate ``POST /v1/tests/generate``).
-         */
-        get: operations["resolve_test_v1_tests_resolve_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tests/{test_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Test */
-        get: operations["get_test_v1_tests__test_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Test */
-        delete: operations["delete_test_v1_tests__test_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Test */
-        patch: operations["update_test_v1_tests__test_id__patch"];
-        trace?: never;
-    };
-    "/v1/tests/{test_id}/lock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Lock Campaign */
-        post: operations["lock_campaign_v1_tests__test_id__lock_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tests/{test_id}/publish": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Publish Test */
-        post: operations["publish_test_v1_tests__test_id__publish_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tests/{test_id}/questions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Questions */
-        get: operations["list_questions_v1_tests__test_id__questions_get"];
-        put?: never;
-        /** Add Question */
-        post: operations["add_question_v1_tests__test_id__questions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/tests/{test_id}/questions/{question_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Question */
-        delete: operations["delete_question_v1_tests__test_id__questions__question_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Question */
-        patch: operations["update_question_v1_tests__test_id__questions__question_id__patch"];
-        trace?: never;
-    };
-    "/v1/tests/{test_id}/unlock": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unlock Campaign */
-        post: operations["unlock_campaign_v1_tests__test_id__unlock_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Users */
-        get: operations["list_users_v1_users_get"];
-        put?: never;
-        /** Admin Create User */
-        post: operations["admin_create_user_v1_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/users/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get User */
-        get: operations["get_user_v1_users__user_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update User */
-        patch: operations["update_user_v1_users__user_id__patch"];
-        trace?: never;
-    };
-    "/v1/users/{user_id}/deactivate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Deactivate User */
-        post: operations["deactivate_user_v1_users__user_id__deactivate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/users/{user_id}/reactivate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reactivate User */
-        post: operations["reactivate_user_v1_users__user_id__reactivate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1650,10 +1677,10 @@ export interface components {
         AnchorBandSummary: {
             /** Band */
             band: number;
-            /** Excluded */
-            excluded: number;
             /** Generated */
             generated: number;
+            /** Excluded */
+            excluded: number;
         };
         /**
          * AnchorBootstrapResult
@@ -1667,16 +1694,16 @@ export interface components {
          *     ``slots = anchor_pool_size_per_band * len(supported_bands)``.
          */
         AnchorBootstrapResult: {
-            /** Anchors Excluded */
-            anchors_excluded: number;
             /** Anchors Generated */
             anchors_generated: number;
-            /** Per Band Summary */
-            per_band_summary: components["schemas"]["AnchorBandSummary"][];
+            /** Anchors Excluded */
+            anchors_excluded: number;
             /** Total Generation Calls */
             total_generation_calls: number;
             /** Total Self Review Calls */
             total_self_review_calls: number;
+            /** Per Band Summary */
+            per_band_summary: components["schemas"]["AnchorBandSummary"][];
         };
         /**
          * AnchorResolveRequest
@@ -1698,13 +1725,13 @@ export interface components {
         };
         /** AnchorResolveResult */
         AnchorResolveResult: {
-            /** Action */
-            action: string;
             /**
              * Anchor Question Id
              * Format: uuid
              */
             anchor_question_id: string;
+            /** Action */
+            action: string;
             /** Excluded */
             excluded: boolean;
             /** Needs Admin Attention */
@@ -1714,56 +1741,56 @@ export interface components {
         };
         /** AssignmentCreate */
         AssignmentCreate: {
-            /** Deadline */
-            deadline?: string | null;
+            /** Pill Id */
+            pill_id?: string | null;
+            /** Learning Path Id */
+            learning_path_id?: string | null;
             /** Difficulty */
             difficulty: number;
-            /** Group Ids */
-            group_ids?: string[];
+            /** Deadline */
+            deadline?: string | null;
             /**
              * Is Mandatory
              * @default false
              */
             is_mandatory: boolean;
-            /** Learning Path Id */
-            learning_path_id?: string | null;
             /** @default autonomous */
             loop_mode: components["schemas"]["LoopMode"];
-            /** Pill Id */
-            pill_id?: string | null;
             /** Testee Ids */
             testee_ids?: string[];
+            /** Group Ids */
+            group_ids?: string[];
         };
         /** AssignmentResponse */
         AssignmentResponse: {
-            /** Assignee Ids */
-            assignee_ids: string[];
-            /**
-             * Assigner Id
-             * Format: uuid
-             */
-            assigner_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Deadline */
-            deadline: string | null;
-            /** Difficulty */
-            difficulty: number;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Is Mandatory */
-            is_mandatory: boolean;
-            /** Learning Path Id */
-            learning_path_id: string | null;
-            loop_mode: components["schemas"]["LoopMode"];
+            /**
+             * Assigner Id
+             * Format: uuid
+             */
+            assigner_id: string;
             /** Pill Id */
             pill_id: string | null;
+            /** Learning Path Id */
+            learning_path_id: string | null;
+            /** Difficulty */
+            difficulty: number;
+            /** Deadline */
+            deadline: string | null;
+            /** Is Mandatory */
+            is_mandatory: boolean;
+            loop_mode: components["schemas"]["LoopMode"];
+            /** Assignee Ids */
+            assignee_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -1778,27 +1805,27 @@ export interface components {
              */
             attempt_id: string;
             /**
-             * Band
-             * @enum {string}
-             */
-            band: "novice" | "junior" | "working" | "advanced" | "expert";
-            /** Competence Delta */
-            competence_delta?: number | null;
-            origin: components["schemas"]["AttemptOrigin"];
-            /**
              * Pill Id
              * Format: uuid
              */
             pill_id: string;
             /** Pill Name */
             pill_name: string;
-            /** Score Percent */
-            score_percent: number;
             /**
              * Submitted At
              * Format: date-time
              */
             submitted_at: string;
+            /** Score Percent */
+            score_percent: number;
+            /**
+             * Band
+             * @enum {string}
+             */
+            band: "novice" | "junior" | "working" | "advanced" | "expert";
+            origin: components["schemas"]["AttemptOrigin"];
+            /** Competence Delta */
+            competence_delta?: number | null;
         };
         /**
          * AttemptOrigin
@@ -1812,62 +1839,39 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
-            /** Outcome */
-            outcome?: string | null;
-            /** Overall Score */
-            overall_score?: number | null;
-            /** Questions */
-            questions?: Record<string, never>[] | null;
-            /** Status */
-            status: string;
             /**
              * Submitted At
              * Format: date-time
              */
             submitted_at: string;
+            /** Status */
+            status: string;
+            /** Overall Score */
+            overall_score?: number | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Questions */
+            questions?: Record<string, never>[] | null;
         };
         /** AttemptStartRequest */
         AttemptStartRequest: {
-            /** Assignment Id */
-            assignment_id?: string | null;
-            /** @default self_initiated */
-            origin: components["schemas"]["AttemptOrigin"];
             /**
              * Test Id
              * Format: uuid
              */
             test_id: string;
+            /** @default self_initiated */
+            origin: components["schemas"]["AttemptOrigin"];
+            /** Assignment Id */
+            assignment_id?: string | null;
         };
         /** AttemptView */
         AttemptView: {
-            /** Assignment Id */
-            assignment_id: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            origin: components["schemas"]["AttemptOrigin"];
-            /** Pause Allowance */
-            pause_allowance: number;
-            /** Pause Reason */
-            pause_reason?: string | null;
-            /** Pause Seconds Remaining */
-            pause_seconds_remaining: number | null;
-            /** Paused */
-            paused: boolean;
-            /** Pauses Used */
-            pauses_used: number;
-            /** Q1 */
-            q1?: Record<string, never> | null;
-            /** Questions */
-            questions: Record<string, never>[] | null;
-            /** Sequence Number */
-            sequence_number: number;
-            /** Started At */
-            started_at: string | null;
-            /** Submitted At */
-            submitted_at: string | null;
             /**
              * Test Id
              * Format: uuid
@@ -1878,18 +1882,41 @@ export interface components {
              * Format: uuid
              */
             testee_id: string;
+            /** Assignment Id */
+            assignment_id: string | null;
+            origin: components["schemas"]["AttemptOrigin"];
+            /** Sequence Number */
+            sequence_number: number;
+            /** Started At */
+            started_at: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Paused */
+            paused: boolean;
+            /** Pauses Used */
+            pauses_used: number;
+            /** Pause Allowance */
+            pause_allowance: number;
+            /** Pause Seconds Remaining */
+            pause_seconds_remaining: number | null;
+            /** Pause Reason */
+            pause_reason?: string | null;
             /** Watermark */
             watermark: string | null;
+            /** Questions */
+            questions: Record<string, never>[] | null;
+            /** Q1 */
+            q1?: Record<string, never> | null;
         };
         /** AutosaveRequest */
         AutosaveRequest: {
-            /** Answer Payload */
-            answer_payload?: Record<string, never> | null;
             /**
              * Question Id
              * Format: uuid
              */
             question_id: string;
+            /** Answer Payload */
+            answer_payload?: Record<string, never> | null;
             /** Time Ms */
             time_ms?: number | null;
         };
@@ -1902,35 +1929,35 @@ export interface components {
          *     (default 20; inclusive boundary).
          */
         BandCalibrationState: {
-            /** Anchors Excluded */
-            anchors_excluded: number;
-            /** Anchors In Pool */
-            anchors_in_pool: number;
-            /** Band */
-            band: number;
-            /** N */
-            n: number;
             /**
              * Pill Id
              * Format: uuid
              */
             pill_id: string;
+            /** Band */
+            band: number;
+            /** N */
+            n: number;
             /**
              * State
              * @enum {string}
              */
             state: "preliminary" | "confident";
+            /** Anchors In Pool */
+            anchors_in_pool: number;
+            /** Anchors Excluded */
+            anchors_excluded: number;
         };
         /** BenchmarkNextResponse */
         BenchmarkNextResponse: {
-            /** Asked */
-            asked?: number | null;
             /** Done */
             done: boolean;
-            /** Question */
-            question?: Record<string, never> | null;
             /** Step */
             step?: number | null;
+            /** Asked */
+            asked?: number | null;
+            /** Question */
+            question?: Record<string, never> | null;
         };
         /**
          * BenchmarkScope
@@ -1962,28 +1989,28 @@ export interface components {
          *       time window".
          */
         BootstrapRunResult: {
-            /** Anchors Excluded */
-            anchors_excluded: number;
-            /** Anchors Generated */
-            anchors_generated: number;
-            /** Drive Files Added */
-            drive_files_added: number;
-            /** Drive Files Changed */
-            drive_files_changed: number;
-            /** Drive Files Deleted */
-            drive_files_deleted: number;
-            /** Drive Files Seen */
-            drive_files_seen: number;
-            /** Drive Step Ran */
-            drive_step_ran: boolean;
-            /** Duration Seconds */
-            duration_seconds: number;
             /** Pills Processed */
             pills_processed: number;
-            /** Safety Links Added */
-            safety_links_added: number;
+            /** Anchors Generated */
+            anchors_generated: number;
+            /** Anchors Excluded */
+            anchors_excluded: number;
             /** Safety Pills Curated */
             safety_pills_curated: number;
+            /** Safety Links Added */
+            safety_links_added: number;
+            /** Drive Step Ran */
+            drive_step_ran: boolean;
+            /** Drive Files Seen */
+            drive_files_seen: number;
+            /** Drive Files Changed */
+            drive_files_changed: number;
+            /** Drive Files Added */
+            drive_files_added: number;
+            /** Drive Files Deleted */
+            drive_files_deleted: number;
+            /** Duration Seconds */
+            duration_seconds: number;
         };
         /**
          * CalibrationSweepResult
@@ -1994,14 +2021,14 @@ export interface components {
         CalibrationSweepResult: {
             /** Anchors Processed */
             anchors_processed: number;
-            /** Anchors Skipped No Observations */
-            anchors_skipped_no_observations: number;
             /** Anchors Updated */
             anchors_updated: number;
-            /** Mean Effective Difficulty */
-            mean_effective_difficulty: number;
+            /** Anchors Skipped No Observations */
+            anchors_skipped_no_observations: number;
             /** Mean N */
             mean_n: number;
+            /** Mean Effective Difficulty */
+            mean_effective_difficulty: number;
         };
         /** CampaignLockRequest */
         CampaignLockRequest: {
@@ -2046,12 +2073,10 @@ export interface components {
          *       :func:`app.ai.cost.current_month_spend`'s OpenAI bucket.
          */
         DriveIngestResult: {
-            /** Chunks Added */
-            chunks_added: number;
-            /** Chunks Deleted */
-            chunks_deleted: number;
-            /** Embed Calls */
-            embed_calls: number;
+            /** Files Seen */
+            files_seen: number;
+            /** Files Unchanged */
+            files_unchanged: number;
             /** Files Added */
             files_added: number;
             /** Files Changed */
@@ -2060,37 +2085,20 @@ export interface components {
             files_deleted: number;
             /** Files Failed */
             files_failed: number;
-            /** Files Seen */
-            files_seen: number;
-            /** Files Unchanged */
-            files_unchanged: number;
+            /** Chunks Added */
+            chunks_added: number;
+            /** Chunks Deleted */
+            chunks_deleted: number;
+            /** Embed Calls */
+            embed_calls: number;
         };
         /** EngagementWidgetItem */
         EngagementWidgetItem: {
-            /** Assigner Name */
-            assigner_name: string;
             /**
              * Assignment Id
              * Format: uuid
              */
             assignment_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Days Stale */
-            days_stale: number;
-            /** Deadline */
-            deadline: string | null;
-            /** Escalated */
-            escalated: boolean;
-            /** Is Mandatory */
-            is_mandatory: boolean;
-            /** Pill Or Test Name */
-            pill_or_test_name: string;
-            /** Reminders Sent */
-            reminders_sent: number;
             /**
              * Testee Id
              * Format: uuid
@@ -2098,6 +2106,25 @@ export interface components {
             testee_id: string;
             /** Testee Name */
             testee_name: string;
+            /** Pill Or Test Name */
+            pill_or_test_name: string;
+            /** Assigner Name */
+            assigner_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deadline */
+            deadline: string | null;
+            /** Is Mandatory */
+            is_mandatory: boolean;
+            /** Days Stale */
+            days_stale: number;
+            /** Reminders Sent */
+            reminders_sent: number;
+            /** Escalated */
+            escalated: boolean;
         };
         /** EngagementWidgetResponse */
         EngagementWidgetResponse: {
@@ -2116,21 +2143,6 @@ export interface components {
              * Format: uuid
              */
             anchor_question_id: string;
-            /** Assigned Difficulty */
-            assigned_difficulty: number;
-            /** Band */
-            band: number;
-            /** Config */
-            config: Record<string, never>;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Excluded */
-            excluded: boolean;
-            /** Excluded Reason */
-            excluded_reason: string | null;
             /**
              * Pill Id
              * Format: uuid
@@ -2138,10 +2150,25 @@ export interface components {
             pill_id: string;
             /** Pill Name */
             pill_name: string;
-            /** Regeneration Attempts */
-            regeneration_attempts: number;
+            /** Band */
+            band: number;
             /** Type */
             type: string;
+            /** Config */
+            config: Record<string, never>;
+            /** Assigned Difficulty */
+            assigned_difficulty: number;
+            /** Regeneration Attempts */
+            regeneration_attempts: number;
+            /** Excluded */
+            excluded: boolean;
+            /** Excluded Reason */
+            excluded_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** FlaggedAnchorListResponse */
         FlaggedAnchorListResponse: {
@@ -2156,51 +2183,51 @@ export interface components {
          *     keep/accept/substitute decision is informed.
          */
         FlaggedGradeReviewItem: {
-            /** Ai Reasoning */
-            ai_reasoning: string | null;
-            /** Ai Score */
-            ai_score: number;
-            /** Ai Verdict */
-            ai_verdict: string;
             /**
-             * Attempt Id
+             * Grade Review Id
              * Format: uuid
              */
-            attempt_id: string;
-            /** Band */
-            band: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
+            grade_review_id: string;
             /**
              * Grade Id
              * Format: uuid
              */
             grade_id: string;
             /**
-             * Grade Review Id
+             * Attempt Id
              * Format: uuid
              */
-            grade_review_id: string;
-            /** Pill Name */
-            pill_name: string;
+            attempt_id: string;
             /**
              * Question Id
              * Format: uuid
              */
             question_id: string;
-            /** Question Prompt */
-            question_prompt: string;
-            /** Review Reasoning */
-            review_reasoning: string | null;
-            /** Rubric Extract */
-            rubric_extract: string;
             /** Testee Name */
             testee_name: string;
+            /** Pill Name */
+            pill_name: string;
+            /** Question Prompt */
+            question_prompt: string;
+            /** Rubric Extract */
+            rubric_extract: string;
             /** Testee Response */
             testee_response: string;
+            /** Band */
+            band: number;
+            /** Ai Score */
+            ai_score: number;
+            /** Ai Verdict */
+            ai_verdict: string;
+            /** Ai Reasoning */
+            ai_reasoning: string | null;
+            /** Review Reasoning */
+            review_reasoning: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** FlaggedGradeReviewListResponse */
         FlaggedGradeReviewListResponse: {
@@ -2216,12 +2243,12 @@ export interface components {
         GradeReviewReconcileResult: {
             /** Attempts Processed */
             attempts_processed: number;
-            /** Rows Auto Flagged */
-            rows_auto_flagged: number;
             /** Rows Confirmed */
             rows_confirmed: number;
             /** Rows Flagged */
             rows_flagged: number;
+            /** Rows Auto Flagged */
+            rows_auto_flagged: number;
             /** Rows Still Pending */
             rows_still_pending: number;
         };
@@ -2246,12 +2273,12 @@ export interface components {
              * @enum {string}
              */
             action: "keep_ai" | "accept_reviewer" | "substitute";
-            /** Reasoning */
-            reasoning?: string | null;
             /** Score */
             score?: number | null;
             /** Verdict */
             verdict?: ("full" | "partial" | "none") | null;
+            /** Reasoning */
+            reasoning?: string | null;
         };
         /**
          * GradeReviewResolveResult
@@ -2261,38 +2288,38 @@ export interface components {
          *     round-trip.
          */
         GradeReviewResolveResult: {
-            /** Action */
-            action: string;
             /**
-             * Attempt Id
+             * Grade Review Id
              * Format: uuid
              */
-            attempt_id: string;
-            /** Attempt Outcome */
-            attempt_outcome: string | null;
-            /** Attempt Overall Score */
-            attempt_overall_score: number | null;
+            grade_review_id: string;
             /**
              * Grade Id
              * Format: uuid
              */
             grade_id: string;
             /**
-             * Grade Review Id
+             * Attempt Id
              * Format: uuid
              */
-            grade_review_id: string;
+            attempt_id: string;
+            /** Action */
+            action: string;
             /** Grade Score */
             grade_score: number;
             /** Grade Verdict */
             grade_verdict: string;
+            /** Attempt Overall Score */
+            attempt_overall_score: number | null;
+            /** Attempt Outcome */
+            attempt_outcome: string | null;
         };
         /** GroupCreate */
         GroupCreate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
         };
         /** GroupMemberRequest */
         GroupMemberRequest: {
@@ -2305,23 +2332,23 @@ export interface components {
         /** GroupResponse */
         GroupResponse: {
             /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string | null;
-            /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
             /** Is System */
             is_system: boolean;
             /** Member Ids */
             member_ids: string[];
-            /** Name */
-            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2330,10 +2357,10 @@ export interface components {
         };
         /** GroupUpdate */
         GroupUpdate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name?: string | null;
+            /** Description */
+            description?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2352,15 +2379,6 @@ export interface components {
          *     :class:`~app.models.LearningMaterial.source` enum branch.
          */
         LearningMaterialResponse: {
-            /** Cached */
-            cached: boolean;
-            /** Content */
-            content: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
             /**
              * Id
              * Format: uuid
@@ -2371,44 +2389,53 @@ export interface components {
              * Format: uuid
              */
             pill_id: string;
+            /** Source */
+            source: string;
+            /** Content */
+            content: string | null;
             /** Safety Links */
             safety_links?: components["schemas"]["SafetyLinkResponse"][] | null;
             /** Served At */
             served_at: string | null;
-            /** Source */
-            source: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cached */
+            cached: boolean;
         };
         /** LearningPathCreate */
         LearningPathCreate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
             /** Pill Ids */
             pill_ids?: string[];
         };
         /** LearningPathResponse */
         LearningPathResponse: {
             /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string | null;
-            /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Is Private */
-            is_private: boolean;
             /** Name */
             name: string;
+            /** Description */
+            description: string | null;
+            /** Is Private */
+            is_private: boolean;
             /** Owner User Id */
             owner_user_id: string | null;
             /** Pill Ids */
             pill_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2417,10 +2444,10 @@ export interface components {
         };
         /** LearningPathUpdate */
         LearningPathUpdate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name?: string | null;
+            /** Description */
+            description?: string | null;
             /** Pill Ids */
             pill_ids?: string[] | null;
         };
@@ -2434,15 +2461,15 @@ export interface components {
         /** LogoutResponse */
         LogoutResponse: {
             /**
-             * Action
-             * @default discard_tokens
-             */
-            action: string;
-            /**
              * Status
              * @default ok
              */
             status: string;
+            /**
+             * Action
+             * @default discard_tokens
+             */
+            action: string;
         };
         /**
          * LoopApproveResult
@@ -2452,13 +2479,13 @@ export interface components {
          *     round-trip.
          */
         LoopApproveResult: {
-            /** Follow Up Count */
-            follow_up_count: number;
             /**
              * Weakness Report Id
              * Format: uuid
              */
             weakness_report_id: string;
+            /** Follow Up Count */
+            follow_up_count: number;
         };
         /**
          * LoopMode
@@ -2475,38 +2502,15 @@ export interface components {
          */
         LoopQueueItem: {
             /**
+             * Weakness Report Id
+             * Format: uuid
+             */
+            weakness_report_id: string;
+            /**
              * Attempt Id
              * Format: uuid
              */
             attempt_id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Iteration */
-            iteration: string;
-            /** Last Attempt At */
-            last_attempt_at: string | null;
-            /**
-             * Loop Mode
-             * @enum {string}
-             */
-            loop_mode: "autonomous" | "admin_reviewed";
-            /** Overall Score */
-            overall_score: number | null;
-            /**
-             * Pill Id
-             * Format: uuid
-             */
-            pill_id: string;
-            /** Pill Name */
-            pill_name: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "review" | "queued" | "step-down" | "material-served" | "closed";
             /**
              * Testee Id
              * Format: uuid
@@ -2514,13 +2518,36 @@ export interface components {
             testee_id: string;
             /** Testee Name */
             testee_name: string;
+            /**
+             * Pill Id
+             * Format: uuid
+             */
+            pill_id: string;
+            /** Pill Name */
+            pill_name: string;
+            /** Overall Score */
+            overall_score: number | null;
             /** Weak Pill Ids */
             weak_pill_ids: string[];
             /**
-             * Weakness Report Id
-             * Format: uuid
+             * Loop Mode
+             * @enum {string}
              */
-            weakness_report_id: string;
+            loop_mode: "autonomous" | "admin_reviewed";
+            /** Iteration */
+            iteration: string;
+            /** Last Attempt At */
+            last_attempt_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "review" | "queued" | "step-down" | "material-served" | "closed";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** LoopQueueListResponse */
         LoopQueueListResponse: {
@@ -2557,12 +2584,26 @@ export interface components {
         /** MeCompetencePill */
         MeCompetencePill: {
             /**
+             * Pill Id
+             * Format: uuid
+             */
+            pill_id: string;
+            /** Pill Name */
+            pill_name: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Competence Estimate */
+            competence_estimate: number | null;
+            /**
              * Band
              * @enum {string}
              */
             band: "novice" | "junior" | "working" | "advanced" | "expert";
-            /** Competence Estimate */
-            competence_estimate: number | null;
+            /** N */
+            n: number;
             /**
              * Confidence
              * @enum {string}
@@ -2570,24 +2611,10 @@ export interface components {
             confidence: "preliminary" | "confident";
             /** Last Activity At */
             last_activity_at: string | null;
-            /** N */
-            n: number;
-            /**
-             * Pill Id
-             * Format: uuid
-             */
-            pill_id: string;
-            /** Pill Name */
-            pill_name: string;
             /** Related Pill Ids */
             related_pill_ids: string[];
             /** Safety Relevant */
             safety_relevant: boolean;
-            /**
-             * Subject Id
-             * Format: uuid
-             */
-            subject_id: string;
         };
         /** MeCompetenceResponse */
         MeCompetenceResponse: {
@@ -2669,10 +2696,10 @@ export interface components {
         };
         /** PasswordResetConsumeRequest */
         PasswordResetConsumeRequest: {
-            /** New Password */
-            new_password: string;
             /** Token */
             token: string;
+            /** New Password */
+            new_password: string;
         };
         /** PasswordResetRequest */
         PasswordResetRequest: {
@@ -2681,12 +2708,19 @@ export interface components {
         };
         /** PillCreate */
         PillCreate: {
-            /** Available Difficulty Max */
-            available_difficulty_max: number;
-            /** Available Difficulty Min */
-            available_difficulty_min: number;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /** Name */
+            name: string;
             /** Description */
             description?: string | null;
+            /** Available Difficulty Min */
+            available_difficulty_min: number;
+            /** Available Difficulty Max */
+            available_difficulty_max: number;
             /**
              * Discoverable
              * @default true
@@ -2694,66 +2728,59 @@ export interface components {
             discoverable: boolean;
             /** Estimated Minutes */
             estimated_minutes?: number | null;
-            /** Name */
-            name: string;
-            /**
-             * Subject Id
-             * Format: uuid
-             */
-            subject_id: string;
         };
         /** PillProposalResponse */
         PillProposalResponse: {
             /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Payload */
-            payload: Record<string, never> | null;
             /** Status */
             status: string;
+            /** Payload */
+            payload: Record<string, never> | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** PillResponse */
         PillResponse: {
-            /** Available Difficulty Max */
-            available_difficulty_max: number;
-            /** Available Difficulty Min */
-            available_difficulty_min: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string | null;
-            /** Discoverable */
-            discoverable: boolean;
-            /** Estimated Minutes */
-            estimated_minutes: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
-            /** Retired At */
-            retired_at: string | null;
-            /** Safety Relevant */
-            safety_relevant: boolean;
-            /** Safety Relevant Overridden At */
-            safety_relevant_overridden_at: string | null;
             /**
              * Subject Id
              * Format: uuid
              */
             subject_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Available Difficulty Min */
+            available_difficulty_min: number;
+            /** Available Difficulty Max */
+            available_difficulty_max: number;
+            /** Discoverable */
+            discoverable: boolean;
+            /** Safety Relevant */
+            safety_relevant: boolean;
+            /** Safety Relevant Overridden At */
+            safety_relevant_overridden_at: string | null;
+            /** Estimated Minutes */
+            estimated_minutes: number | null;
+            /** Retired At */
+            retired_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2767,67 +2794,67 @@ export interface components {
         };
         /** PillUpdate */
         PillUpdate: {
-            /** Available Difficulty Max */
-            available_difficulty_max?: number | null;
-            /** Available Difficulty Min */
-            available_difficulty_min?: number | null;
+            /** Name */
+            name?: string | null;
             /** Description */
             description?: string | null;
+            /** Available Difficulty Min */
+            available_difficulty_min?: number | null;
+            /** Available Difficulty Max */
+            available_difficulty_max?: number | null;
             /** Discoverable */
             discoverable?: boolean | null;
             /** Estimated Minutes */
             estimated_minutes?: number | null;
-            /** Name */
-            name?: string | null;
         };
         /** PrivacyAckResponse */
         PrivacyAckResponse: {
-            /**
-             * Privacy Ack At
-             * Format: date-time
-             */
-            privacy_ack_at: string;
             /**
              * Status
              * @default ok
              */
             status: string;
+            /**
+             * Privacy Ack At
+             * Format: date-time
+             */
+            privacy_ack_at: string;
         };
         /** QuestionCreate */
         QuestionCreate: {
-            /** Assigned Difficulty */
-            assigned_difficulty: number;
+            type: components["schemas"]["QuestionType"];
             /** Config */
             config: Record<string, never>;
+            /** Assigned Difficulty */
+            assigned_difficulty: number;
             /** Question Group Id */
             question_group_id?: string | null;
-            type: components["schemas"]["QuestionType"];
         };
         /** QuestionResponse */
         QuestionResponse: {
-            /** Assigned Difficulty */
-            assigned_difficulty: number;
-            /** Config */
-            config: Record<string, never>;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Question Group Id */
-            question_group_id: string | null;
-            /** Reference Image Caption */
-            reference_image_caption?: string | null;
-            /** Reference Image Url */
-            reference_image_url?: string | null;
             /** Test Id */
             test_id: string | null;
             type: components["schemas"]["QuestionType"];
+            /** Config */
+            config: Record<string, never>;
+            /** Assigned Difficulty */
+            assigned_difficulty: number;
+            /** Question Group Id */
+            question_group_id: string | null;
+            /** Reference Image Url */
+            reference_image_url?: string | null;
+            /** Reference Image Caption */
+            reference_image_caption?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2841,10 +2868,10 @@ export interface components {
         QuestionType: "multiple_choice" | "true_false" | "matching" | "short_answer" | "scenario";
         /** QuestionUpdate */
         QuestionUpdate: {
-            /** Assigned Difficulty */
-            assigned_difficulty?: number | null;
             /** Config */
             config?: Record<string, never> | null;
+            /** Assigned Difficulty */
+            assigned_difficulty?: number | null;
             /** Question Group Id */
             question_group_id?: string | null;
         };
@@ -2855,14 +2882,14 @@ export interface components {
          *     nightly run.
          */
         RealismAggregationResult: {
-            /** Anchor Questions Seen */
-            anchor_questions_seen: number;
-            /** Anchors Excluded */
-            anchors_excluded: number;
             /** Flags Processed */
             flags_processed: number;
             /** Questions Updated */
             questions_updated: number;
+            /** Anchors Excluded */
+            anchors_excluded: number;
+            /** Anchor Questions Seen */
+            anchor_questions_seen: number;
         };
         /**
          * RealismFlagResult
@@ -2873,23 +2900,23 @@ export interface components {
          *     second call and returns the existing row).
          */
         RealismFlagResult: {
-            /** Created */
-            created: boolean;
-            /**
-             * Question Id
-             * Format: uuid
-             */
-            question_id: string;
             /**
              * Realism Flag Id
              * Format: uuid
              */
             realism_flag_id: string;
             /**
+             * Question Id
+             * Format: uuid
+             */
+            question_id: string;
+            /**
              * Testee Id
              * Format: uuid
              */
             testee_id: string;
+            /** Created */
+            created: boolean;
         };
         /**
          * RealismStatusResponse
@@ -2903,14 +2930,14 @@ export interface components {
          *     ``realism_flag`` directly. No new persistence layer (zero migration).
          */
         RealismStatusResponse: {
-            /** Auto Suppressed Count */
-            auto_suppressed_count: number;
-            /** Below Threshold Count */
-            below_threshold_count: number;
-            /** Flags Processed Last Run */
-            flags_processed_last_run: number;
             /** Last Aggregated At */
             last_aggregated_at: string | null;
+            /** Flags Processed Last Run */
+            flags_processed_last_run: number;
+            /** Below Threshold Count */
+            below_threshold_count: number;
+            /** Auto Suppressed Count */
+            auto_suppressed_count: number;
             /** Total Flag Count Active */
             total_flag_count_active: number;
         };
@@ -2918,6 +2945,13 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** RuntimeConfigResponse */
+        RuntimeConfigResponse: {
+            /** Api Base Url */
+            api_base_url: string;
+            /** App Env */
+            app_env: string;
         };
         /**
          * SafetyLinkCheckResult
@@ -2936,10 +2970,10 @@ export interface components {
          *       matching content_hash.
          */
         SafetyLinkCheckResult: {
-            /** Links Broken Replaced */
-            links_broken_replaced: number;
             /** Links Checked */
             links_checked: number;
+            /** Links Broken Replaced */
+            links_broken_replaced: number;
             /** Links Drift Flagged */
             links_drift_flagged: number;
             /** Links Unchanged */
@@ -2947,21 +2981,21 @@ export interface components {
         };
         /** SafetyLinkResponse */
         SafetyLinkResponse: {
-            /** Last Verified At */
-            last_verified_at: string | null;
-            /** Source */
-            source: string | null;
-            /** Title */
-            title: string | null;
             /** Url */
             url: string;
+            /** Title */
+            title: string | null;
+            /** Source */
+            source: string | null;
+            /** Last Verified At */
+            last_verified_at: string | null;
         };
         /** SetupConsumeRequest */
         SetupConsumeRequest: {
-            /** New Password */
-            new_password: string;
             /** Token */
             token: string;
+            /** New Password */
+            new_password: string;
         };
         /** SetupPreviewResponse */
         SetupPreviewResponse: {
@@ -2970,20 +3004,13 @@ export interface components {
         };
         /** SubjectCreate */
         SubjectCreate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name: string;
+            /** Description */
+            description?: string | null;
         };
         /** SubjectResponse */
         SubjectResponse: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Description */
-            description: string | null;
             /**
              * Id
              * Format: uuid
@@ -2991,6 +3018,13 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -2999,67 +3033,67 @@ export interface components {
         };
         /** SubjectUpdate */
         SubjectUpdate: {
-            /** Description */
-            description?: string | null;
             /** Name */
             name?: string | null;
+            /** Description */
+            description?: string | null;
         };
         /** SweepResult */
         SweepResult: {
-            /** Assignments Processed */
-            assignments_processed: number;
-            /** Duration Ms */
-            duration_ms: number;
+            /** Reminders Sent */
+            reminders_sent: number;
             /** Escalations Sent */
             escalations_sent: number;
             /** First Reminders Sent */
             first_reminders_sent: number;
+            /** Second Reminders Sent */
+            second_reminders_sent: number;
+            /** Assignments Processed */
+            assignments_processed: number;
+            /** Duration Ms */
+            duration_ms: number;
             /**
              * Last Swept At
              * Format: date-time
              */
             last_swept_at: string;
-            /** Reminders Sent */
-            reminders_sent: number;
-            /** Second Reminders Sent */
-            second_reminders_sent: number;
         };
         /** TestCreate */
         TestCreate: {
-            benchmark_scope?: components["schemas"]["BenchmarkScope"] | null;
-            /** Benchmark Target Testee Id */
-            benchmark_target_testee_id?: string | null;
-            /** Duration Minutes */
-            duration_minutes?: number | null;
-            /**
-             * Max Pause Duration Minutes
-             * @default 30
-             */
-            max_pause_duration_minutes: number;
-            mode: components["schemas"]["TestMode"];
             /** Name */
             name: string;
-            /** Pass Threshold */
-            pass_threshold?: number | null;
-            /** Pause Allowance */
-            pause_allowance?: number | null;
-            /** Pill Id */
-            pill_id?: string | null;
-            /** Randomise Option Order */
-            randomise_option_order?: boolean | null;
-            /** Randomise Question Order */
-            randomise_question_order?: boolean | null;
-            /** Target Difficulty */
-            target_difficulty?: number | null;
+            mode: components["schemas"]["TestMode"];
+            /** @default library */
+            visibility: components["schemas"]["TestVisibility"];
             /**
              * Timed
              * @default false
              */
             timed: boolean;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Pause Allowance */
+            pause_allowance?: number | null;
             /** @default auto_submit */
             timeout_behaviour: components["schemas"]["TimeoutBehaviour"];
-            /** @default library */
-            visibility: components["schemas"]["TestVisibility"];
+            /**
+             * Max Pause Duration Minutes
+             * @default 30
+             */
+            max_pause_duration_minutes: number;
+            /** Pass Threshold */
+            pass_threshold?: number | null;
+            /** Target Difficulty */
+            target_difficulty?: number | null;
+            /** Randomise Question Order */
+            randomise_question_order?: boolean | null;
+            /** Randomise Option Order */
+            randomise_option_order?: boolean | null;
+            benchmark_scope?: components["schemas"]["BenchmarkScope"] | null;
+            /** Benchmark Target Testee Id */
+            benchmark_target_testee_id?: string | null;
+            /** Pill Id */
+            pill_id?: string | null;
         };
         /**
          * TestMode
@@ -3076,52 +3110,52 @@ export interface components {
         };
         /** TestResponse */
         TestResponse: {
-            benchmark_scope: components["schemas"]["BenchmarkScope"] | null;
-            /** Benchmark Target Testee Id */
-            benchmark_target_testee_id: string | null;
-            /** Campaign Id */
-            campaign_id: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Duration Minutes */
-            duration_minutes: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Lock Mode */
-            lock_mode: string;
-            /** Max Pause Duration Minutes */
-            max_pause_duration_minutes: number;
-            mode: components["schemas"]["TestMode"];
             /** Name */
             name: string;
-            /** Pass Threshold */
-            pass_threshold: number | null;
-            /** Pause Allowance */
-            pause_allowance: number | null;
-            /** Pill Id */
-            pill_id?: string | null;
-            /** Randomise Option Order */
-            randomise_option_order: boolean;
-            /** Randomise Question Order */
-            randomise_question_order: boolean;
+            mode: components["schemas"]["TestMode"];
             status: components["schemas"]["TestStatus"];
-            /** Target Difficulty */
-            target_difficulty: number | null;
+            visibility: components["schemas"]["TestVisibility"];
             /** Timed */
             timed: boolean;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /** Pause Allowance */
+            pause_allowance: number | null;
             timeout_behaviour: components["schemas"]["TimeoutBehaviour"];
+            /** Max Pause Duration Minutes */
+            max_pause_duration_minutes: number;
+            /** Pass Threshold */
+            pass_threshold: number | null;
+            /** Target Difficulty */
+            target_difficulty: number | null;
+            /** Lock Mode */
+            lock_mode: string;
+            /** Campaign Id */
+            campaign_id: string | null;
+            /** Randomise Question Order */
+            randomise_question_order: boolean;
+            /** Randomise Option Order */
+            randomise_option_order: boolean;
+            benchmark_scope: components["schemas"]["BenchmarkScope"] | null;
+            /** Benchmark Target Testee Id */
+            benchmark_target_testee_id: string | null;
+            /** Pill Id */
+            pill_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
-            visibility: components["schemas"]["TestVisibility"];
         };
         /**
          * TestStatus
@@ -3130,28 +3164,28 @@ export interface components {
         TestStatus: "draft" | "published";
         /** TestUpdate */
         TestUpdate: {
-            /** Duration Minutes */
-            duration_minutes?: number | null;
-            /** Max Pause Duration Minutes */
-            max_pause_duration_minutes?: number | null;
             /** Name */
             name?: string | null;
-            /** Pass Threshold */
-            pass_threshold?: number | null;
-            /** Pause Allowance */
-            pause_allowance?: number | null;
-            /** Pill Id */
-            pill_id?: string | null;
-            /** Randomise Option Order */
-            randomise_option_order?: boolean | null;
-            /** Randomise Question Order */
-            randomise_question_order?: boolean | null;
-            /** Target Difficulty */
-            target_difficulty?: number | null;
+            visibility?: components["schemas"]["TestVisibility"] | null;
             /** Timed */
             timed?: boolean | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Pause Allowance */
+            pause_allowance?: number | null;
             timeout_behaviour?: components["schemas"]["TimeoutBehaviour"] | null;
-            visibility?: components["schemas"]["TestVisibility"] | null;
+            /** Max Pause Duration Minutes */
+            max_pause_duration_minutes?: number | null;
+            /** Pass Threshold */
+            pass_threshold?: number | null;
+            /** Target Difficulty */
+            target_difficulty?: number | null;
+            /** Randomise Question Order */
+            randomise_question_order?: boolean | null;
+            /** Randomise Option Order */
+            randomise_option_order?: boolean | null;
+            /** Pill Id */
+            pill_id?: string | null;
         };
         /**
          * TestVisibility
@@ -3178,24 +3212,24 @@ export interface components {
         /** UserResponse */
         UserResponse: {
             /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Email */
-            email: string;
-            /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Email */
+            email: string;
             /** Name */
             name: string;
-            /** Privacy Ack At */
-            privacy_ack_at: string | null;
             /** Role */
             role: string;
             status: components["schemas"]["UserStatus"];
+            /** Privacy Ack At */
+            privacy_ack_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * UserStatus
@@ -3271,7 +3305,243 @@ export interface operations {
             };
         };
     };
-    anchors_flagged_v1_admin_anchors_flagged_get: {
+    runtime_config_v1_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeConfigResponse"];
+                };
+            };
+        };
+    };
+    login_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenPair"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_v1_auth_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessToken"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutResponse"];
+                };
+            };
+        };
+    };
+    setup_consume_v1_auth_setup_consume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupConsumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_preview_v1_auth_setup__token__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    password_reset_request_v1_auth_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    password_reset_consume_v1_auth_password_reset_consume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConsumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    privacy_acknowledge_v1_auth_privacy_acknowledge_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3288,7 +3558,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FlaggedAnchorListResponse"];
+                    "application/json": components["schemas"]["PrivacyAckResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3302,115 +3572,157 @@ export interface operations {
             };
         };
     };
-    anchors_resolve_v1_admin_anchors__anchor_id__resolve_post: {
+    me_v1_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_v1_users_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                role?: string | null;
+                status?: components["schemas"]["UserStatus"] | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UserResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_create_user_v1_users_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_v1_users__user_id__get: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path: {
-                anchor_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_v1_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AnchorResolveRequest"];
+                "application/json": components["schemas"]["UserUpdate"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AnchorResolveResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_run_v1_admin_bootstrap_run_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BootstrapRunResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    calibration_run_v1_admin_calibration_run_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CalibrationSweepResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cost_summary_v1_admin_cost_summary_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3418,7 +3730,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["UserResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3432,208 +3744,219 @@ export interface operations {
             };
         };
     };
-    drive_index_v1_admin_drive_index_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DriveIndexStatus"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    drive_ingest_v1_admin_drive_ingest_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DriveIngestResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    engagement_pending_v1_admin_engagement_pending_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EngagementWidgetResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    engagement_sweep_v1_admin_engagement_sweep_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SweepResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    grade_reviews_flagged_v1_admin_grade_reviews_flagged_get: {
-        parameters: {
-            query?: {
-                verdict?: "flagged" | "confirmed" | "all";
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FlaggedGradeReviewListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    grade_reviews_reconcile_v1_admin_grade_reviews_reconcile_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GradeReviewReconcileResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    grade_review_resolve_v1_admin_grade_reviews__grade_review_id__resolve_post: {
+    deactivate_user_v1_users__user_id__deactivate_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path: {
-                grade_review_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_user_v1_users__user_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_subjects_v1_subjects_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SubjectResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_subject_v1_subjects_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_subject_v1_subjects__subject_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_subject_v1_subjects__subject_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                subject_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subject_v1_subjects__subject_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                subject_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GradeReviewResolveRequest"];
+                "application/json": components["schemas"]["SubjectUpdate"];
             };
         };
         responses: {
@@ -3643,7 +3966,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradeReviewResolveResult"];
+                    "application/json": components["schemas"]["SubjectResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3657,10 +3980,11 @@ export interface operations {
             };
         };
     };
-    loop_queue_v1_admin_loop_queue_get: {
+    list_pills_v1_pills_get: {
         parameters: {
             query?: {
-                status?: ("review" | "queued" | "step-down" | "material-served" | "closed") | null;
+                cursor?: string | null;
+                limit?: number;
             };
             header?: {
                 authorization?: string | null;
@@ -3676,7 +4000,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoopQueueListResponse"];
+                    "application/json": components["schemas"]["Page_PillResponse_"];
                 };
             };
             /** @description Validation Error */
@@ -3690,53 +4014,18 @@ export interface operations {
             };
         };
     };
-    loop_queue_approve_v1_admin_loop_queue__weakness_report_id__approve_post: {
+    create_pill_v1_pills_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path: {
-                weakness_report_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoopApproveResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                weakness_report_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["LoopRejectRequest"] | null;
+                "application/json": components["schemas"]["PillCreate"];
             };
         };
         responses: {
@@ -3746,7 +4035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoopRejectResult"];
+                    "application/json": components["schemas"]["PillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3760,7 +4049,7 @@ export interface operations {
             };
         };
     };
-    anchors_generate_v1_admin_pills__pill_id__anchors_generate_post: {
+    get_pill_v1_pills__pill_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -3774,12 +4063,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AnchorBootstrapResult"];
+                    "application/json": components["schemas"]["PillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3793,24 +4082,61 @@ export interface operations {
             };
         };
     };
-    realism_aggregate_v1_admin_realism_aggregate_post: {
+    delete_pill_v1_pills__pill_id__delete: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path?: never;
+            path: {
+                pill_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RealismAggregationResult"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pill_v1_pills__pill_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PillUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3824,9 +4150,120 @@ export interface operations {
             };
         };
     };
-    realism_status_endpoint_v1_admin_realism_status_get: {
+    retire_pill_v1_pills__pill_id__retire_post: {
         parameters: {
             query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_pill_safety_v1_pills__pill_id__safety_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PillSafetyOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_pill_learning_material_v1_pills__pill_id__learning_material_post: {
+        parameters: {
+            query?: {
+                regenerate?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningMaterialResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_pills_v1_catalogue_pills_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                subject_id?: string | null;
+                difficulty?: number | null;
+                search?: string | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -3841,7 +4278,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RealismStatusResponse"];
+                    "application/json": components["schemas"]["Page_PillResponse_"];
                 };
             };
             /** @description Validation Error */
@@ -3855,13 +4292,117 @@ export interface operations {
             };
         };
     };
-    safety_links_check_v1_admin_safety_links_check_post: {
+    get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pill_proposals_v1_pill_proposals_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PillProposalResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_pill_proposal_v1_pill_proposals_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PillCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillProposalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_pill_proposal_v1_pill_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3872,7 +4413,900 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SafetyLinkCheckResult"];
+                    "application/json": components["schemas"]["PillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_pill_proposal_v1_pill_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: {
+                reason?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PillProposalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_paths_v1_learning_paths_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_LearningPathResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_path_v1_learning_paths_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningPathCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningPathResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_path_v1_learning_paths__path_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                path_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningPathResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_path_v1_learning_paths__path_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                path_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_path_v1_learning_paths__path_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                path_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningPathUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningPathResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_groups_v1_groups_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_GroupResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_v1_groups_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_group_v1_groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_v1_groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_group_v1_groups__group_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_member_v1_groups__group_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_v1_groups__group_id__members__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tests_v1_tests_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_TestResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_test_v1_tests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_test_v1_tests_resolve_get: {
+        parameters: {
+            query: {
+                pill_id: string;
+                difficulty: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResolveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_test_v1_tests__test_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_test_v1_tests__test_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_test_v1_tests__test_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_test_v1_tests__test_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lock_campaign_v1_tests__test_id__lock_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignLockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlock_campaign_v1_tests__test_id__unlock_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_questions_v1_tests__test_id__questions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_QuestionResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_question_v1_tests__test_id__questions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_question_v1_tests__test_id__questions__question_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+                question_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_question_v1_tests__test_id__questions__question_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                test_id: string;
+                question_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4161,7 +5595,7 @@ export interface operations {
             };
         };
     };
-    attempt_export_pdf_v1_attempts__attempt_id__export_pdf_get: {
+    pause_attempt_v1_attempts__attempt_id__pause_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4180,7 +5614,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_attempt_v1_attempts__attempt_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4227,7 +5698,7 @@ export interface operations {
             };
         };
     };
-    pause_attempt_v1_attempts__attempt_id__pause_post: {
+    submit_attempt_v1_attempts__attempt_id__submit_post: {
         parameters: {
             query?: never;
             header?: {
@@ -4246,43 +5717,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    flag_realism_v1_attempts__attempt_id__questions__question_id__flag_realism_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                attempt_id: string;
-                question_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RealismFlagResult"];
+                    "application/json": components["schemas"]["AttemptView"];
                 };
             };
             /** @description Validation Error */
@@ -4329,7 +5764,7 @@ export interface operations {
             };
         };
     };
-    resume_attempt_v1_attempts__attempt_id__resume_post: {
+    attempt_export_pdf_v1_attempts__attempt_id__export_pdf_get: {
         parameters: {
             query?: never;
             header?: {
@@ -4348,9 +5783,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -4400,49 +5833,146 @@ export interface operations {
             };
         };
     };
-    submit_attempt_v1_attempts__attempt_id__submit_post: {
+    engagement_sweep_v1_admin_engagement_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    engagement_pending_v1_admin_engagement_pending_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngagementWidgetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_reviews_reconcile_v1_admin_grade_reviews_reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradeReviewReconcileResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_reviews_flagged_v1_admin_grade_reviews_flagged_get: {
+        parameters: {
+            query?: {
+                verdict?: "flagged" | "confirmed" | "all";
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlaggedGradeReviewListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    grade_review_resolve_v1_admin_grade_reviews__grade_review_id__resolve_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path: {
-                attempt_id: string;
+                grade_review_id: string;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AttemptView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    login_v1_auth_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LoginRequest"];
+                "application/json": components["schemas"]["GradeReviewResolveRequest"];
             };
         };
         responses: {
@@ -4452,7 +5982,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TokenPair"];
+                    "application/json": components["schemas"]["GradeReviewResolveResult"];
                 };
             };
             /** @description Validation Error */
@@ -4466,29 +5996,11 @@ export interface operations {
             };
         };
     };
-    logout_v1_auth_logout_post: {
+    loop_queue_v1_admin_loop_queue_get: {
         parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LogoutResponse"];
-                };
+            query?: {
+                status?: ("review" | "queued" | "step-down" | "material-served" | "closed") | null;
             };
-        };
-    };
-    me_v1_auth_me_get: {
-        parameters: {
-            query?: never;
             header?: {
                 authorization?: string | null;
             };
@@ -4503,7 +6015,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserResponse"];
+                    "application/json": components["schemas"]["LoopQueueListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4517,176 +6029,147 @@ export interface operations {
             };
         };
     };
-    password_reset_consume_v1_auth_password_reset_consume_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordResetConsumeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    password_reset_request_v1_auth_password_reset_request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordResetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    privacy_acknowledge_v1_auth_privacy_acknowledge_post: {
+    loop_queue_approve_v1_admin_loop_queue__weakness_report_id__approve_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PrivacyAckResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_v1_auth_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccessToken"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    setup_consume_v1_auth_setup_consume_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetupConsumeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    setup_preview_v1_auth_setup__token__preview_get: {
-        parameters: {
-            query?: never;
-            header?: never;
             path: {
-                token: string;
+                weakness_report_id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopApproveResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anchors_generate_v1_admin_pills__pill_id__anchors_generate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorBootstrapResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    loop_queue_reject_v1_admin_loop_queue__weakness_report_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                weakness_report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LoopRejectRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoopRejectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calibration_run_v1_admin_calibration_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationSweepResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anchors_flagged_v1_admin_anchors_flagged_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -4697,7 +6180,168 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SetupPreviewResponse"];
+                    "application/json": components["schemas"]["FlaggedAnchorListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anchors_resolve_v1_admin_anchors__anchor_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                anchor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnchorResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnchorResolveResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_run_v1_admin_bootstrap_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BootstrapRunResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    safety_links_check_v1_admin_safety_links_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafetyLinkCheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_competence_v1_me_competence_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeCompetenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cost_summary_v1_admin_cost_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
                 };
             };
             /** @description Validation Error */
@@ -4745,596 +6389,13 @@ export interface operations {
             };
         };
     };
-    discover_pills_v1_catalogue_pills_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-                subject_id?: string | null;
-                difficulty?: number | null;
-                search?: string | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_PillResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_discoverable_pill_detail_v1_catalogue_pills__pill_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_groups_v1_groups_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_GroupResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_group_v1_groups_post: {
+    drive_ingest_v1_admin_drive_ingest_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GroupCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GroupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_group_v1_groups__group_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GroupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_group_v1_groups__group_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_group_v1_groups__group_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GroupUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GroupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_member_v1_groups__group_id__members_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GroupMemberRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GroupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_member_v1_groups__group_id__members__user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GroupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_paths_v1_learning_paths_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_LearningPathResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_path_v1_learning_paths_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LearningPathCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningPathResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_path_v1_learning_paths__path_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                path_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningPathResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_path_v1_learning_paths__path_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                path_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_path_v1_learning_paths__path_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                path_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LearningPathUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningPathResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_my_competence_v1_me_competence_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MeCompetenceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_pill_proposals_v1_pill_proposals_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_PillProposalResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_pill_proposal_v1_pill_proposals_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PillCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillProposalResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    approve_pill_proposal_v1_pill_proposals__proposal_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                proposal_id: string;
-            };
             cookie?: never;
         };
         requestBody?: never;
@@ -5345,7 +6406,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PillResponse"];
+                    "application/json": components["schemas"]["DriveIngestResult"];
                 };
             };
             /** @description Validation Error */
@@ -5359,838 +6420,14 @@ export interface operations {
             };
         };
     };
-    reject_pill_proposal_v1_pill_proposals__proposal_id__reject_post: {
-        parameters: {
-            query?: {
-                reason?: string | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillProposalResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_pills_v1_pills_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_PillResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_pill_v1_pills_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PillCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_pill_v1_pills__pill_id__get: {
+    flag_realism_v1_attempts__attempt_id__questions__question_id__flag_realism_post: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
             path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_pill_v1_pills__pill_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_pill_v1_pills__pill_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PillUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    request_pill_learning_material_v1_pills__pill_id__learning_material_post: {
-        parameters: {
-            query?: {
-                regenerate?: boolean;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningMaterialResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retire_pill_v1_pills__pill_id__retire_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    override_pill_safety_v1_pills__pill_id__safety_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                pill_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PillSafetyOverride"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PillResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_subjects_v1_subjects_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_SubjectResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_subject_v1_subjects_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubjectCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_subject_v1_subjects__subject_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                subject_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_subject_v1_subjects__subject_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                subject_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_subject_v1_subjects__subject_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                subject_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SubjectUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SubjectResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_tests_v1_tests_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_TestResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_test_v1_tests_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resolve_test_v1_tests_resolve_get: {
-        parameters: {
-            query: {
-                pill_id: string;
-                difficulty: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResolveResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_test_v1_tests__test_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_test_v1_tests__test_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_test_v1_tests__test_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    lock_campaign_v1_tests__test_id__lock_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CampaignLockRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    publish_test_v1_tests__test_id__publish_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_questions_v1_tests__test_id__questions_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_QuestionResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_question_v1_tests__test_id__questions_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QuestionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QuestionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_question_v1_tests__test_id__questions__question_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
+                attempt_id: string;
                 question_id: string;
             };
             cookie?: never;
@@ -6198,48 +6435,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_question_v1_tests__test_id__questions__question_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-                question_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QuestionUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QuestionResponse"];
+                    "application/json": components["schemas"]["RealismFlagResult"];
                 };
             };
             /** @description Validation Error */
@@ -6253,76 +6454,7 @@ export interface operations {
             };
         };
     };
-    unlock_campaign_v1_tests__test_id__unlock_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                test_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_users_v1_users_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-                role?: string | null;
-                status?: components["schemas"]["UserStatus"] | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Page_UserResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    admin_create_user_v1_users_post: {
+    realism_aggregate_v1_admin_realism_aggregate_post: {
         parameters: {
             query?: never;
             header?: {
@@ -6331,11 +6463,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminCreateUserRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             201: {
@@ -6343,7 +6471,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserResponse"];
+                    "application/json": components["schemas"]["RealismAggregationResult"];
                 };
             };
             /** @description Validation Error */
@@ -6357,15 +6485,13 @@ export interface operations {
             };
         };
     };
-    get_user_v1_users__user_id__get: {
+    realism_status_endpoint_v1_admin_realism_status_get: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path: {
-                user_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -6376,7 +6502,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserResponse"];
+                    "application/json": components["schemas"]["RealismStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6390,52 +6516,13 @@ export interface operations {
             };
         };
     };
-    update_user_v1_users__user_id__patch: {
+    drive_index_v1_admin_drive_index_get: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    deactivate_user_v1_users__user_id__deactivate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                user_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -6446,40 +6533,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reactivate_user_v1_users__user_id__reactivate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserResponse"];
+                    "application/json": components["schemas"]["DriveIndexStatus"];
                 };
             };
             /** @description Validation Error */

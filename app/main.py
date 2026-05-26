@@ -30,6 +30,7 @@ from app.routers import (
     tests,
     users,
 )
+from app.schemas import RuntimeConfigResponse
 
 
 def create_app() -> FastAPI:
@@ -57,6 +58,22 @@ def create_app() -> FastAPI:
         when the AI/worker path is wired.
         """
         return {"status": "ready"}
+
+    @app.get("/v1/config", tags=["meta"])
+    async def runtime_config() -> RuntimeConfigResponse:
+        """Public runtime config probe — no auth required.
+
+        Returns the values direct API consumers (mobile, third-party,
+        documentation) need to talk to this deployment. The Acumen
+        frontend has its own same-origin /api/config that reads its
+        container env at runtime, so frontend boot does not depend on
+        this endpoint; this is the canonical source of truth for
+        anyone else.
+        """
+        return RuntimeConfigResponse(
+            api_base_url=settings.app_public_url,
+            app_env=settings.app_env,
+        )
 
     # P2 — auth & user management (CODE_SPEC §3). The error-envelope
     # handler and these two routers are the standalone-auth surface;

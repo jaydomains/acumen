@@ -76,6 +76,15 @@ class LogoutResponse(_Base):
     action: str = "discard_tokens"
 
 
+class RuntimeConfigResponse(_Base):
+    # Public runtime config probe. Evolution is additive-only — old
+    # clients tolerate new fields, but renames/removals are a contract
+    # break. Snake_case to match repo convention; the frontend converts
+    # at the boundary.
+    api_base_url: str
+    app_env: str
+
+
 class SetupConsumeRequest(_Base):
     token: str
     new_password: Password

@@ -151,9 +151,8 @@ describe("FE-1 auth round-trip", () => {
     // generic name). Persists the un-ack'd stubUser into the MSW
     // module's mockSignedInAs.
     const { http, HttpResponse } = await import("msw");
-    const { config } = await import("@/lib/config");
     server.use(
-      http.post(`${config.apiBaseUrl}/v1/auth/login`, () => {
+      http.post(`http://localhost:8000/v1/auth/login`, () => {
         setMockUser({ ...stubUser, privacy_ack_at: null });
         return HttpResponse.json({
           access_token: "rt-access",

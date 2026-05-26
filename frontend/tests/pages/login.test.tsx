@@ -20,7 +20,6 @@ import { Suspense } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { config } from "@/lib/config";
 import { server } from "@/mocks/node";
 import { setMockUser } from "@/mocks/handlers";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
@@ -45,7 +44,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const API = config.apiBaseUrl;
+const API = "http://localhost:8000"; // MSW fallback; matches src/lib/config MSW_FALLBACK_CONFIG
 
 const ackedUser: UserResponse = {
   id: "00000000-0000-0000-0000-000000000010",

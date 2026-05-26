@@ -19,7 +19,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { config } from "@/lib/config";
 import { server } from "@/mocks/node";
 import { setMockUser } from "@/mocks/handlers";
 import { setAccessToken, setRefreshToken, clearTokens } from "@/lib/auth/storage";
@@ -52,7 +51,7 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const API = config.apiBaseUrl;
+const API = "http://localhost:8000"; // MSW fallback; matches src/lib/config MSW_FALLBACK_CONFIG
 
 const unackedUser: UserResponse = {
   id: "00000000-0000-0000-0000-000000000020",

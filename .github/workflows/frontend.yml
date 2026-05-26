@@ -10,8 +10,6 @@ jobs:
     defaults:
       run:
         working-directory: frontend
-    env:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -39,5 +37,21 @@ jobs:
         run: pnpm typecheck
       - name: Vitest
         run: pnpm test --run
-      - name: Next.js build
+      - name: Next.js build (no NEXT_PUBLIC_* injected)
+        # Runtime config (backend URL etc.) is fetched at boot via
+        # /api/config — so `pnpm build` must succeed without any
+        # NEXT_PUBLIC_API_BASE_URL in the env. This step catches any
+        # future regression that re-introduces a module-load read of
+        # build-time env (AC-CD19).
         run: pnpm build
+
+  docker-build:
+    # Faithful reproduction of the production image build: no
+    # NEXT_PUBLIC_* envs are passed. Slower than the `checks` job's
+    # `pnpm build` but exercises the full Dockerfile (deps → builder
+    # → runner stages) so Dockerfile-specific regressions are caught.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build frontend Docker image
+        run: docker build -f frontend/Dockerfile frontend/

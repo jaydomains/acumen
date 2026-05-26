@@ -15,6 +15,9 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # ---- builder: compile the Next.js app -------------------------------
+# No NEXT_PUBLIC_* envs are injected here. Runtime config (e.g. the
+# backend URL) is fetched at boot via /api/config so the same image
+# can be deployed against any backend without a rebuild (multi-tenant).
 FROM node:22-slim AS builder
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
