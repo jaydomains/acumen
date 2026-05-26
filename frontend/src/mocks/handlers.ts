@@ -137,6 +137,27 @@ export const setupConsumeHandler = http.post(`${API}/v1/auth/setup/consume`, () 
   HttpResponse.json({ status: "ok" }),
 );
 
+/**
+ * Privacy acknowledge handler (Slice D, §B.5).
+ *
+ * Returns the canonical {privacy_ack_at, status} shape. If a mock
+ * user is currently signed in, mutates its privacy_ack_at in lock-
+ * step so subsequent /v1/auth/me requests reflect the ack — keeps
+ * the round-trip integration test (Slice E) coherent without a
+ * separate scenario preset.
+ */
+
+export const privacyAcknowledgeHandler = http.post(
+  `${API}/v1/auth/privacy/acknowledge`,
+  () => {
+    const ackedAt = "2026-05-26T09:30:00Z";
+    if (mockSignedInAs) {
+      mockSignedInAs = { ...mockSignedInAs, privacy_ack_at: ackedAt };
+    }
+    return HttpResponse.json({ privacy_ack_at: ackedAt, status: "ok" });
+  },
+);
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -145,4 +166,5 @@ export const handlers = [
   passwordResetConsumeHandler,
   setupPreviewHandler,
   setupConsumeHandler,
+  privacyAcknowledgeHandler,
 ];

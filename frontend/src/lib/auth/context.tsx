@@ -56,6 +56,14 @@ type AuthContextValue = {
    * route off of.
    */
   refreshMe: () => Promise<boolean>;
+  /**
+   * Patch the in-context user's `privacy_ack_at` without re-pulling
+   * `/v1/auth/me`. The privacy-ack flow already knows the new value
+   * from the acknowledge response; this lets the page flip the user
+   * to "ack'd" eagerly so the next Gate render allows the dashboard.
+   * No-op when there is no current user.
+   */
+  setUserPrivacyAck: (ackedAt: string) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -136,6 +144,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setStatus("unauthenticated");
   }, []);
 
+  const setUserPrivacyAck = useCallback((ackedAt: string): void => {
+    setUser((u) => (u ? { ...u, privacy_ack_at: ackedAt } : u));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -144,8 +156,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       role: narrowRole(user?.role),
       logout,
       refreshMe,
+      setUserPrivacyAck,
     }),
-    [user, status, logout, refreshMe],
+    [user, status, logout, refreshMe, setUserPrivacyAck],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

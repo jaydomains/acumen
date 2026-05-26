@@ -15,8 +15,10 @@
  *  - "authed"  → (authed)/layout.tsx: authed surfaces. Unauth →
  *                /login?next=, un-ack'd → /privacy. Role-gating is
  *                added by FE-2's RequireAuth.
- *  - "privacy" → privacy/layout.tsx: bypass subgate. Authed users
- *                render (ack'd or not); unauth → /login.
+ *  - "privacy" → privacy/layout.tsx: bypass subgate. Authed un-ack'd
+ *                users render the page; unauth → /login; authed AND
+ *                ack'd → role dashboard (so /privacy isn't a leak path
+ *                back to the legal copy after acknowledgement).
  *
  * `RequireAuth` is a placeholder for FE-2's role-gated wrapper.
  */
@@ -86,6 +88,13 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
     if (posture === "privacy") {
       if (status === "unauthenticated") {
         router.replace("/login");
+        return;
+      }
+      // Already-ack'd users shouldn't see the privacy gate; bounce
+      // them to the role dashboard so /privacy isn't a leak path
+      // back to the legal copy. Per spec §B.5.6 scenario 4.
+      if (privacy_ack_at !== null) {
+        router.replace(dashboardPathFor(role));
       }
       return;
     }
@@ -106,7 +115,9 @@ export const useAuthRedirect = (posture: GuardPosture): GuardResult => {
     if (posture === "guest") {
       allow = false;
     } else if (posture === "privacy") {
-      allow = true;
+      // The privacy gate is the ONLY route an un-ack'd user can hit;
+      // ack'd users get redirected away above.
+      allow = privacy_ack_at === null;
     } else {
       allow = privacy_ack_at !== null;
     }

@@ -155,6 +155,43 @@ describe("useAuthRedirect", () => {
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockReplace.mock.calls[0]?.[0]).not.toBe("");
   });
+
+  // Privacy posture: bypass subgate. The only authed route an
+  // un-ack'd user can hit; ack'd users get bounced away so the
+  // /privacy page can't be a leak path back to the legal copy.
+
+  it("allows authenticated un-ack'd users on the privacy posture", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: null,
+      role: "testee",
+    });
+    const { result } = renderHook(() => useAuthRedirect("privacy"));
+    expect(result.current.allow).toBe(true);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("redirects authenticated ack'd users away from /privacy to the role dashboard", () => {
+    mockUseAuth.mockReturnValue({
+      status: "authenticated",
+      privacy_ack_at: "2026-01-01T00:00:00Z",
+      role: "testee",
+    });
+    const { result } = renderHook(() => useAuthRedirect("privacy"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith("/");
+  });
+
+  it("redirects unauthenticated visitors away from /privacy to /login", () => {
+    mockUseAuth.mockReturnValue({
+      status: "unauthenticated",
+      privacy_ack_at: null,
+      role: null,
+    });
+    const { result } = renderHook(() => useAuthRedirect("privacy"));
+    expect(result.current.allow).toBe(false);
+    expect(mockReplace).toHaveBeenCalledWith("/login");
+  });
 });
 
 describe("isSafeRedirectPath", () => {
