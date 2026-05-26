@@ -37,7 +37,12 @@ import { Gate } from "@/lib/auth/guards";
 import SetupAccountPage from "@/app/(auth)/setup/[token]/page";
 import LoginPage from "@/app/(auth)/login/page";
 import PrivacyPage from "@/app/privacy/page";
-import HomePage from "@/app/(authed)/page";
+// FE-2 relocated the dashboard from (authed)/page.tsx to
+// (authed)/(testee)/page.tsx (URL stays "/" — both groups are
+// parenthesised). The page body is now an empty PageHeader; the
+// email/role/privacy-ack inline display that FE-1 used as a
+// placeholder is no longer rendered.
+import HomePage from "@/app/(authed)/(testee)/page";
 import type { UserResponse } from "@/lib/api/types";
 
 const mockReplace = vi.fn();
@@ -201,11 +206,14 @@ describe("FE-1 auth round-trip", () => {
 
     // Wait for the AuthProvider to settle so the welcome heading reads
     // the resolved user name rather than the loading-state fallback.
+    // FE-2's dashboard is an empty PageHeader; the body only shows
+    // "Welcome, {name}" + the empty-state subtitle. Email/role meta
+    // moves to FE-3's real dashboard.
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
         new RegExp(NAME, "i"),
       );
     });
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
+    expect(screen.getByText(/you have no assignments yet/i)).toBeInTheDocument();
   });
 });

@@ -576,12 +576,16 @@ frontend/src/app/
     reset/[token]/page.tsx
     setup/[token]/page.tsx
   (authed)/
-    layout.tsx              # authed-group guard — privacy-ack subgate, with /privacy bypass (see below)
-    privacy/page.tsx        # SPECIAL — bypasses the privacy-ack subgate
+    layout.tsx              # authed-group guard — privacy-ack subgate (see below)
+    page.tsx                # dashboard at `/`
+  privacy/                  # SPECIAL — lives outside (authed) to break the
+    layout.tsx              # recursive-redirect trap (authed routes redirect
+    page.tsx                # un-ack'd users to /privacy). Posture handled by
+                            # `Gate posture="privacy"` inside page.tsx.
   403/page.tsx              # role-mismatch landing
 ```
 
-Per AC-CD20, `(auth)/` hosts unauthenticated surfaces only; `(authed)/` hosts any post-auth surface that is not role-specific, including `/privacy`. Route groups (parenthesised folders) do not affect URL paths.
+Per AC-CD20, `(auth)/` hosts unauthenticated surfaces only; `(authed)/` hosts any post-auth surface that requires an authenticated, privacy-ack'd session. `/privacy` is the lone exception: it must render for an authed-but-un-ack'd user, so placing it inside `(authed)/` would create a redirect loop (the layout sends un-ack'd users to `/privacy`, which would then re-enter the layout). It lives as a root-level group with its own `Gate posture="privacy"` instead. Route groups (parenthesised folders) do not affect URL paths.
 
 **The five postures (evaluated in order):**
 
@@ -594,9 +598,10 @@ Per AC-CD20, `(auth)/` hosts unauthenticated surfaces only; `(authed)/` hosts an
 | 5 | Authed, ack'd, role-matched | Redirect → `/` | Redirect → `/` | Render |
 
 **Implementation:**
-- `(auth)/layout.tsx` enforces postures 1, 2, 5 for the unauth-set pages (`/login`, `/forgot`, `/reset/*`, `/setup/*`): renders for posture 2, redirects to `/` for posture 5.
-- `(authed)/layout.tsx` enforces postures 1, 2, 3 for the authed surfaces (including `/privacy`): redirects to `/login` for posture 2, redirects to `/privacy` for posture 3 — **except** `/privacy` itself, which bypasses the privacy-ack subgate via a route-group exception so the unacked user can actually render and acknowledge.
-- `frontend/src/lib/auth/guards.tsx` exports a `<RequireAuth>` wrapper used by future role-gated layouts (FE-2 adds `(testee)`/`(admin)` route groups).
+- `(auth)/layout.tsx` enforces postures 1, 2, 5 for the unauth-set pages (`/login`, `/forgot`, `/reset/*`, `/setup/*`): renders for posture 2, redirects to `/` for posture 5. Uses `Gate posture="guest"`.
+- `(authed)/layout.tsx` enforces postures 1, 2, 3 for the authed surfaces: redirects to `/login` for posture 2, redirects to `/privacy` for posture 3, renders children for posture 5. Uses `Gate posture="authed"`.
+- `privacy/page.tsx` carries its own `Gate posture="privacy"` (moved from the layout in Slice D so the post-decline "You've been signed out" terminal view can render after logout). The privacy gate inverts the ack check: it renders only for authed-but-un-ack'd users; ack'd users get redirected to the role dashboard so `/privacy` isn't a leak path back to the legal copy. `privacy/layout.tsx` provides the `Suspense` boundary required by the page's `useSearchParams()` call.
+- `frontend/src/lib/auth/guards.tsx` exports the shared `<Gate>` component, `useAuthRedirect` hook, and a `<RequireAuth>` wrapper that future role-gated layouts compose with (FE-2 adds `(testee)`/`(admin)` route groups).
 - For FE-1, role-mismatch (posture 4) only needs `/403` to exist — no role-gated routes ship in FE-1. Guard plumbing is wired against an empty allow-list; `/403` ships with placeholder copy.
 - **Post-login resolver:** after `POST /v1/auth/login`, page calls `unwrap(client.GET("/v1/auth/me"))` to seed auth context fresh, then routes per matrix (posture 3 vs 5).
 
