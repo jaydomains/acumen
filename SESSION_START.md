@@ -208,6 +208,15 @@ declares binding pauses). Three conventions govern the loop:
   slice closes cleanly (commit, push, handover entry if at PR
   close); the next slice does not start. Treated as a binding
   instruction with the same gravity as a session-opener flag.
+- **(d) Polling is the source of truth between slices.** After
+  every push, actively poll — `gh pr checks --watch` blocks until
+  all checks complete, then `gh pr reviews` confirms Gitar's
+  approval. Both green → next slice starts immediately, no user
+  prompt. Final slice closes with `gh pr merge --squash
+  --delete-branch`. Webhook events / passive PR subscription are
+  not sufficient: delivery is best-effort and can silently drop,
+  so the loop never relies on them. The polling commands above
+  are the contract.
 
 These conventions sit next to the structural-additions carve-out
 above: both codify when the otherwise-default cadence yields to
