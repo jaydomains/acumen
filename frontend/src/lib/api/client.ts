@@ -71,24 +71,29 @@ const rewriteUrl = (rawUrl: string): string =>
  * the original request once with the new token.
  *
  * openapi-fetch constructs a `Request` with the placeholder baseUrl
- * (Request requires an absolute URL at construction time, which the
- * runtime URL is not available for yet at module load). We rebuild
- * the Request here with the resolved runtime URL before delegating
- * to the real fetch.
+ * (Request requires an absolute URL at construction time, and the
+ * runtime URL is not available yet at module load). We rebuild the
+ * Request here with the resolved runtime URL before delegating to
+ * the real fetch.
+ *
+ * The body is buffered into an ArrayBuffer up front so the 401 retry
+ * can replay it. `Request.body` is a `ReadableStream` — single-use —
+ * so reusing it for the retry would send an empty body on every
+ * authenticated mutation (silent: server rejects with 422).
  */
 const authRetryFetch: typeof fetch = async (input, init) => {
   const incomingRequest = input instanceof Request ? input : new Request(input, init);
   const targetUrl = rewriteUrl(incomingRequest.url);
+  const bodyBytes = incomingRequest.body
+    ? await new Response(incomingRequest.body).arrayBuffer()
+    : null;
 
   const issue = async (token: string | null): Promise<Response> =>
     fetch(
       new Request(targetUrl, {
         method: incomingRequest.method,
         headers: buildHeaders({ headers: incomingRequest.headers }, token),
-        body: incomingRequest.body,
-        // Stream body needs `duplex: "half"` in undici; the cast keeps
-        // TS happy since the option is not in the lib.dom RequestInit.
-        ...({ duplex: "half" } as RequestInit),
+        body: bodyBytes,
         credentials: incomingRequest.credentials,
         cache: incomingRequest.cache,
         redirect: incomingRequest.redirect,
