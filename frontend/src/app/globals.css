@@ -1,20 +1,272 @@
+/* ============================================================
+   Acumen — design tokens + base styles
+   Themes: paper (default), carbon (opt-in via TopBar toggle)
+   Type:   DM Sans (sans), Quicksand (serif), JetBrains Mono (mono)
+   Anchor: AC-CD23 (post-amendment — bare token names, @theme aliases).
+   ============================================================ */
+
 @import "tailwindcss";
 
-@theme {
-  --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
+/* ----- paper theme (default + first-visit) ----- */
+:root,
+[data-theme="paper"] {
+  --bg: #f3efe7;
+  --bg-sunk: #ece7dc;
+  --bg-raised: #faf7f0;
+  --bg-deep: #e4ddcc;
+  --ink: #1a1814;
+  --ink-2: #4a463e;
+  --ink-3: #7a7468;
+  --ink-4: #a8a193;
+  --line: #d6cfbe;
+  --line-strong: #b9b09c;
+  --accent: #b8743a;
+  --accent-soft: #ecd8bd;
+  --accent-ink: #5f3a1c;
+  --ok: #5a7a4a;
+  --ok-soft: #d5e0c7;
+  --warn: #b15a2c;
+  --warn-soft: #ecc9aa;
+  --danger: #97352a;
+  --danger-soft: #ecc3bc;
+  --info: #3d5e7a;
+  --info-soft: #c7d4e0;
+
+  --band-novice: #a8a193;
+  --band-junior: #c2956b;
+  --band-working: #b8743a;
+  --band-advanced: #6e8f5b;
+  --band-expert: #2f5d63;
+
+  --r-1: 0;
+  --r-2: 0;
+  --r-3: 0;
+  --r-4: 0;
+
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 1px 2px rgba(40, 30, 15, 0.06);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 24px rgba(40, 30, 15, 0.1);
+  --shadow-3: 0 1px 0 rgba(255, 255, 255, 0.65) inset, 0 18px 50px rgba(40, 30, 15, 0.18);
+
+  /* `--acumen-font-*` is injected by next/font/google in app/layout.tsx;
+     fall through to the design family name, then to a system stack. */
+  --font-sans: var(--acumen-font-sans, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--acumen-font-serif, "Quicksand"), "DM Sans", ui-sans-serif,
+    system-ui, sans-serif;
+  --font-mono: var(--acumen-font-mono, "JetBrains Mono"), ui-monospace, SFMono-Regular,
+    monospace;
+
+  color-scheme: light;
 }
 
+/* ----- carbon theme (opt-in via TopBar toggle, localStorage-persisted) ----- */
+[data-theme="carbon"] {
+  --bg: #262624;
+  --bg-sunk: #1f1e1c;
+  --bg-raised: #30302d;
+  --bg-deep: #1a1917;
+  --ink: #f5f0e8;
+  --ink-2: #c5beb1;
+  --ink-3: #8a8479;
+  --ink-4: #57534c;
+  --line: #3a3835;
+  --line-strong: #4f4c47;
+  --accent: #d97757;
+  --accent-soft: rgba(217, 119, 87, 0.16);
+  --accent-ink: #e89a7e;
+  --ok: #a8c490;
+  --ok-soft: rgba(168, 196, 144, 0.14);
+  --warn: #d99a55;
+  --warn-soft: rgba(217, 154, 85, 0.14);
+  --danger: #d27668;
+  --danger-soft: rgba(210, 118, 104, 0.14);
+  --info: #8aa9c4;
+  --info-soft: rgba(138, 169, 196, 0.14);
+
+  --band-novice: #6e6a62;
+  --band-junior: #c4956a;
+  --band-working: #d97757;
+  --band-advanced: #a8c490;
+  --band-expert: #7fc0c8;
+
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 6px 24px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 50px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+/* Steel theme intentionally not ported (§H decision 4 — dropped from v1
+   and v1.x). The bootstrap script in app/layout.tsx filters any stored
+   value other than "paper" / "carbon". */
+
+/* ============================================================
+   Tailwind v4 @theme — exposes bare tokens as utility-generating
+   --color-* / --radius-* aliases. Component code references the
+   utilities (`bg-bg`, `text-ink`, `border-line`, `text-band-working`,
+   `bg-accent-soft`, …); no literal hex anywhere outside this file.
+   ============================================================ */
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-sunk: var(--bg-sunk);
+  --color-bg-raised: var(--bg-raised);
+  --color-bg-deep: var(--bg-deep);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-band-novice: var(--band-novice);
+  --color-band-junior: var(--band-junior);
+  --color-band-working: var(--band-working);
+  --color-band-advanced: var(--band-advanced);
+  --color-band-expert: var(--band-expert);
+
+  /* Hard-corner discipline — every Tailwind radius utility resolves to 0.
+     Belt-and-braces with Slice 2's shadcn post-install sweep. */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+}
+
+/* ============================================================
+   Body reset
+   ============================================================ */
+* {
+  box-sizing: border-box;
+}
+html,
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
+  margin: 0;
+  padding: 0;
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* ============================================================
+   Typography classes — class-driven because the design's
+   typography is a small fixed vocabulary. `.serif-it` is
+   intentionally non-italic per the v5/v6 no-italic decision
+   (see `01-v5-noitalic.png` / `02-v5-noitalic.png`).
+   ============================================================ */
+.serif {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+.serif-it {
+  font-family: var(--font-serif);
+  font-style: normal;
+  font-weight: 500;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "ss01", "zero", "cv01";
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.h-display {
+  font-family: var(--font-serif);
+  font-size: 52px;
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+}
+.h-1 {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+  margin: 0 0 4px;
+  padding-bottom: 4px;
+}
+.h-2 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  line-height: 1.22;
+  letter-spacing: -0.014em;
+  font-weight: 600;
+  margin: 0;
+}
+.h-3 {
+  font-size: 17px;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+  margin: 0;
+}
+.h-4 {
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.t-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.t-fig {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
 }
