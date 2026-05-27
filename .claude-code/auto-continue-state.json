@@ -5,8 +5,9 @@
     {
       "id": "slice-1-replace-gh-pr-checks-watch-and-add-state-file",
       "status": "open",
-      "prNumber": null,
-      "fixRounds": 0
+      "prNumber": 62,
+      "fixRounds": 1,
+      "lastFinding": "Gitar PR #62: chain-state bootstrap committed with `slices[0].prNumber: null` (the file was authored before the PR existed). Set to 62 in this fold-in so a resuming session can poll the correct PR via convention (d). fixRounds incremented to 1 — the (b) circuit-breaker arms at 3."
     }
   ],
   "currentIndex": 0,
