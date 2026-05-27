@@ -1,6 +1,6 @@
 # FE-7 — Testee competence profile + history (detail spec)
 
-> **Status:** plan-mode authored, ready for build session (subject to §H (a) blockers — the two backend spec-clarification PRs for `GET /v1/me/competence` and `GET /v1/attempts` must merge on `main` before the FE-7 build session opens, per `FE_ROADMAP.md:149–154`; FE-1..FE-6 builds must also land first).
+> **Status:** build phase (PR-NNN). §H (a) blockers resolved on `main` ahead of build open — `GET /v1/me/competence` and `GET /v1/attempts` both live with the locked contracts amended in-PR (see §H (c) for the LOCK-1 / LOCK-2 / LOCK-3 / LOCK-4 / Finding-10 resolutions surfaced by the FE-7 drift sweep). FE-1..FE-6 builds shipped in roadmap order.
 > **Owns:** the testee competency profile surface (`(testee)/profile/page.tsx`) — constellation SVG with selected-pill detail card, matrix-view toggle, client-side sparkline, legend, view-toggle, "how to read this" sidebar — and the testee attempt history table (`(testee)/history/page.tsx`).
 > **PR target:** `PR-NNN-fe7-profile` (one squash PR closes the build phase per FE_ROADMAP discipline). **This doc PR is its own slice** (current session).
 > **Anchors:** AC-D3 (sequence_number scope per Testee per Test — backs the matrix-view toggle's per-pill × per-difficulty grid + history table ordering), AC-D6 (adaptive learning loop — history table surfaces `loop-driven` origin lineage), AC-D9 (`competence_estimate` float 1.0–10.0 with named band display per pill; `null` = "no data yet"), AC-D20 (anchor-based calibration `preliminary→confident` qualifier — surfaced at every scale point: constellation pip ring length, matrix cell density, detail-card stat, history-row band), AC-D27 (server-side Bayesian anchor calibration mathematics — referenced as the source of the `confidence` enum and the `competence_estimate` float; FE-7 surfaces the outputs, never recomputes them), AC-CD19 (FE stack lock — Next.js 15 / TanStack Query v5 / `openapi-fetch` + `unwrap()` + typed client), AC-CD20 (routing + role guards — both profile and history are `(testee)`-only; no admin variant in FE-7 scope), AC-CD21 (centralised query keys — consumes `meQueryKeys.competence()` and `meQueryKeys.attempts()` declared in FE-3 unchanged), AC-CD23 (token discipline — band colours, confidence-ring opacity, hard corners), AC-CD24 (image-field typed stubs — history table renders no figure thumbnails in v1).
@@ -134,7 +134,7 @@ The selected-pill deep link via `?pill={pillId}` query state is declared on row 
 
 No third endpoint. The constellation does NOT call a separate "related pills" endpoint — `related_pill_ids[]` is inlined on the competence response per §H (a) item 2 contract. The sparkline does NOT call a separate time-series endpoint — derived client-side per the done-when verbatim.
 
-**Locked contract for `GET /v1/me/competence`** (spec body source-of-truth; the spec-clarification PR satisfies this contract verbatim — duplicated in §H (a) item 2 for the user authoring the upstream PR):
+**Locked contract for `GET /v1/me/competence`** (build-time confirmed against the live wire; §H (c) records the LOCK-2 + LOCK-3 + Finding-10 backend amendments shipped in-PR):
 
 ```ts
 GET /v1/me/competence → {
@@ -142,11 +142,11 @@ GET /v1/me/competence → {
     pill_id: string,
     pill_name: string,
     subject_id: string,
-    competence_estimate: number,                // AC-D9 float 1.0–10.0; null only when n === 0
+    competence_estimate: number,                // AC-D9 float 1.0–10.0; non-nullable — null rows are filtered server-side per LOCK-2
     band: "novice" | "junior" | "working" | "advanced" | "expert",
-    n: number,                                   // attempt count, AC-D20 threshold input
+    n: number,                                   // submitted-attempt count per pill (LOCK-3 — derived from Attempt table)
     confidence: "preliminary" | "confident",     // AC-D20 server-computed from n vs threshold
-    last_activity_at: string | null,             // ISO datetime; null when n === 0
+    last_activity_at: string | null,             // ISO datetime; null when no profile activity stamp yet
     related_pill_ids: string[],                  // for constellation edges; empty array if none
     safety_relevant: boolean                     // AC-D21; threads to safety-mark + safety pill
   }>
@@ -167,14 +167,17 @@ const competence = useQuery({
 });
 
 const attempts = useQuery({
-  queryKey: meQueryKeys.attempts(),
+  queryKey: [...meQueryKeys.attempts(), { limit: 200 }],
   queryFn: () => unwrap(client.GET("/v1/attempts", { params: { query: { limit: 200 } } })),
   // 200-row cap for sparkline derivation (covers ~6 months of typical activity); pagination not exercised on /profile.
-  // History page (B.2) uses useInfiniteQuery against the same key family but a different sub-key.
+  // History page (B.2) uses useInfiniteQuery against the same key root with a {cursor,limit:50} sub-key, so the two
+  // page-shapes don't collide in cache.
 });
 
 const sparklineValues = useMemo(
-  () => deriveSparkline(attempts.data?.attempts ?? [], selectedId),
+  // LOCK-1 — GET /v1/attempts ships under the canonical Page<T> envelope per CODE_SPEC §5;
+  // the rows live at `.data`, not `.attempts`.
+  () => deriveSparkline(attempts.data?.data ?? [], selectedId),
   [attempts.data, selectedId]
 );
 ```
@@ -364,25 +367,25 @@ Scenario: Initial fetch failure — Pattern C boundary
 |---|---|---|
 | `GET /v1/attempts` | Primary fetch. Cursor-paginated list of the testee's own attempts. Consumed by `HistoryTable` via `useInfiniteQuery`. Shared cache with `/profile`'s sparkline derivation; if user navigates `/profile → /history`, the first page is already cached. | **ABSENT — §H (a) item 3 blocker.** Endpoint does not exist; only `POST /v1/attempts` exists in `frontend/openapi/schema.json:4873`. Page renders the `endpoint_absent` state per E.3 until the spec-clarification PR merges. |
 
-**Locked contract for `GET /v1/attempts`** (own-scope; admin-scope variant lives in FE-9 territory):
+**Locked contract for `GET /v1/attempts`** (own-scope; admin-scope variant lives in FE-9 territory). LOCK-1 — ships under the canonical `Page<T>` envelope per CODE_SPEC §5; LOCK-4 — `origin` carries the live wire enum values:
 
 ```ts
 GET /v1/attempts?cursor=<opaque>&limit=50 → {
-  attempts: Array<{
+  data: Array<{
     attempt_id: string,
     pill_id: string,
     pill_name: string,
     submitted_at: string,                              // ISO datetime
     score_percent: number,                              // 0..100
     band: "novice" | "junior" | "working" | "advanced" | "expert",
-    origin: "self" | "assignment" | "loop",            // per AC-D6 + AC-D26 origin enum
+    origin: "self_initiated" | "assignment_driven" | "loop_driven",  // AC-D6 + AC-D26 long-form enum (LOCK-4)
     competence_delta: number | null                     // null on first attempt for the pill
   }>,
-  next_cursor: string | null                            // null when no more pages
+  meta: { next_cursor: string | null }                  // null when no more pages
 }
 ```
 
-Backend default `limit: 50` matches FE-3's catalogue precedent (`fe-specs/FE-3-content.md:636`). The endpoint is testee-scoped — the authed user receives only their own attempts. Admin-scope (`/v1/attempts?testee_id=...&...`) is FE-9 territory and not part of FE-7's spec-clarification PR.
+Backend default `limit: 50` matches FE-3's catalogue precedent (`fe-specs/FE-3-content.md:636`). The endpoint is testee-scoped — the authed user receives only their own attempts. Admin-scope (`/v1/attempts?testee_id=...&...`) is FE-9 territory and not part of FE-7's scope.
 
 **4. Form fields + zod + rhf**
 
@@ -390,16 +393,18 @@ n/a — read-only page. **TanStack Query notes:**
 
 ```ts
 const attempts = useInfiniteQuery({
-  queryKey: meQueryKeys.attempts(),
+  queryKey: [...meQueryKeys.attempts(), { limit: 50 }],
   queryFn: ({ pageParam }) => unwrap(client.GET("/v1/attempts", {
     params: { query: { cursor: pageParam, limit: 50 } }
   })),
-  initialPageParam: undefined,
-  getNextPageParam: (last) => last.next_cursor,
+  initialPageParam: undefined as string | undefined,
+  // LOCK-1 — canonical Page<T> envelope, cursor at meta.next_cursor; `?? undefined` so TanStack
+  // treats null-cursor as "no more pages" rather than retrying with literal null.
+  getNextPageParam: (last) => last.meta.next_cursor ?? undefined,
 });
 
 const flatRows = useMemo(
-  () => attempts.data?.pages.flatMap(p => p.attempts) ?? [],
+  () => attempts.data?.pages.flatMap(p => p.data) ?? [],
   [attempts.data]
 );
 ```
@@ -417,9 +422,9 @@ Sentinel pattern per FE-3 §C.5: `IntersectionObserver` on a div at the end of t
 | `happy_paginated` | User scrolls to sentinel → `fetchNextPage` fires → second page loads | Additional rows append below the first page; sentinel re-appears at the new end (or hides if `next_cursor === null`). |
 | `happy_no_more_pages` | Response has `next_cursor === null` | Table renders; sentinel hidden; no "Load more" affordance. |
 | `loading_more` | `isFetchingNextPage === true` | Sentinel renders a small "Loading…" spinner; existing rows unchanged. |
-| `row_origin_self` | Per row: `origin === "self"` | Origin chip renders "self" mono. |
-| `row_origin_assignment` | Per row: `origin === "assignment"` | Origin chip renders "assignment" mono. |
-| `row_origin_loop` | Per row: `origin === "loop"` | Origin chip renders "loop" mono. |
+| `row_origin_self_initiated` | Per row: `origin === "self_initiated"` | Origin chip renders "self_initiated" mono (LOCK-4 — live wire enum). |
+| `row_origin_assignment_driven` | Per row: `origin === "assignment_driven"` | Origin chip renders "assignment_driven" mono. |
+| `row_origin_loop_driven` | Per row: `origin === "loop_driven"` | Origin chip renders "loop_driven" mono. |
 | `row_delta_positive` | Per row: `competence_delta > 0` | Δcomp renders "+0.4" in `var(--ok)`. |
 | `row_delta_negative` | Per row: `competence_delta < 0` | Δcomp renders "-0.5" in `var(--danger)`. |
 | `row_delta_first_attempt` | Per row: `competence_delta === null` | Δcomp renders "—" in `var(--ink-dim)` (first attempt for the pill — no prior baseline per AC-D9 `null = no data yet` rule). |
@@ -495,9 +500,11 @@ Scenario: Admin hits testee history URL — 403
 - **Relative-age formatting reuse.** `format-relative.ts` from FE-6 §C.3 (`frontend/src/lib/result/format-relative.ts`) is reused unchanged; the helper lives in `result/` namespace but is shared. If FE-6 build hasn't shipped at FE-7 build time, FE-7 implements the helper at `frontend/src/lib/profile/format-relative.ts` and the two consolidate in a post-FE-7 cleanup PR. Surfaced in §C.4 + §H (b) item 9.
 - **Long pill names truncate.** `.ellipsis` class on the pill-name column per the design (or `text-overflow: ellipsis` if not in the design's CSS). Spec assumes truncation in v1; no tooltip in v1 (deferred).
 - **Δcomp precision.** Server returns ≤1 dp; client formats via `.toFixed(1)`. Sign prefix: `+` for positive, native `-` for negative, "—" for null.
-- **`origin` enum verification.** Spec assumes `"self" | "assignment" | "loop"`. AC-D26 + AC-D6 lock the underlying attempt-origin semantics. If the backend exposes a different enum (e.g. `"self_initiated"`), spec body aligns at build time per §H (b) item 6.
+- **`origin` enum is the live long-form** (`self_initiated | assignment_driven | loop_driven`) per LOCK-4 — the spec body's earlier short-form (`self | assignment | loop`) was authoring-time placeholder; AC-D26 + AC-D6 + `app/models.py:119-122` are the source of truth.
+- **Per-row `band` is per-attempt-derived, not pill-level** (F8). `app/domain/attempts.py:2086-2097` derives the history-row band from `score_percent / 10` projected onto the 0..10 competence axis — `Attempt` lacks a per-attempt band snapshot column. A row showing "junior" for a 47% score does not mean the testee was junior in that pill at attempt time; it means that attempt's score-axis projection lands in the junior band. The §C.5 BandTag treatment for history rows (band-only, no estimate/confidence) is consistent with this carve-out: per-row enrichment with the live float is a v1.x consideration once the per-attempt snapshot column lands.
 - **Loading-more sentinel race.** If the user scrolls fast past the sentinel before `IntersectionObserver` fires, no rows load until the next intersection. v1 accepts; mirror FE-3 catalogue precedent.
-- **Shared cache with /profile.** Both pages key off `meQueryKeys.attempts()`. The profile page calls a one-shot `useQuery` with `limit: 200`; the history page calls `useInfiniteQuery` with `limit: 50`. These have different query params and therefore different cache entries (TanStack derives sub-keys from the params hash). One page's fetch doesn't satisfy the other's cache. Acceptable trade — the profile page only needs the latest 200 for sparkline derivation; the history page paginates from page 1. If perf becomes a concern (rare network), v1.x can consolidate.
+- **Shared cache with /profile.** Both pages key off `meQueryKeys.attempts()` root, with `{limit: 200}` (profile) and `{limit: 50, cursor}` (history infinite) sub-keys derived from query params hash. Different cache entries by design — the profile page only needs the latest 200 for sparkline derivation; the history page paginates from page 1. If perf becomes a concern (rare network), v1.x can consolidate.
+- **`list_own_submitted_attempts` loads then Python-paginates** (F11, AC-CD15). The handler at `app/domain/attempts.py:2046-2102` loads every submitted attempt for the testee, sorts in Python, and slices for the cursor page. AC-CD15 FakeSession harness allows equality-only WHERE; the canonical `app.domain.catalogue.paginate` orders ASC by `(created_at, id)` whereas the history page needs `submitted_at DESC`, so inline pagination is justified. At v1 scale (~tens of attempts per testee) acceptable; revisit at v1.x if attempt volumes climb.
 
 **8. Visual reference**
 
@@ -552,7 +559,7 @@ frontend/src/lib/profile/
 
 Each carries a D.1 unit test.
 
-`format-relative.ts` (B.2 history-row timestamp) is reused from FE-6 §C.3 (`frontend/src/lib/result/format-relative.ts`) if FE-6 build has shipped; if not, FE-7 implements it at `frontend/src/lib/profile/format-relative.ts` and a post-FE-7 cleanup PR consolidates the two. §H (b) item 9 verifies at build time.
+`format-relative.ts` (B.2 history-row timestamp) is reused unchanged from FE-6 §C.3 (`frontend/src/lib/result/format-relative.ts`); FE-6 build shipped (PR-059), so the §H (b) item 9 conditional-fallback branch (FE-7 ships its own copy) is dead and dropped (F12).
 
 ### C.5 BandTag `confidence` + `estimate` — first-class consumer at scale
 
@@ -883,3 +890,17 @@ These are not blockers. The spec body above locks the resolution; the build sess
 32. **`confidence-qualifier.ts` helper is a fallback** — backend computes the `confidence` enum per AC-D20; helper only runs when the response is malformed (which should never happen post-merge). Spec ships the helper for defensive reasons + D.1 unit test coverage.
 
 33. **`view` toggle state is local React state, NOT URL state.** View choice ephemeral; doesn't survive page reload. Matches `constellation.jsx:146` default. v1.x may URL-sync.
+
+34. **LOCK-1 — `GET /v1/attempts` ships under canonical `Page<T>` envelope** (`{data: AttemptListItem[], meta: {next_cursor}}` per CODE_SPEC §5). Spec body §B.1 §4 / §B.2 §3 / §B.2 §4 / §H (a) item 3 all amended in-PR; FE consumes `.data` + `.meta.next_cursor`. Earlier flat-shape (`{attempts, next_cursor}`) was authoring-time text only — never landed on the wire; the live handler at `app/routers/attempts.py:111-129` always shipped the envelope.
+
+35. **LOCK-2 — `competence_estimate` non-nullable on the wire.** Backend `list_me_competence` filters `competence_estimate IS NULL` rows server-side (`app/domain/competence.py`); schema field tightened from `float | None` → `float` (`app/schemas.py:757`). FE-7 renders every BandTag / Stat / legend pill-count without null-guards. The defensive `band_string(None) → "novice"` mapping stays in the domain module for callers outside `list_me_competence`.
+
+36. **LOCK-3 expanded — `n` derived from submitted Attempt rows, not `retake_count`.** Drift-sweep verification proved `CompetencyProfile.retake_count` is structurally dead in v1 (no production code path increments it; verified across `apply_competence_update`, crons, services at FE-7 build time). Shipping against it would have rendered every confidence ring at 0% length in production. Resolution: `list_me_competence` derives `n` from `count(Attempt) WHERE testee_id AND submitted_at IS NOT NULL` joined to `Test.pill_id`, mirroring `app/domain/attempts.py:2046-2097`. AC-CD15-safe (equality-only WHERE + Python walk). The dead `retake_count` column stays in the schema for a future migration; this PR doesn't drop it (separates the deletion from the live-path fix per AC-CD2 conservatism).
+
+37. **LOCK-4 — `origin` enum is `self_initiated | assignment_driven | loop_driven`** (long-form). Spec body §B.2 §3 contract, §H (a) item 3 contract, §B.2 §5 row-origin state names, §C.5 BandTag history-row note all amended in-PR. FE consumes the live enum directly; no client-side mapper. AC-D26 + AC-D6 + `app/models.py:119-122` are the source of truth.
+
+38. **Finding 10 — `list_me_competence` filters `CompetencyProfile.tenant_id == SEED_TENANT_ID`** alongside the adjacent `Pill` / `PillRelated` queries. v1 is single-tenant per AC-CD3 so the omission was safe, but the asymmetry was a port-time RLS trap; closing it now is a one-line fix with a one-test backstop and no production risk.
+
+39. **Finding 13 punted — `flags.recentAttemptsWidget` flip stays off in FE-7.** FE-3's `RecentAttemptsCard` (`fe-specs/FE-3-content.md:592`) remains feature-flagged off in this PR. `GET /v1/attempts` is now live with the LOCK-1 envelope; flipping the flag is one line plus the FE-3 RecentAttemptsCard's data-extraction wiring, which would couple FE-7's PR fate to FE-3 component correctness. Deferred to a separate follow-up PR.
+
+40. **Spec-leads-impl carve-outs absorbed.** F6 (route group `(authed)/(testee)/` not `(testee)/` — doc-drift only, FE-6 PR-059 precedent), F7 (`format: "uuid"` wire-typed fields emit as `string`), F8 (history-row band derivation from `score_percent/10`), F11 (`list_own_submitted_attempts` load-then-paginate), F12 (`format-relative.ts` consumed unchanged from FE-6) all carry-forward without further action; handover notes them.

@@ -18,6 +18,8 @@ import {
   resetMockAttemptState,
   resetMockAuthState,
   resetMockCatalogue,
+  resetMockMeAttempts,
+  resetMockMeCompetence,
 } from "@/mocks/handlers";
 import { MSW_FALLBACK_CONFIG, setRuntimeConfig } from "@/lib/config";
 import { setApiBaseUrl } from "@/lib/api/client";
@@ -33,6 +35,8 @@ afterEach(() => {
   resetMockAuthState();
   resetMockCatalogue();
   resetMockAttemptState();
+  resetMockMeCompetence();
+  resetMockMeAttempts();
 });
 
 afterAll(() => {

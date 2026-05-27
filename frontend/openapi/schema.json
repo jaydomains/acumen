@@ -8230,14 +8230,7 @@
             "title": "Subject Id"
           },
           "competence_estimate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "number",
             "title": "Competence Estimate"
           },
           "band": {

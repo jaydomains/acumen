@@ -2649,7 +2649,7 @@ export interface components {
              */
             subject_id: string;
             /** Competence Estimate */
-            competence_estimate: number | null;
+            competence_estimate: number;
             /**
              * Band
              * @enum {string}
