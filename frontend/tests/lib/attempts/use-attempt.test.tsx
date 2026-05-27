@@ -30,7 +30,11 @@ afterEach(() => {
 });
 
 function setupHook(opts?: {
-  executeAutosave?: () => Promise<void>;
+  executeAutosave?: (input: {
+    questionId: string;
+    payload: AnswerPayload;
+    timeMs: number;
+  }) => Promise<void>;
   retryDelaysMs?: number[];
 }) {
   const calls: { questionId: string; payload: AnswerPayload }[] = [];
@@ -163,6 +167,44 @@ describe("useAttempt · autosave state machine", () => {
     expect(attempts).toBe(4);
     expect(result.current.state.autosaveRetries.get(Q1)).toBeGreaterThanOrEqual(4);
     expect(result.current.state.autosaveBannerVisible).toBe(true);
+  });
+});
+
+describe("useAttempt · per-edit-window time_ms (Gitar #019e6823 regression)", () => {
+  it("a revised answer reports time_ms from its own first keystroke, not the original", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-27T10:00:00Z"));
+    const timeMsCalls: number[] = [];
+    const executeAutosave = vi.fn(async ({ timeMs }) => {
+      timeMsCalls.push(timeMs);
+    });
+    const { result } = setupHook({ executeAutosave });
+
+    // First edit window: type at t=0, save fires at t=300 (debounce).
+    act(() => {
+      result.current.setAnswer(Q1, { type: "short_answer", text: "v1" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(310);
+    });
+    expect(timeMsCalls[0]).toBeGreaterThanOrEqual(300);
+    expect(timeMsCalls[0]).toBeLessThan(400);
+
+    // Two minutes of inactivity, then a revision: type at t=120s,
+    // save fires at t=120.3s. Without the answerStartedAt clear,
+    // we'd report ~120300ms instead of ~300ms.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    act(() => {
+      result.current.setAnswer(Q1, { type: "short_answer", text: "v1-revised" });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(310);
+    });
+    expect(timeMsCalls[1]).toBeGreaterThanOrEqual(300);
+    expect(timeMsCalls[1]).toBeLessThan(400);
+    vi.useRealTimers();
   });
 });
 

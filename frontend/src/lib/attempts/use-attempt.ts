@@ -319,6 +319,13 @@ export function useAttempt(opts: UseAttemptOptions): UseAttemptApi {
         }
       } finally {
         inFlight.current.delete(questionId);
+        // Per Gitar #019e6823: clear the question's per-edit-window
+        // timestamp so the next keystroke for this question (a
+        // revision) measures `time_ms` from its own first keystroke,
+        // not from the original first keystroke of the prior save
+        // window. Without this, `time_ms` drifts upward across
+        // revisions of the same question.
+        answerStartedAt.current.delete(questionId);
         const queued = pendingNext.current.get(questionId);
         if (queued) {
           pendingNext.current.delete(questionId);
@@ -336,9 +343,13 @@ export function useAttempt(opts: UseAttemptOptions): UseAttemptApi {
       if (!answerStartedAt.current.has(questionId)) {
         answerStartedAt.current.set(questionId, Date.now());
       }
+      // Capture `startedAt` AT SCHEDULE TIME, not when the timeout
+      // fires. Otherwise a prior save's `finally` (which now deletes
+      // the map entry per Gitar #019e6823) racing the debounce window
+      // would reset startedAt to "now" and report `time_ms: 0`.
+      const startedAt = answerStartedAt.current.get(questionId) ?? Date.now();
       const t = setTimeout(() => {
         debounceTimers.current.delete(questionId);
-        const startedAt = answerStartedAt.current.get(questionId) ?? Date.now();
         void runAutosave(questionId, payload, startedAt);
       }, debounceMs);
       debounceTimers.current.set(questionId, t);
