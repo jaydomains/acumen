@@ -3,12 +3,10 @@
 /**
  * Testee competency profile page (FE-7 §B.1).
  *
- * Slice 1 ships the route shell with the top-level state branches —
- * loading skeleton, endpoint_absent placeholder, empty fallback, and a
- * happy-state stub that hosts the constellation + detail-card slots
- * that arrive in Slices 2 / 3. The role guard is handled upstream by
- * the `(testee)/layout.tsx` `Gate posture="authed" role="testee"`; this
- * file does not re-check the role.
+ * Slice 1 shipped the route shell + top-level state branches.
+ * Slice 2 wires the constellation SVG, view-toggle, and band-count
+ * legend; the SelectedPillDetailCard, MatrixTable, and HowToReadCard
+ * still arrive in Slice 3.
  *
  * Per LOCK-2, the wire excludes rows with `competence_estimate IS NULL`,
  * so render paths read `pill.competence_estimate` directly without
@@ -16,20 +14,53 @@
  * count (not the dead `retake_count` column), so the confidence ring +
  * BandTag preliminary/confident suffix are honest at v1 ship.
  *
- * `?pill={pillId}` query state and the constellation/matrix view toggle
- * are wired here, but the visual slots (`ConstellationSVG`, `MatrixTable`,
- * `SelectedPillDetailCard`, `Sparkline`, `Legend`, `HowToReadCard`) land
- * in Slices 2 / 3 — placeholders below until then.
+ * Subject grouping: derived from the competence response's distinct
+ * `subject_id` UUIDs; the `subjectById` helper resolves to the unknown-
+ * fallback neutral grey for every subject in v1 until
+ * `GET /v1/catalogue/subjects` lands (FE-3 §H(b) item 5). Layout still
+ * works (UUIDs are stable keys); halo colour is uniformly neutral.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
-import { useMeCompetence } from "@/lib/queries/me";
+import type { Band } from "@/components/primitives/bands";
+import { subjectById } from "@/lib/catalogue/subjects";
+import { useMeCompetence, type MeCompetencePill } from "@/lib/queries/me";
+import type { ConstellationSubject } from "@/lib/profile/layout-constellation";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConstellationSVG } from "@/components/profile/constellation-svg";
+import { Legend } from "@/components/profile/legend";
+import { ViewToggle } from "@/components/profile/view-toggle";
 
 type ViewMode = "constellation" | "matrix";
+
+function deriveSubjects(pills: ReadonlyArray<MeCompetencePill>): ConstellationSubject[] {
+  const seen: ConstellationSubject[] = [];
+  const known = new Set<string>();
+  for (const p of pills) {
+    if (known.has(p.subject_id)) continue;
+    known.add(p.subject_id);
+    const meta = subjectById(p.subject_id);
+    seen.push({ id: p.subject_id, name: meta.name, color: meta.colour });
+  }
+  return seen;
+}
+
+function deriveBandCounts(pills: ReadonlyArray<MeCompetencePill>): Record<Band, number> {
+  const counts: Record<Band, number> = {
+    novice: 0,
+    junior: 0,
+    working: 0,
+    advanced: 0,
+    expert: 0,
+  };
+  for (const p of pills) {
+    counts[p.band] = (counts[p.band] ?? 0) + 1;
+  }
+  return counts;
+}
 
 export default function TesteeProfilePage() {
   const router = useRouter();
@@ -37,16 +68,11 @@ export default function TesteeProfilePage() {
   const competence = useMeCompetence();
   const [view, setView] = useState<ViewMode>("constellation");
 
-  // Wrap in useMemo so the array reference stays stable across renders
-  // when the query data is unchanged — keeps the downstream useMemo +
-  // useEffect dependency lists honest.
   const pills = useMemo(() => competence.data?.pills ?? [], [competence.data]);
   const pillsCount = pills.length;
+  const subjects = useMemo(() => deriveSubjects(pills), [pills]);
+  const bandCounts = useMemo(() => deriveBandCounts(pills), [pills]);
 
-  // First pill with n > 0 makes a good default selection — the
-  // constellation's selected ring belongs on a star that actually has
-  // calibration evidence. Falls back to the first pill if every pill
-  // is fresh.
   const defaultSelectedId = useMemo<string | null>(() => {
     if (pills.length === 0) return null;
     const withAttempts = pills.find((p) => p.n > 0);
@@ -58,9 +84,6 @@ export default function TesteeProfilePage() {
   const resolvedSelectedId =
     paramId && knownIds.has(paramId) ? paramId : defaultSelectedId;
 
-  // Sync `?pill=` to the resolved selection when they diverge (stale
-  // link, no param, deleted pill). Always run the hook to keep React's
-  // hook-order invariant; the branches below short-circuit rendering.
   useEffect(() => {
     if (!resolvedSelectedId) return;
     if (paramId === resolvedSelectedId) return;
@@ -109,34 +132,24 @@ export default function TesteeProfilePage() {
     <div data-testid="profile-happy">
       <ProfileHero
         eyebrow={`Your competency · ${pillsCount} pill${pillsCount === 1 ? "" : "s"} · calibrated`}
+        toggle={<ViewToggle value={view} onChange={setView} />}
       />
-      <div className="mb-6 flex items-center gap-2" data-testid="profile-view-toggle">
-        <button
-          type="button"
-          data-active={view === "constellation"}
-          onClick={() => setView("constellation")}
-          className="px-3 py-1.5 text-[12px] font-mono uppercase tracking-[0.08em] border border-line data-[active=true]:bg-ink data-[active=true]:text-bg-raised"
-        >
-          Constellation
-        </button>
-        <button
-          type="button"
-          data-active={view === "matrix"}
-          onClick={() => setView("matrix")}
-          className="px-3 py-1.5 text-[12px] font-mono uppercase tracking-[0.08em] border border-line data-[active=true]:bg-ink data-[active=true]:text-bg-raised"
-        >
-          Matrix
-        </button>
-      </div>
+      <Legend counts={bandCounts} className="mb-6" />
 
       {view === "constellation" ? (
         <div className="grid gap-4 lg:grid-cols-12">
           <Card
             data-testid="profile-constellation-slot"
-            className="bg-bg-sunk min-h-[620px] p-6 text-[12px] text-ink-3 lg:col-span-8"
+            className="bg-bg-sunk overflow-hidden p-0 lg:col-span-8"
           >
-            Constellation SVG arrives in Slice 2. Selected pill:{" "}
-            <code className="font-mono">{resolvedSelectedId ?? "—"}</code>.
+            <ConstellationSVG
+              pills={pills}
+              subjects={subjects}
+              selectedId={resolvedSelectedId}
+              onSelect={(id) =>
+                router.replace(`?pill=${encodeURIComponent(id)}`, { scroll: false })
+              }
+            />
           </Card>
           <div className="flex flex-col gap-4 lg:col-span-4">
             <Card
@@ -144,6 +157,15 @@ export default function TesteeProfilePage() {
               className="p-6 text-[12px] text-ink-3"
             >
               SelectedPillDetailCard arrives in Slice 3.
+              {resolvedSelectedId ? (
+                <>
+                  {" "}
+                  Selected:{" "}
+                  <code className="font-mono" data-testid="profile-selected-pill-echo">
+                    {resolvedSelectedId}
+                  </code>
+                </>
+              ) : null}
             </Card>
             <Card
               data-testid="profile-how-to-read-slot"
@@ -162,18 +184,24 @@ export default function TesteeProfilePage() {
   );
 }
 
-function ProfileHero({ eyebrow }: { eyebrow: string }) {
+function ProfileHero({ eyebrow, toggle }: { eyebrow: string; toggle?: React.ReactNode }) {
   return (
-    <div data-testid="profile-hero" className="mb-6">
-      <div className="eyebrow mb-2">{eyebrow}</div>
-      <h1 className="font-serif text-[44px] leading-[1.05] tracking-[-0.025em] text-ink">
-        <span className="italic font-light">A map of</span> what you know.
-      </h1>
-      <p className="mt-3 max-w-[52ch] text-[14px] text-ink-3">
-        Each star is a pill. Brightness is your competence. The ring around it is
-        calibration confidence — faded rings mean we haven&apos;t seen enough attempts to
-        be sure yet. Lines connect related pills.
-      </p>
+    <div
+      data-testid="profile-hero"
+      className="mb-6 flex flex-wrap items-baseline justify-between gap-6"
+    >
+      <div>
+        <div className="eyebrow mb-2">{eyebrow}</div>
+        <h1 className="font-serif text-[44px] leading-[1.05] tracking-[-0.025em] text-ink">
+          <span className="italic font-light">A map of</span> what you know.
+        </h1>
+        <p className="mt-3 max-w-[52ch] text-[14px] text-ink-3">
+          Each star is a pill. Brightness is your competence. The ring around it is
+          calibration confidence — faded rings mean we haven&apos;t seen enough attempts
+          to be sure yet. Lines connect related pills.
+        </p>
+      </div>
+      {toggle ?? null}
     </div>
   );
 }

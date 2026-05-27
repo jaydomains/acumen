@@ -81,7 +81,7 @@ describe("Profile page · loading skeleton", () => {
 });
 
 describe("Profile page · happy state", () => {
-  it("renders hero, view-toggle, and constellation slot after fetch resolves", async () => {
+  it("renders hero, view-toggle, legend, and constellation SVG after fetch resolves", async () => {
     setMockMeCompetence([
       makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 22 }),
       makePill({ pill_id: PILL_B, pill_name: "DFT", n: 8 }),
@@ -91,8 +91,9 @@ describe("Profile page · happy state", () => {
     expect(screen.getByTestId("profile-hero")).toHaveTextContent(
       /Your competency · 2 pills · calibrated/,
     );
-    expect(screen.getByTestId("profile-view-toggle")).toBeInTheDocument();
-    expect(screen.getByTestId("profile-constellation-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("view-toggle")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-legend")).toBeInTheDocument();
+    expect(screen.getByTestId("constellation-svg")).toBeInTheDocument();
     expect(screen.getByTestId("profile-detail-card-slot")).toBeInTheDocument();
     expect(screen.getByTestId("profile-how-to-read-slot")).toBeInTheDocument();
   });
@@ -129,20 +130,41 @@ describe("Profile page · happy state", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
-  it("toggles between constellation and matrix slots when the segmented buttons are clicked", async () => {
+  it("clicking a constellation star routes via router.replace with the new pill id", async () => {
+    mockParamId = PILL_A;
+    setMockMeCompetence([
+      makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 22 }),
+      makePill({ pill_id: PILL_B, pill_name: "DFT", n: 8 }),
+    ]);
+    const user = userEvent.setup();
+    render(mountTree(<ProfilePage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("constellation-svg")).toBeInTheDocument(),
+    );
+    const starB = screen
+      .getAllByTestId("constellation-star")
+      .find((el) => el.getAttribute("data-pill-id") === PILL_B);
+    if (!starB) throw new Error("missing star for PILL_B");
+    await user.click(starB);
+    expect(routerReplace).toHaveBeenCalledWith(`?pill=${encodeURIComponent(PILL_B)}`, {
+      scroll: false,
+    });
+  });
+
+  it("toggles between constellation SVG and matrix slot when the segmented buttons are clicked", async () => {
     setMockMeCompetence([makePill({ pill_id: PILL_A, pill_name: "Antifouling" })]);
     const user = userEvent.setup();
     render(mountTree(<ProfilePage />));
     await waitFor(() =>
-      expect(screen.getByTestId("profile-constellation-slot")).toBeInTheDocument(),
+      expect(screen.getByTestId("constellation-svg")).toBeInTheDocument(),
     );
 
     await user.click(screen.getByRole("button", { name: /matrix/i }));
     expect(screen.getByTestId("profile-matrix-slot")).toBeInTheDocument();
-    expect(screen.queryByTestId("profile-constellation-slot")).toBeNull();
+    expect(screen.queryByTestId("constellation-svg")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /constellation/i }));
-    expect(screen.getByTestId("profile-constellation-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("constellation-svg")).toBeInTheDocument();
     expect(screen.queryByTestId("profile-matrix-slot")).toBeNull();
   });
 });
@@ -154,8 +176,8 @@ describe("Profile page · endpoint_absent", () => {
     await waitFor(() =>
       expect(screen.getByTestId("profile-endpoint-absent")).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId("profile-constellation-slot")).toBeNull();
-    expect(screen.queryByTestId("profile-view-toggle")).toBeNull();
+    expect(screen.queryByTestId("constellation-svg")).toBeNull();
+    expect(screen.queryByTestId("view-toggle")).toBeNull();
     expect(routerReplace).not.toHaveBeenCalled();
   });
 });
