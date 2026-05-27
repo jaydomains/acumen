@@ -305,8 +305,11 @@ def test_result_endpoint_deterministic_attempt_returns_ready(
     assert body["overall_score"] == 1.0
     assert body["outcome"] == "pass"
     assert len(body["questions"]) == 1
-    assert body["questions"][0]["score"] == 1.0
-    assert body["questions"][0]["source"] == "auto"
+    # FE-6 widened shape: grade lives under ``grade`` sub-object.
+    grade = body["questions"][0]["grade"]
+    assert grade is not None
+    assert grade["points_awarded"] == 1.0
+    assert grade["source"] == "auto"
 
 
 def test_result_endpoint_mixed_test_returns_review_pending(

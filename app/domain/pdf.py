@@ -87,12 +87,30 @@ def _grade_row_text(grade_row: dict[str, Any]) -> tuple[str, str]:
     """Return (score_cell, verdict_cell) text for one per-question
     grade row from ``result_view``. Honours the v1.6/v1.7 "no score
     leak" contract: AI grades whose review flagged + admin hasn't
-    resolved surface as "Under admin review" with no numeric score."""
+    resolved surface as "Under admin review" with no numeric score.
+
+    Reads the FE-6 widened shape (``grade`` sub-object) — ``grade``
+    is ``None`` for skipped questions and for under-admin-review
+    flagged AI grades; ``grade.points_awarded`` is the numeric score
+    and ``grade.is_correct`` is the tri-state boolean rendered as
+    full / partial / none in the verdict cell.
+    """
     if grade_row.get("status") == "under_admin_review":
         return ("Under admin review", "—")
-    score = _fmt_score(grade_row.get("score"))
-    verdict = grade_row.get("verdict") or "—"
-    return (score, str(verdict))
+    grade = grade_row.get("grade")
+    if not isinstance(grade, dict):
+        return ("—", "—")
+    score = _fmt_score(grade.get("points_awarded"))
+    is_correct = grade.get("is_correct")
+    if is_correct is True:
+        verdict = "full"
+    elif is_correct is False:
+        verdict = "none"
+    elif grade.get("points_awarded") is not None:
+        verdict = "partial"
+    else:
+        verdict = "—"
+    return (score, verdict)
 
 
 def render_attempt_pdf(

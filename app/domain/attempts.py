@@ -69,13 +69,16 @@ from app.models import (
     AttemptAnchor,
     AttemptOrigin,
     AttemptPauseEvent,
+    CompetencyProfile,
     Grade,
     GradeReview,
     GradeSource,
     GradeVerdict,
+    LearningMaterial,
     Pill,
     Question,
     QuestionType,
+    RealismFlag,
     Response,
     ReviewStatus,
     SystemSettings,
@@ -84,6 +87,8 @@ from app.models import (
     TestStatus,
     TestVisibility,
     TimeoutBehaviour,
+    WeaknessReport,
+    WeaknessReportPill,
 )
 from app.permissions import APIError, now_utc
 
@@ -948,21 +953,56 @@ async def view_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> dict[s
             ),
         )
         snapshot = _snapshot_from_questions(per_testee_rows_sorted) + snapshot
+    presented = presented_questions(
+        snapshot,
+        attempt.shuffle_seed or seed_for(attempt.id),
+        randomise_question_order=test.randomise_question_order,
+        randomise_option_order=test.randomise_option_order,
+    )
+    # FE-6 §B.8 — surface each Q's realism-flag triple on the view so
+    # the testee result page's aggregate card can render the questions
+    # the testee themselves flagged during the attempt. ``flag_note``
+    # isn't a column on RealismFlag (the model takes a generation-
+    # context dict on insert, not a user-typed note); v1 surfaces
+    # ``null`` and the FE renders the row without a note.
+    flags_by_qid = await _attempt_realism_flags(db, attempt)
+    for q in presented:
+        qid = str(q.get("id") or q.get("question_id") or "")
+        flag = flags_by_qid.get(qid)
+        if flag is not None:
+            q["realism_flagged_by_me"] = True
+            q["realism_flag_note"] = None
+            q["realism_flagged_at"] = flag.created_at
+        else:
+            q["realism_flagged_by_me"] = False
+            q["realism_flag_note"] = None
+            q["realism_flagged_at"] = None
     base.update(
         {
             "paused": False,
             "pause_seconds_remaining": None,
             "pause_reason": None,
             "watermark": str(attempt.testee_id),
-            "questions": presented_questions(
-                snapshot,
-                attempt.shuffle_seed or seed_for(attempt.id),
-                randomise_question_order=test.randomise_question_order,
-                randomise_option_order=test.randomise_option_order,
-            ),
+            "questions": presented,
         }
     )
     return base
+
+
+async def _attempt_realism_flags(
+    db: AsyncSession, attempt: Attempt
+) -> dict[str, RealismFlag]:
+    """Return ``{question_id: RealismFlag}`` for this attempt's testee.
+    Equality WHERE on testee_id only (AC-CD15); the attempt-question
+    intersection is filtered in Python against the presented snapshot
+    by the caller."""
+    result = await db.execute(
+        select(RealismFlag).where(
+            RealismFlag.testee_id == attempt.testee_id,
+            RealismFlag.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    return {str(f.question_id): f for f in result.scalars().all()}
 
 
 async def autosave(
@@ -1384,6 +1424,15 @@ async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[st
       ``status="under_admin_review"`` with no score / verdict leak
       ("only confirmed grades display synchronously" — AC-D19 v1.6 /
       v1.7).
+
+    Payload shape widened for FE-6 (see ``schemas.AttemptResultResponse``):
+    per-Q ``grade`` sub-object with the AC-D18 model IDs + AC-D19 review
+    verdict; ``review_summary`` block; ``pills[]`` + ``adaptive_loop[]``
+    when a WeaknessReport exists for the attempt; ``attempt_band`` +
+    ``time_on_test_seconds`` derived from existing data. Fields that
+    need data not yet captured (pre/post competence snapshot, cross-
+    attempt median time) are nullable — the FE handles ``null`` per
+    its edge-case rules.
     """
     if attempt.submitted_at is None:
         raise APIError(409, "attempt_not_submitted", "Attempt has not been submitted.")
@@ -1392,6 +1441,7 @@ async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[st
     base: dict[str, Any] = {
         "attempt_id": attempt.id,
         "submitted_at": attempt.submitted_at,
+        "time_on_test_seconds": _attempt_duration_seconds(attempt),
     }
 
     # Load grades + paired grade_reviews for the attempt's responses
@@ -1433,52 +1483,484 @@ async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[st
             for g in ai_grades
         ):
             base["status"] = "review_pending"
+            base["pills"] = []
+            base["adaptive_loop"] = []
             return base
 
+    # Load attempt-scoped Question rows so the per-Q payload can carry
+    # ``attempt_position``, the raw prompt, and the figure-presence flag.
+    # ``snap_questions`` covers the frozen / hand-authored / per_testee
+    # snapshot path; ``db_questions_by_id`` covers anchor + per_testee
+    # rows that live on Question by ``attempt_id``.
+    db_questions = await _attempt_questions(db, attempt.id)
+    db_questions_by_id: dict[uuid.UUID, Question] = {q.id: q for q in db_questions}
+    snap_questions = (attempt.question_snapshot or {}).get("questions") or []
+    snap_by_id: dict[str, dict[str, Any]] = {
+        str(sq.get("id") or sq.get("question_id")): sq
+        for sq in snap_questions
+        if sq.get("id") or sq.get("question_id")
+    }
+
     per_question: list[dict[str, Any]] = []
-    for spec in specs:
+    for index, spec in enumerate(specs, start=1):
         qid = uuid.UUID(str(spec["question_id"]))
         response = responses.get(qid)
         grade = grades_by_response.get(response.id) if response is not None else None
+        review = grade_reviews_by_grade.get(grade.id) if grade is not None else None
+        db_question = db_questions_by_id.get(qid)
+        snap_entry = snap_by_id.get(str(qid))
+        config: dict[str, Any] = (
+            db_question.config
+            if db_question is not None
+            else (snap_entry or {}).get("config")
+            or spec.get("config")
+            or {}
+        )
+        prompt = config.get("prompt") if isinstance(config, dict) else None
+        has_figure = bool(
+            isinstance(config, dict)
+            and (config.get("figure") or config.get("image_ref") or config.get("image"))
+        )
+        is_ai_graded = QuestionType(spec["type"]) in AI_GRADED_TYPES
+        attempt_position = (
+            db_question.attempt_position
+            if db_question is not None and db_question.attempt_position is not None
+            else index
+        )
+        response_payload = (
+            {"answer_payload": response.answer_payload}
+            if response is not None and response.answer_payload is not None
+            else None
+        )
+
+        # AC-D19 v1.6 / v1.7 — flagged + not-yet-admin-resolved surfaces
+        # a provisional "under admin review" state with no AI grade
+        # leaked. ``grade`` is suppressed entirely; the FE keys off
+        # ``status`` for the chip.
         if (
             grade is not None
             and grade.source == GradeSource.ai
             and grade.overridden_at is None
+            and review is not None
+            and review.status == ReviewStatus.flagged
         ):
-            gr = grade_reviews_by_grade.get(grade.id)
-            if gr is not None and gr.status == ReviewStatus.flagged:
-                # AC-D19 v1.6 / v1.7 — flagged + not-yet-admin-resolved
-                # surfaces a provisional "under admin review" state with
-                # no AI grade leaked.
-                per_question.append(
-                    {
-                        "question_id": str(qid),
-                        "type": spec["type"],
-                        "status": "under_admin_review",
-                        "source": "ai",
-                        "score": None,
-                        "verdict": None,
-                    }
-                )
-                continue
+            per_question.append(
+                {
+                    "question_id": qid,
+                    "attempt_position": attempt_position,
+                    "prompt_text": prompt,
+                    "question_type": spec["type"],
+                    "has_figure": has_figure,
+                    "is_ai_graded": True,
+                    "status": "under_admin_review",
+                    "response": response_payload,
+                    "grade": None,
+                }
+            )
+            continue
+
         per_question.append(
             {
-                "question_id": str(qid),
-                "type": spec["type"],
-                "score": grade.score if grade is not None else None,
-                "verdict": grade.verdict.value if grade is not None else None,
-                "source": grade.source.value if grade is not None else None,
+                "question_id": qid,
+                "attempt_position": attempt_position,
+                "prompt_text": prompt,
+                "question_type": spec["type"],
+                "has_figure": has_figure,
+                "is_ai_graded": is_ai_graded,
+                "status": None,
+                "response": response_payload,
+                "grade": _result_grade_payload(grade, review),
             }
         )
+
     base.update(
         {
             "status": "ready",
             "overall_score": attempt.overall_score,
             "outcome": attempt.outcome,
+            "attempt_band": await _result_attempt_band(db, attempt),
+            "competence_estimate_after": None,
+            "competence_estimate_delta": None,
+            "median_time_seconds": None,
+            "review_summary": _result_review_summary(
+                per_question,
+                grades_by_response.values(),
+                grade_reviews_by_grade.values(),
+            ),
+            "pills": await _result_pills(db, attempt),
+            "adaptive_loop": await _result_adaptive_loop(db, attempt),
             "questions": per_question,
         }
     )
     return base
+
+
+def _attempt_duration_seconds(attempt: Attempt) -> int | None:
+    """``submitted_at - started_at`` minus accumulated pause time. NULL
+    if either bound is missing (defensive — submitted_at is guaranteed
+    by the gate above, started_at can be NULL on never-resumed paused
+    rows in the test harness)."""
+    if attempt.submitted_at is None or attempt.started_at is None:
+        return None
+    elapsed = (attempt.submitted_at - attempt.started_at).total_seconds()
+    pause = attempt.total_pause_duration_seconds or 0
+    return max(0, int(elapsed - pause))
+
+
+def _result_grade_payload(
+    grade: Grade | None, review: GradeReview | None
+) -> dict[str, Any] | None:
+    """Build the per-Q ``grade`` sub-object. NULL when no Grade row
+    exists (testee skipped the question + autosave never wrote a
+    response). Review fields are NULL for deterministic grades and for
+    AI grades whose GradeReview hasn't arrived yet (the latter case is
+    guarded by the pending-gate above, but a defensive null path keeps
+    the schema honest)."""
+    if grade is None:
+        return None
+    is_correct: bool | None
+    if grade.verdict == GradeVerdict.full:
+        is_correct = True
+    elif grade.verdict == GradeVerdict.none:
+        is_correct = False
+    else:
+        # partial → ``null`` is the FE's tri-state signal per spec §B.4.
+        is_correct = None
+    return {
+        "is_correct": is_correct,
+        "points_awarded": grade.score,
+        "points_possible": 1.0,
+        "source": grade.source.value,
+        "ai_grader_model": grade.ai_model if grade.source == GradeSource.ai else None,
+        "ai_reasoning": grade.ai_reasoning if grade.source == GradeSource.ai else None,
+        "review_verdict": review.status.value if review is not None else None,
+        "review_reasoning": review.review_reasoning if review is not None else None,
+        "reviewer_model": review.ai_model if review is not None else None,
+    }
+
+
+def _result_review_summary(
+    per_question: list[dict[str, Any]],
+    grades: Any,
+    reviews: Any,
+) -> dict[str, Any] | None:
+    """Aggregate the cross-family review block for the transparency card
+    (FE-6 §B.6). Returns ``None`` when no AI grade exists on the attempt
+    (deterministic-only path — FE hides the block)."""
+    ai_grades = [g for g in grades if g.source == GradeSource.ai]
+    if not ai_grades:
+        return None
+    review_list = list(reviews)
+    ai_grader_model = next(
+        (g.ai_model for g in ai_grades if g.ai_model is not None), None
+    )
+    reviewer_model = next(
+        (r.ai_model for r in review_list if r.ai_model is not None), None
+    )
+    flagged_positions = [
+        q["attempt_position"]
+        for q in per_question
+        if q.get("status") == "under_admin_review"
+        and q.get("attempt_position") is not None
+    ]
+    # ``review_duration_ms`` is the longest review pass timing across
+    # this attempt's AI grades. Both ``created_at`` (review enqueued
+    # by P6 submit) and ``updated_at`` (final status write) come from
+    # ``TimestampMixin``; their delta covers the reconcile-cron path
+    # (worst case ~5 min per AC-D19 v1.7) and the synchronous path
+    # (4–8 s typical).
+    durations_ms = [
+        int((r.updated_at - r.created_at).total_seconds() * 1000)
+        for r in review_list
+        if r.updated_at is not None and r.created_at is not None
+    ]
+    review_duration_ms = max(durations_ms) if durations_ms else None
+    return {
+        "ai_grader_model": ai_grader_model,
+        "reviewer_model": reviewer_model,
+        "flagged_count": len(flagged_positions),
+        "flagged_question_positions": sorted(flagged_positions),
+        "review_duration_ms": review_duration_ms,
+    }
+
+
+async def _result_attempt_band(
+    db: AsyncSession, attempt: Attempt
+) -> str | None:
+    """Derive the attempt-level band from the testee's strongest
+    relevant CompetencyProfile entry. v1 surfaces a single band on the
+    hero (no per-pill drill-down on hero); the per-pill weakness card
+    shows per-pill bands separately. Returns ``None`` when the testee
+    has no competence data yet — the FE hero suppresses the band stat
+    rather than rendering 'novice' (which would imply a failing score
+    per AC-D9 null-handling)."""
+    from app.domain.competence import band_string
+
+    result = await db.execute(
+        select(CompetencyProfile).where(
+            CompetencyProfile.testee_id == attempt.testee_id,
+            CompetencyProfile.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    profiles = list(result.scalars().all())
+    estimates = [
+        p.competence_estimate
+        for p in profiles
+        if p.competence_estimate is not None
+    ]
+    if not estimates:
+        return None
+    # Average estimate is a placeholder until we wire the per-attempt
+    # snapshot column. The FE-6 spec calls this "attempt_band"; without
+    # a per-attempt snapshot, the rolling average is the honest summary.
+    return band_string(sum(estimates) / len(estimates))
+
+
+async def _result_pills(
+    db: AsyncSession, attempt: Attempt
+) -> list[dict[str, Any]]:
+    """Build the per-pill weakness rows for FE-6 §B.3. Reads the latest
+    ``WeaknessReport`` for this attempt and walks ``WeaknessReportPill``
+    rows; hydrates with Pill name + safety flag, CompetencyProfile
+    estimate + confidence (AC-D20 ``is_confident``), and a missed-count
+    derived from this attempt's grade rows tied to the pill via the
+    Question.pill_id link (best-effort; null counts when no anchors are
+    pill-tagged)."""
+    from app.domain.calibration import is_confident
+
+    report = await _latest_weakness_report(db, attempt.id)
+    if report is None:
+        return []
+
+    pill_rows_result = await db.execute(
+        select(WeaknessReportPill).where(
+            WeaknessReportPill.weakness_report_id == report.id,
+            WeaknessReportPill.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    pill_rows = list(pill_rows_result.scalars().all())
+    if not pill_rows:
+        return []
+
+    # Sort severity descending so the FE renders the worst first.
+    pill_rows.sort(key=lambda wp: (-wp.severity, str(wp.pill_id)))
+
+    settings_result = await db.execute(
+        select(SystemSettings).where(SystemSettings.tenant_id == SEED_TENANT_ID)
+    )
+    settings = settings_result.scalar_one_or_none()
+    confidence_threshold = (
+        getattr(settings, "calibration_confidence_threshold", None) or 20
+    )
+
+    pills: list[dict[str, Any]] = []
+    for wp in pill_rows:
+        pill_result = await db.execute(select(Pill).where(Pill.id == wp.pill_id))
+        pill = pill_result.scalar_one_or_none()
+        if pill is None:
+            continue
+        profile_result = await db.execute(
+            select(CompetencyProfile).where(
+                CompetencyProfile.testee_id == attempt.testee_id,
+                CompetencyProfile.tenant_id == SEED_TENANT_ID,
+            )
+        )
+        profile = next(
+            (p for p in profile_result.scalars().all() if p.pill_id == pill.id),
+            None,
+        )
+        estimate = profile.competence_estimate if profile is not None else None
+        # ``n`` is the count of scored observations on this pill for
+        # the testee. v1 approximates with the attempt's own response
+        # count tied to the pill via Question.pill_id; a richer query
+        # would walk all prior attempts. Approximation is honest about
+        # what we know today and feeds the AC-D20 threshold.
+        n_observations = await _testee_pill_observation_count(
+            db, attempt.testee_id, pill.id
+        )
+        confident = is_confident(
+            n_observations, confidence_threshold=confidence_threshold
+        )
+        severity = _severity_for(wp.severity)
+        pills.append(
+            {
+                "pill_id": pill.id,
+                "pill_name": pill.name,
+                "subject_id": pill.subject_id,
+                "score_percent": None,
+                "missed_count": None,
+                "total_count": None,
+                "band": None,
+                "competence_estimate": estimate,
+                "n": n_observations,
+                "confidence": "confident" if confident else "preliminary",
+                "severity": severity,
+                "is_safety_tagged": bool(pill.safety_relevant),
+            }
+        )
+    return pills
+
+
+async def _testee_pill_observation_count(
+    db: AsyncSession, testee_id: uuid.UUID, pill_id: uuid.UUID
+) -> int:
+    """Count scored Response rows on this pill across all attempts by
+    this testee. Used to feed the AC-D20 ``is_confident`` threshold
+    check on the result page weakness card. Equality WHERE only per
+    AC-CD15."""
+    response_result = await db.execute(
+        select(Response).where(Response.tenant_id == SEED_TENANT_ID)
+    )
+    n = 0
+    for response in response_result.scalars().all():
+        if response.response_score is None:
+            continue
+        q_result = await db.execute(
+            select(Question).where(Question.id == response.question_id)
+        )
+        question = q_result.scalar_one_or_none()
+        if question is None or question.pill_id != pill_id:
+            continue
+        attempt_result = await db.execute(
+            select(Attempt).where(Attempt.id == response.attempt_id)
+        )
+        attempt = attempt_result.scalar_one_or_none()
+        if attempt is None or attempt.testee_id != testee_id:
+            continue
+        n += 1
+    return n
+
+
+def _severity_for(weakness_severity: float) -> str:
+    """Map ``WeaknessReportPill.severity`` (float 0..1 per AC-D6 v1.3)
+    to the FE chip vocabulary. Thresholds picked to align with the
+    v6 mock's three-band chip palette; refinement deferred to the
+    admin-side weakness review surface (FE-9)."""
+    if weakness_severity >= 0.66:
+        return "critical"
+    if weakness_severity >= 0.33:
+        return "severe"
+    return "info"
+
+
+async def _latest_weakness_report(
+    db: AsyncSession, attempt_id: uuid.UUID
+) -> WeaknessReport | None:
+    """Return the most-recent ``WeaknessReport`` for this attempt.
+    ``run_loop_after_submit`` writes one row per submit for failed
+    assignment-backed attempts; self-initiated / passing attempts get
+    none."""
+    result = await db.execute(
+        select(WeaknessReport).where(
+            WeaknessReport.attempt_id == attempt_id,
+            WeaknessReport.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    reports = list(result.scalars().all())
+    if not reports:
+        return None
+    reports.sort(key=lambda r: r.created_at, reverse=True)
+    return reports[0]
+
+
+async def _result_adaptive_loop(
+    db: AsyncSession, attempt: Attempt
+) -> list[dict[str, Any]]:
+    """Build the adaptive-loop step rows for FE-6 §B.5. Reads
+    ``LearningMaterial`` rows linked to this attempt's WeaknessReport
+    (explainer steps) and follow-up ``Attempt`` rows whose
+    ``parent_attempt_id`` matches (re-test steps). Safety-relevant
+    pills swap the explainer step type to ``external_link_set`` per
+    AC-D21 — the FE routes to the curated TDS link set instead of an
+    in-app explainer page."""
+    report = await _latest_weakness_report(db, attempt.id)
+    if report is None:
+        return []
+
+    materials_result = await db.execute(
+        select(LearningMaterial).where(
+            LearningMaterial.weakness_report_id == report.id,
+            LearningMaterial.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    materials = list(materials_result.scalars().all())
+    materials.sort(key=lambda m: (m.created_at, str(m.id)))
+
+    followups_result = await db.execute(
+        select(Attempt).where(
+            Attempt.parent_attempt_id == attempt.id,
+            Attempt.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    followups = list(followups_result.scalars().all())
+    followups.sort(key=lambda a: (a.created_at, str(a.id)))
+
+    steps: list[dict[str, Any]] = []
+    for material in materials:
+        pill_result = await db.execute(select(Pill).where(Pill.id == material.pill_id))
+        pill = pill_result.scalar_one_or_none()
+        if pill is None:
+            continue
+        is_safety = bool(pill.safety_relevant)
+        steps.append(
+            {
+                "type": "external_link_set" if is_safety else "explainer",
+                "target_pill_id": pill.id,
+                "target_pill_name": pill.name,
+                "title": (
+                    f"Skim TDS references on {pill.name}"
+                    if is_safety
+                    else f"Read this explainer on {pill.name}"
+                ),
+                "description": (
+                    "Manufacturer technical data sheets for safety-tagged "
+                    "content — AC-D21 routes you to the curated link set "
+                    "instead of an AI explainer."
+                    if is_safety
+                    else "A short explainer generated from your wrong "
+                    "answers; usually 2–3 minutes to read."
+                ),
+                "cta_label": "Open Drive" if is_safety else "Open",
+                "route_href": (
+                    f"/pills/{pill.id}/safety-links"
+                    if is_safety
+                    else f"/pills/{pill.id}"
+                ),
+                "status": "optional" if is_safety else "ready",
+                "queued_for": None,
+                "step_down_hint": False,
+            }
+        )
+
+    for followup in followups:
+        followup_test_result = await db.execute(
+            select(Test).where(Test.id == followup.test_id)
+        )
+        followup_test = followup_test_result.scalar_one_or_none()
+        title = (
+            f"Re-test on {followup_test.name}"
+            if followup_test is not None
+            else "Re-test on the weak pill"
+        )
+        steps.append(
+            {
+                "type": "retest_queued",
+                "target_pill_id": None,
+                "target_pill_name": None,
+                "title": title,
+                "description": (
+                    "Queued follow-up attempt — start when you're ready. "
+                    "AC-D6 step-down applies if this is your third failed "
+                    "iteration."
+                ),
+                "cta_label": "Defer",
+                "route_href": f"/attempts/{followup.id}",
+                "status": "queued",
+                "queued_for": followup.created_at,
+                "step_down_hint": False,
+            }
+        )
+    return steps
 
 
 async def next_question(db: AsyncSession, attempt: Attempt, test: Test) -> dict[str, Any]:

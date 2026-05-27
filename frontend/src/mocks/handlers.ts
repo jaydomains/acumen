@@ -738,6 +738,14 @@ const defaultResult = (attemptId: string): AttemptResultSchema => ({
   status: "ready",
   overall_score: 0.8,
   outcome: "pass",
+  attempt_band: null,
+  competence_estimate_after: null,
+  competence_estimate_delta: null,
+  time_on_test_seconds: null,
+  median_time_seconds: null,
+  review_summary: null,
+  pills: [],
+  adaptive_loop: [],
   questions: null,
 });
 
