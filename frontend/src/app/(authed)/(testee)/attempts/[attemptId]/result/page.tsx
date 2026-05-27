@@ -123,10 +123,13 @@ export default function AttemptResultPage() {
                 <ByQuestionCard
                   questions={result.questions}
                   headerSlot={
-                    <PdfExportButton
-                      attemptId={attemptId}
-                      isGated={result.status !== "ready"}
-                    />
+                    // ByQuestionCard only mounts under the ready guard
+                    // above, so the gated state is unreachable here.
+                    // Pass false explicitly per Gitar PR-#59 cleanup;
+                    // moving the button outside the ready guard to
+                    // surface the gated tooltip during review_pending
+                    // is a separate FE-6.x design call.
+                    <PdfExportButton attemptId={attemptId} isGated={false} />
                   }
                 />
               </>
