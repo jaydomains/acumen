@@ -392,6 +392,229 @@ export const learningMaterialHandler = http.post(
   },
 );
 
+// =====================================================================
+// FE-4 attempt-runner handlers (slice 1: GET /attempts/{id} +
+// GET /tests/{id} + POST /autosave + POST /flag-realism).
+// State lives in module-scope so test scenarios can pre-seed via
+// `setMockAttempt(...)` / `setMockTest(...)`. The default fixture is a
+// 3-question frozen-mode attempt that exercises MCQ + true/false +
+// short_answer — enough for the page integration test in slice 1.
+// =====================================================================
+
+type AttemptViewSchema = components["schemas"]["AttemptView"];
+type TestResponseSchema = components["schemas"]["TestResponse"];
+
+const FIXTURE_TESTEE = "00000000-0000-0000-0000-000000000001";
+const FIXTURE_ATTEMPT_ID = "11111111-1111-1111-1111-000000000001";
+const FIXTURE_TEST_ID = "22222222-2222-2222-2222-000000000001";
+
+const Q_MCQ_ID = "33333333-3333-3333-3333-000000000001";
+const Q_TF_ID = "33333333-3333-3333-3333-000000000002";
+const Q_SA_ID = "33333333-3333-3333-3333-000000000003";
+
+const DEFAULT_QUESTIONS = [
+  {
+    id: Q_MCQ_ID,
+    type: "multiple_choice",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt: "Which DFT measurement device pairs best with steel substrates?",
+      options: [
+        { text: "Eddy-current gauge", image_url: null },
+        { text: "Magnetic-induction gauge", image_url: null },
+        { text: "Ultrasonic gauge", image_url: null },
+        { text: "Hartmann field meter", image_url: null },
+      ],
+    },
+  },
+  {
+    id: Q_TF_ID,
+    type: "true_false",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt:
+        "Cathodic protection alone prevents pitting corrosion in immersion service.",
+    },
+  },
+  {
+    id: Q_SA_ID,
+    type: "short_answer",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt:
+        "In one paragraph, explain why batch tracking matters when reference panels rotate across shifts.",
+      expected_seconds: 90,
+    },
+  },
+];
+
+const DEFAULT_ATTEMPT: AttemptViewSchema = {
+  id: FIXTURE_ATTEMPT_ID,
+  test_id: FIXTURE_TEST_ID,
+  testee_id: FIXTURE_TESTEE,
+  assignment_id: null,
+  origin: "self_initiated",
+  sequence_number: 1,
+  started_at: "2026-05-27T10:00:00Z",
+  submitted_at: null,
+  paused: false,
+  pauses_used: 0,
+  pause_allowance: 2,
+  pause_seconds_remaining: null,
+  pause_reason: null,
+  watermark: FIXTURE_TESTEE,
+  // `questions` is typed `Record<string, never>[]` on the wire schema
+  // (the FastAPI Pydantic model declares `list[dict]` so openapi-
+  // typescript can't infer a richer shape). The FE narrows via
+  // `narrowPresented` at the dispatch boundary; cast here is the
+  // single place we widen the untyped wire shape into our fixture.
+  questions: DEFAULT_QUESTIONS as unknown as Record<string, never>[],
+  q1: null,
+};
+
+const DEFAULT_TEST: TestResponseSchema = {
+  id: FIXTURE_TEST_ID,
+  name: "Reference Panels · Practice D5",
+  mode: "frozen",
+  status: "published",
+  visibility: "library",
+  timed: true,
+  duration_minutes: 30,
+  pause_allowance: 2,
+  timeout_behaviour: "auto_submit",
+  max_pause_duration_minutes: 5,
+  pass_threshold: 0.7,
+  target_difficulty: 5,
+  lock_mode: "open",
+  campaign_id: null,
+  benchmark_scope: null,
+  benchmark_target_testee_id: null,
+  randomise_question_order: false,
+  randomise_option_order: false,
+  pill_id: null,
+  created_at: "2026-05-01T00:00:00Z",
+  updated_at: "2026-05-01T00:00:00Z",
+};
+
+let mockAttempts: Map<string, AttemptViewSchema> = new Map([
+  [DEFAULT_ATTEMPT.id, DEFAULT_ATTEMPT],
+]);
+let mockTests: Map<string, TestResponseSchema> = new Map([
+  [DEFAULT_TEST.id, DEFAULT_TEST],
+]);
+
+export const setMockAttempt = (attempt: AttemptViewSchema): void => {
+  mockAttempts.set(attempt.id, attempt);
+};
+export const setMockTest = (test: TestResponseSchema): void => {
+  mockTests.set(test.id, test);
+};
+export const resetMockAttemptState = (): void => {
+  mockAttempts = new Map([[DEFAULT_ATTEMPT.id, DEFAULT_ATTEMPT]]);
+  mockTests = new Map([[DEFAULT_TEST.id, DEFAULT_TEST]]);
+  mockAutosaveCalls.length = 0;
+  mockFlaggedQuestions.clear();
+};
+export const getMockAttempt = (id: string): AttemptViewSchema | undefined =>
+  mockAttempts.get(id);
+export const getMockTest = (id: string): TestResponseSchema | undefined =>
+  mockTests.get(id);
+
+export type AutosaveLogEntry = {
+  attempt_id: string;
+  question_id: string;
+  answer_payload: unknown;
+  time_ms: number | null;
+};
+export const mockAutosaveCalls: AutosaveLogEntry[] = [];
+export const mockFlaggedQuestions = new Set<string>();
+
+const attemptNotFound = HttpResponse.json(
+  {
+    error: {
+      code: "not_found",
+      message: "Attempt not found.",
+      detail: null,
+    },
+  },
+  { status: 404 },
+);
+
+export const getAttemptHandler = http.get(
+  `${API}/v1/attempts/:attempt_id`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    return HttpResponse.json(attempt);
+  },
+);
+
+export const getTestHandler = http.get(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const test = mockTests.get(String(params.test_id));
+  if (!test) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "Test not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(test);
+});
+
+export const autosaveHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/autosave`,
+  async ({ params, request }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const body = (await request.json().catch(() => null)) as {
+      question_id?: string;
+      answer_payload?: unknown;
+      time_ms?: number | null;
+    } | null;
+    if (!body || typeof body.question_id !== "string") {
+      return HttpResponse.json(
+        {
+          error: { code: "bad_request", message: "Missing question_id.", detail: null },
+        },
+        { status: 400 },
+      );
+    }
+    mockAutosaveCalls.push({
+      attempt_id: attempt.id,
+      question_id: body.question_id,
+      answer_payload: body.answer_payload ?? null,
+      time_ms: body.time_ms ?? null,
+    });
+    return HttpResponse.json({ status: "ok" });
+  },
+);
+
+export const flagRealismHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/questions/:question_id/flag-realism`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const questionId = String(params.question_id);
+    const key = `${attempt.id}:${questionId}`;
+    const wasFlagged = mockFlaggedQuestions.has(key);
+    if (!wasFlagged) mockFlaggedQuestions.add(key);
+    return HttpResponse.json({
+      realism_flag_id: `flag-${key}`,
+      question_id: questionId,
+      testee_id: attempt.testee_id,
+      created: !wasFlagged,
+    });
+  },
+);
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -404,4 +627,8 @@ export const handlers = [
   cataloguePillsHandler,
   cataloguePillDetailHandler,
   learningMaterialHandler,
+  getAttemptHandler,
+  getTestHandler,
+  autosaveHandler,
+  flagRealismHandler,
 ];
