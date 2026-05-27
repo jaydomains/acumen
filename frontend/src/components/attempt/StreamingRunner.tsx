@@ -269,15 +269,22 @@ export function StreamingRunner({
     });
   }, [localPaused, runner, queryClient, attemptId]);
 
-  // System-glitch resume — branches by reason. ``generation_failed``
-  // calls POST /resume (backend marked the attempt paused);
-  // ``reconnect_exhausted`` is FE-synthetic, so we only re-open the
-  // SSE stream (the attempt was never server-paused). Reads
-  // ``streamRef.current`` so the callback identity is stable across
-  // renders even though the ``stream`` object isn't.
+  // System-glitch resume — branches by source-of-truth for the
+  // discriminator:
+  //   * ``generation_failed`` → server marked the attempt paused;
+  //     the hook's ``enabled`` flips false on the next render and
+  //     the cleanup wipes ``stream.pausedReason``. Read the
+  //     discriminator from ``attempt.pause_reason`` (durable across
+  //     teardown + tab reload).
+  //   * ``reconnect_exhausted`` → FE-synthetic; the attempt is NOT
+  //     server-paused (``attempt.pause_reason === null``), so the
+  //     hook's effect doesn't tear down and ``streamRef.current
+  //     .pausedReason`` stays the source of truth.
+  // The two readings race in theory while the refetch is in flight,
+  // but the assignments are monotonic + idempotent — clicking once
+  // either fires POST /resume or reconnects, never both.
   const handleSystemResume = useCallback(() => {
-    const s = streamRef.current;
-    if (s.pausedReason === "generation_failed") {
+    if (attempt.pause_reason === "generation_failed") {
       resumeRef.current.mutate(undefined, {
         onSuccess: () => {
           queryClient.invalidateQueries({
@@ -292,10 +299,10 @@ export function StreamingRunner({
           });
         },
       });
-    } else if (s.pausedReason === "reconnect_exhausted") {
-      s.reconnect();
+    } else if (streamRef.current.pausedReason === "reconnect_exhausted") {
+      streamRef.current.reconnect();
     }
-  }, [queryClient, attemptId]);
+  }, [attempt.pause_reason, queryClient, attemptId]);
 
   const handleOpenSubmit = useCallback(() => {
     setSubmitOpen(true);
