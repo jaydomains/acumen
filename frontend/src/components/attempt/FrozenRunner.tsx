@@ -10,7 +10,7 @@
  * Slice 2 lights up: pause / resume / submit / grading overlay.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -77,15 +77,33 @@ export function FrozenRunner({
   const resumeMutation = useResumeAttempt(attemptId);
   const submitMutation = useSubmitAttempt(attemptId);
 
+  // React Query's `useMutation` returns a fresh object on every
+  // render — the unstable reference defeats `useCallback`
+  // memoisation if we list the mutation in deps. Stash each in a
+  // ref so the handlers below + `useAttempt`'s `executeAutosave`
+  // stay referentially stable across re-renders, sparing the per-
+  // type question renderers an unnecessary re-render on every
+  // parent render. (Per Gitar review.)
+  const autosaveRef = useRef(autosaveMutation);
+  autosaveRef.current = autosaveMutation;
+  const flagRef = useRef(flagMutation);
+  flagRef.current = flagMutation;
+  const pauseRef = useRef(pauseMutation);
+  pauseRef.current = pauseMutation;
+  const resumeRef = useRef(resumeMutation);
+  resumeRef.current = resumeMutation;
+  const submitRef = useRef(submitMutation);
+  submitRef.current = submitMutation;
+
   const executeAutosave = useCallback(
     async (input: { questionId: string; payload: AnswerPayload; timeMs: number }) => {
-      await autosaveMutation.mutateAsync({
+      await autosaveRef.current.mutateAsync({
         question_id: input.questionId,
         answer_payload: toServerPayload(input.payload),
         time_ms: input.timeMs,
       });
     },
-    [autosaveMutation],
+    [],
   );
 
   const runner = useAttempt({
@@ -139,7 +157,7 @@ export function FrozenRunner({
     const questionId = currentQuestion.id;
     if (flagInFlight === questionId) return;
     setFlagInFlight(questionId);
-    flagMutation.mutate(questionId, {
+    flagRef.current.mutate(questionId, {
       onSuccess: () => {
         runner.flagRealism(questionId);
       },
@@ -153,12 +171,12 @@ export function FrozenRunner({
         setFlagInFlight((curr) => (curr === questionId ? null : curr));
       },
     });
-  }, [currentQuestion, flagInFlight, flagMutation, runner]);
+  }, [currentQuestion, flagInFlight, runner]);
 
   const handlePause = useCallback(() => {
     if (paused) return;
     runner.pauseStart();
-    pauseMutation.mutate(undefined, {
+    pauseRef.current.mutate(undefined, {
       onSuccess: () => {
         runner.pauseSuccess();
       },
@@ -170,12 +188,12 @@ export function FrozenRunner({
         runner.resumeSuccess();
       },
     });
-  }, [paused, pauseMutation, runner]);
+  }, [paused, runner]);
 
   const handleResume = useCallback(() => {
     if (!paused) return;
     runner.resumeStart();
-    resumeMutation.mutate(undefined, {
+    resumeRef.current.mutate(undefined, {
       onSuccess: () => {
         runner.resumeSuccess();
         // Refresh the attempt view so `pause_seconds_remaining` and
@@ -192,14 +210,14 @@ export function FrozenRunner({
         runner.pauseSuccess();
       },
     });
-  }, [paused, resumeMutation, runner, queryClient, attemptId]);
+  }, [paused, runner, queryClient, attemptId]);
 
   const handleOpenSubmit = useCallback(() => {
     setSubmitOpen(true);
   }, []);
 
   const handleConfirmSubmit = useCallback(() => {
-    submitMutation.mutate(undefined, {
+    submitRef.current.mutate(undefined, {
       onSuccess: () => {
         setSubmitOpen(false);
         setGraded(true);
@@ -212,7 +230,7 @@ export function FrozenRunner({
         });
       },
     });
-  }, [submitMutation, runner]);
+  }, [runner]);
 
   const goPrev = useCallback(() => {
     if (runner.state.currentIndex > 0) {

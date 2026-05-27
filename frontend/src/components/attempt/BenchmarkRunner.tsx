@@ -20,7 +20,7 @@
  * commits with the next /next call).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/errors";
@@ -90,11 +90,25 @@ export function BenchmarkRunner({
   const integrity = useIntegrity({ paused: false });
   const nowMs = useNow();
 
+  // React Query's `useMutation` returns a fresh object reference on
+  // every render (internal isPending state churns). Stash each
+  // mutation in a ref so the handlers below don't list the unstable
+  // objects in deps — otherwise every parent render recreates the
+  // handlers and the children that receive them re-render too.
+  // (Per Gitar review.)
+  const autosaveRef = useRef(autosaveMutation);
+  autosaveRef.current = autosaveMutation;
+  const nextRef = useRef(nextMutation);
+  nextRef.current = nextMutation;
+  const submitRef = useRef(submitMutation);
+  submitRef.current = submitMutation;
+
   // If we don't have Q1 from the snapshot, kick the first /next on
-  // mount so the testee lands on a question.
+  // mount so the testee lands on a question. The ref form keeps the
+  // effect dep-list clean — the effect runs exactly once on mount.
   useEffect(() => {
     if (initialQuestion) return;
-    nextMutation.mutate(undefined, {
+    nextRef.current.mutate(undefined, {
       onSuccess: (data) => {
         if (data.done) {
           setDone(true);
@@ -135,25 +149,17 @@ export function BenchmarkRunner({
     if (!current) return;
     const payload = answers.get(current.id);
     if (!payload || !isAnswered(payload)) return;
-    try {
-      await autosaveMutation.mutateAsync({
-        question_id: current.id,
-        answer_payload: toServerPayload(payload),
-        time_ms: null,
-      });
-    } catch (err) {
-      // Surface the failure but let the caller decide whether to
-      // proceed — for benchmark we don't proceed (the answer would
-      // be silently dropped). handleNext / handleConfirmSubmit catch
-      // and toast.
-      throw err;
-    }
-  }, [autosaveMutation, answers, current]);
+    await autosaveRef.current.mutateAsync({
+      question_id: current.id,
+      answer_payload: toServerPayload(payload),
+      time_ms: null,
+    });
+  }, [answers, current]);
 
   const handleNext = useCallback(() => {
     persistCurrentAnswer()
       .then(() =>
-        nextMutation.mutate(undefined, {
+        nextRef.current.mutate(undefined, {
           onSuccess: (data) => {
             if (data.done) {
               setDone(true);
@@ -181,12 +187,12 @@ export function BenchmarkRunner({
           ...(code ? { description: `(${code})` } : {}),
         });
       });
-  }, [persistCurrentAnswer, nextMutation, step, asked]);
+  }, [persistCurrentAnswer, step, asked]);
 
   const handleConfirmSubmit = useCallback(() => {
     persistCurrentAnswer()
       .then(() =>
-        submitMutation.mutate(undefined, {
+        submitRef.current.mutate(undefined, {
           onSuccess: () => {
             setSubmitOpen(false);
             setGraded(true);
@@ -205,7 +211,7 @@ export function BenchmarkRunner({
           ...(code ? { description: `(${code})` } : {}),
         });
       });
-  }, [persistCurrentAnswer, submitMutation]);
+  }, [persistCurrentAnswer]);
 
   const handleExit = useCallback(() => {
     router.push("/");
