@@ -63,10 +63,16 @@ jobs:
     # `playwright.config.ts` retries flakes once in CI and uploads
     # the HTML report on failure.
     #
-    # Skip on `[skip e2e]` commit-message marker so emergency
-    # hotfixes don't block on the slower E2E layer.
+    # Skip on `[skip e2e]` marker so emergency hotfixes don't block
+    # on the slower E2E layer. `head_commit.message` is only
+    # populated for `push` events — on `pull_request` events the
+    # marker must come from the PR title instead. Check both so the
+    # escape hatch works whichever trigger fired the run. (Per
+    # Gitar review.)
     needs: checks
-    if: ${{ !contains(github.event.head_commit.message, '[skip e2e]') }}
+    if: |
+      !contains(github.event.head_commit.message || '', '[skip e2e]') &&
+      !contains(github.event.pull_request.title || '', '[skip e2e]')
     runs-on: ubuntu-latest
     defaults:
       run:
