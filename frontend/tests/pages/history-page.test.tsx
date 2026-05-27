@@ -1,13 +1,14 @@
 /**
- * History-page Slice 1 integration tests (FE-7 §B.2 §5/§6).
+ * History-page integration tests (FE-7 §B.2 §5/§6).
  *
- * Covers the four top-level state branches that ship in Slice 1:
- * loading skeleton, endpoint_absent placeholder, empty fallback, and
- * a happy first-page stub. Full `HistoryTable` + sentinel pagination
- * land in Slice 4.
+ * Slice 1 covered the top-level state branches against stub row
+ * placeholders; Slice 4 ships the real `HistoryTable` + sentinel
+ * pagination. Tests below assert end-to-end: state branches +
+ * row-click navigation + IntersectionObserver-driven cursor flow.
  */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,9 +20,11 @@ import {
 } from "@/mocks/handlers";
 import type { AttemptListItem } from "@/lib/queries/me";
 
+const routerPush = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPush,
     replace: vi.fn(),
     back: vi.fn(),
     forward: vi.fn(),
@@ -31,6 +34,38 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/history",
   useSearchParams: () => new URLSearchParams(),
 }));
+
+// IntersectionObserver stub — captures callbacks so tests can trigger
+// intersections deterministically (jsdom has no native impl).
+let observers: Array<{
+  callback: IntersectionObserverCallback;
+  observe: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+}> = [];
+
+function installIntersectionObserverStub() {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      callback: IntersectionObserverCallback;
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+      takeRecords = vi.fn().mockReturnValue([]);
+      root = null;
+      rootMargin = "";
+      thresholds: ReadonlyArray<number> = [];
+      constructor(cb: IntersectionObserverCallback) {
+        this.callback = cb;
+        observers.push({
+          callback: cb,
+          observe: this.observe,
+          disconnect: this.disconnect,
+        });
+      }
+    },
+  );
+}
 
 const attemptId = (n: number): string =>
   `cccccccc-cccc-cccc-cccc-${String(n).padStart(12, "0")}`;
@@ -64,9 +99,15 @@ function mountTree(node: React.ReactNode) {
 
 beforeEach(() => {
   resetMockMeAttempts();
+  routerPush.mockClear();
+  observers = [];
+  installIntersectionObserverStub();
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("History page · loading skeleton", () => {
   it("renders the skeleton while the first-page fetch is in-flight", () => {
@@ -76,7 +117,7 @@ describe("History page · loading skeleton", () => {
 });
 
 describe("History page · happy first page", () => {
-  it("renders hero + row placeholders for the first page (LOCK-1 envelope)", async () => {
+  it("renders hero + HistoryTable + one row per attempt (LOCK-1 envelope)", async () => {
     setMockMeAttempts([
       makeAttempt(1, { origin: "assignment_driven", pill_name: "Antifouling" }),
       makeAttempt(2, { origin: "loop_driven", pill_name: "DFT" }),
@@ -86,20 +127,59 @@ describe("History page · happy first page", () => {
     expect(screen.getByTestId("history-hero")).toHaveTextContent(
       /Your attempt history · 2 records/,
     );
-    const rows = screen.getAllByTestId("history-row-placeholder");
+    expect(screen.getByTestId("history-table")).toBeInTheDocument();
+    const rows = screen.getAllByTestId("history-row");
     expect(rows).toHaveLength(2);
-    // LOCK-4 — long-form origin enum values are rendered as-is.
+    // LOCK-4 — long-form origin enum values arrive on the data-attr.
     expect(rows[0]).toHaveAttribute("data-origin", "assignment_driven");
     expect(rows[1]).toHaveAttribute("data-origin", "loop_driven");
   });
 
-  it("renders sentinel-pending marker when the first page reports more pages", async () => {
+  it("mounts the sentinel when the first page reports more pages, drops it when exhausted", async () => {
+    // 60 attempts → page 1 has 50; meta.next_cursor non-null → sentinel mounts.
     setMockMeAttempts(Array.from({ length: 60 }, (_, i) => makeAttempt(i + 1)));
     render(mountTree(<HistoryPage />));
     await waitFor(() => expect(screen.getByTestId("history-happy")).toBeInTheDocument());
-    expect(screen.getByTestId("history-sentinel-pending")).toBeInTheDocument();
-    // Default limit is 50; 60 attempts → first page has 50 rows.
-    expect(screen.getAllByTestId("history-row-placeholder")).toHaveLength(50);
+    expect(screen.getByTestId("history-sentinel")).toBeInTheDocument();
+    expect(screen.getAllByTestId("history-row")).toHaveLength(50);
+  });
+
+  it("sentinel intersection drives fetchNextPage → second page rows append + sentinel drops when cursor is null", async () => {
+    // 60 rows total: page 1 returns 50 + next_cursor=50; page 2 returns 10
+    // + next_cursor=null.
+    setMockMeAttempts(Array.from({ length: 60 }, (_, i) => makeAttempt(i + 1)));
+    render(mountTree(<HistoryPage />));
+    await waitFor(() => expect(screen.getByTestId("history-table")).toBeInTheDocument());
+    expect(screen.getAllByTestId("history-row")).toHaveLength(50);
+    expect(observers).toHaveLength(1);
+    const observer = observers[0]!;
+    // Simulate scroll: sentinel intersects → fetchNextPage kicks.
+    observer.callback(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+    await waitFor(() => {
+      expect(screen.getAllByTestId("history-row")).toHaveLength(60);
+    });
+    expect(screen.queryByTestId("history-sentinel")).toBeNull();
+  });
+
+  it("clicking a row router.push'es to /attempts/{attempt_id}/result (FE-6 destination)", async () => {
+    setMockMeAttempts([makeAttempt(1)]);
+    const user = userEvent.setup();
+    render(mountTree(<HistoryPage />));
+    await waitFor(() => expect(screen.getByTestId("history-row")).toBeInTheDocument());
+    await user.click(screen.getByTestId("history-row"));
+    expect(routerPush).toHaveBeenLastCalledWith(`/attempts/${attemptId(1)}/result`);
+  });
+
+  it("first-attempt rows (competence_delta === null) render the em-dash in --ink-3", async () => {
+    setMockMeAttempts([makeAttempt(1, { competence_delta: null })]);
+    render(mountTree(<HistoryPage />));
+    await waitFor(() => expect(screen.getByTestId("history-row")).toBeInTheDocument());
+    const delta = screen.getByTestId("history-row-delta");
+    expect(delta).toHaveTextContent("—");
+    expect(delta).toHaveStyle({ color: "var(--ink-3)" });
   });
 });
 
@@ -110,7 +190,8 @@ describe("History page · endpoint_absent", () => {
     await waitFor(() =>
       expect(screen.getByTestId("history-endpoint-absent")).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId("history-row-placeholder")).toBeNull();
+    expect(screen.queryByTestId("history-table")).toBeNull();
+    expect(screen.queryByTestId("history-row")).toBeNull();
   });
 });
 

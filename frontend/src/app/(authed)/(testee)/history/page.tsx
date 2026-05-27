@@ -3,19 +3,15 @@
 /**
  * Testee attempt history page (FE-7 §B.2).
  *
- * Slice 1 ships the route shell with the top-level state branches —
- * loading skeleton, endpoint_absent placeholder, empty fallback, and a
- * happy-state first-page stub. The full `HistoryTable` + sentinel
- * pagination land in Slice 4.
- *
- * Per LOCK-1, `GET /v1/attempts` ships under the canonical `Page<T>`
- * envelope (`{data, meta: {next_cursor}}` per CODE_SPEC §5);
- * `useMeAttemptsInfinite` consumes that shape and flattens via
- * `flattenAttempts` so the page only ever sees a row array.
+ * Slice 1 shipped the route shell + top-level state branches.
+ * Slice 4 mounts the full `HistoryTable` with cursor-driven sentinel
+ * pagination per LOCK-1 (`Page<AttemptListItem>` envelope per
+ * CODE_SPEC §5).
  */
 
 import { ApiError } from "@/lib/api/errors";
 import { flattenAttempts, useMeAttemptsInfinite } from "@/lib/queries/me";
+import { HistoryTable } from "@/components/profile/history-table";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -62,40 +58,14 @@ export default function TesteeHistoryPage() {
       <HistoryHero
         eyebrow={`Your attempt history · ${rows.length} record${rows.length === 1 ? "" : "s"}`}
       />
-      <Card data-testid="history-table-slot" className="p-4">
-        <div className="text-[12px] text-ink-3 mb-3">
-          HistoryTable arrives in Slice 4. First page rows:{" "}
-          <span className="font-mono">{rows.length}</span>.
-        </div>
-        <ul
-          className="flex flex-col divide-y divide-line text-[13px]"
-          data-testid="history-row-list"
-        >
-          {rows.map((row) => (
-            <li
-              key={row.attempt_id}
-              data-testid="history-row-placeholder"
-              data-attempt-id={row.attempt_id}
-              data-origin={row.origin}
-              className="flex items-baseline justify-between gap-3 py-2"
-            >
-              <span className="text-ink-2 flex-1 truncate">{row.pill_name}</span>
-              <span className="font-mono text-[11px] text-ink-3">{row.origin}</span>
-              <span className="font-mono text-[11px] text-ink-3">
-                {row.score_percent.toFixed(0)}%
-              </span>
-            </li>
-          ))}
-        </ul>
-        {attempts.hasNextPage ? (
-          <div
-            data-testid="history-sentinel-pending"
-            className="mt-3 text-center text-[12px] text-ink-3"
-          >
-            Sentinel pagination arrives in Slice 4.
-          </div>
-        ) : null}
-      </Card>
+      <HistoryTable
+        rows={rows}
+        hasNextPage={Boolean(attempts.hasNextPage)}
+        isFetchingNextPage={attempts.isFetchingNextPage}
+        onLoadMore={() => {
+          void attempts.fetchNextPage();
+        }}
+      />
     </div>
   );
 }
