@@ -1717,7 +1717,15 @@ async def _result_pills(db: AsyncSession, attempt: Attempt) -> list[dict[str, An
     estimate + confidence (AC-D20 ``is_confident``), and a missed-count
     derived from this attempt's grade rows tied to the pill via the
     Question.pill_id link (best-effort; null counts when no anchors are
-    pill-tagged)."""
+    pill-tagged).
+
+    Bulk-loads once, then filters in Python (AC-CD15 zero-DB harness
+    only supports single-model equality WHERE — ``.in_()`` / JOIN /
+    ``func.count()`` do not work against the FakeSession used by the
+    integration suite). Total query count is fixed at 6 regardless of
+    pill count, replacing the prior O(P × R × 2) N+1 path flagged by
+    Gitar PR-#59 finding #1 + #2.
+    """
     from app.domain.calibration import is_confident
 
     report = await _latest_weakness_report(db, attempt.id)
@@ -1745,31 +1753,29 @@ async def _result_pills(db: AsyncSession, attempt: Attempt) -> list[dict[str, An
         getattr(settings, "calibration_confidence_threshold", None) or 20
     )
 
+    # Bulk-load each table once (tenant equality only); index in Python
+    # for the per-pill walk below.
+    pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    pills_by_id: dict[uuid.UUID, Pill] = {p.id: p for p in pills_result.scalars().all()}
+    profiles_result = await db.execute(
+        select(CompetencyProfile).where(
+            CompetencyProfile.testee_id == attempt.testee_id,
+            CompetencyProfile.tenant_id == SEED_TENANT_ID,
+        )
+    )
+    profiles_by_pill: dict[uuid.UUID, CompetencyProfile] = {
+        p.pill_id: p for p in profiles_result.scalars().all()
+    }
+    observation_counts = await _testee_observation_counts(db, attempt.testee_id)
+
     pills: list[dict[str, Any]] = []
     for wp in pill_rows:
-        pill_result = await db.execute(select(Pill).where(Pill.id == wp.pill_id))
-        pill = pill_result.scalar_one_or_none()
+        pill = pills_by_id.get(wp.pill_id)
         if pill is None:
             continue
-        profile_result = await db.execute(
-            select(CompetencyProfile).where(
-                CompetencyProfile.testee_id == attempt.testee_id,
-                CompetencyProfile.tenant_id == SEED_TENANT_ID,
-            )
-        )
-        profile = next(
-            (p for p in profile_result.scalars().all() if p.pill_id == pill.id),
-            None,
-        )
+        profile = profiles_by_pill.get(pill.id)
         estimate = profile.competence_estimate if profile is not None else None
-        # ``n`` is the count of scored observations on this pill for
-        # the testee. v1 approximates with the attempt's own response
-        # count tied to the pill via Question.pill_id; a richer query
-        # would walk all prior attempts. Approximation is honest about
-        # what we know today and feeds the AC-D20 threshold.
-        n_observations = await _testee_pill_observation_count(
-            db, attempt.testee_id, pill.id
-        )
+        n_observations = observation_counts.get(pill.id, 0)
         confident = is_confident(
             n_observations, confidence_threshold=confidence_threshold
         )
@@ -1793,34 +1799,50 @@ async def _result_pills(db: AsyncSession, attempt: Attempt) -> list[dict[str, An
     return pills
 
 
-async def _testee_pill_observation_count(
-    db: AsyncSession, testee_id: uuid.UUID, pill_id: uuid.UUID
-) -> int:
-    """Count scored Response rows on this pill across all attempts by
-    this testee. Used to feed the AC-D20 ``is_confident`` threshold
-    check on the result page weakness card. Equality WHERE only per
-    AC-CD15."""
+async def _testee_observation_counts(
+    db: AsyncSession, testee_id: uuid.UUID
+) -> dict[uuid.UUID, int]:
+    """Return ``{pill_id: scored_response_count}`` for the testee across
+    every prior attempt. Used to feed the AC-D20 ``is_confident``
+    threshold on the result page weakness card.
+
+    AC-CD15 carve-out: the FakeSession in the integration harness only
+    supports single-model equality WHERE (``c.left.key`` /
+    ``c.right.value`` reads at ``tests/integration/conftest.py:72``).
+    JOIN + ``func.count()`` (Gitar's first suggestion) crash the harness.
+    The bulk-load-then-filter pattern below matches
+    ``app/domain/grade_review.py::_responses_by_id`` /
+    ``_attempts_by_id`` precedent: three equality queries, Python-side
+    walk. Three calls total, not 3·N — replaces the prior R × N N+1
+    path.
+    """
     response_result = await db.execute(
         select(Response).where(Response.tenant_id == SEED_TENANT_ID)
     )
-    n = 0
-    for response in response_result.scalars().all():
-        if response.response_score is None:
-            continue
-        q_result = await db.execute(
-            select(Question).where(Question.id == response.question_id)
-        )
-        question = q_result.scalar_one_or_none()
-        if question is None or question.pill_id != pill_id:
-            continue
-        attempt_result = await db.execute(
-            select(Attempt).where(Attempt.id == response.attempt_id)
-        )
-        attempt = attempt_result.scalar_one_or_none()
+    responses = [
+        r for r in response_result.scalars().all() if r.response_score is not None
+    ]
+    if not responses:
+        return {}
+    attempts_result = await db.execute(
+        select(Attempt).where(Attempt.tenant_id == SEED_TENANT_ID)
+    )
+    attempts_by_id = {a.id: a for a in attempts_result.scalars().all()}
+    questions_result = await db.execute(
+        select(Question).where(Question.tenant_id == SEED_TENANT_ID)
+    )
+    questions_by_id = {q.id: q for q in questions_result.scalars().all()}
+
+    counts: dict[uuid.UUID, int] = {}
+    for response in responses:
+        attempt = attempts_by_id.get(response.attempt_id)
         if attempt is None or attempt.testee_id != testee_id:
             continue
-        n += 1
-    return n
+        question = questions_by_id.get(response.question_id)
+        if question is None or question.pill_id is None:
+            continue
+        counts[question.pill_id] = counts.get(question.pill_id, 0) + 1
+    return counts
 
 
 def _severity_for(weakness_severity: float) -> str:
