@@ -523,6 +523,8 @@ export const resetMockAttemptState = (): void => {
   mockTests = new Map([[DEFAULT_TEST.id, DEFAULT_TEST]]);
   mockAutosaveCalls.length = 0;
   mockFlaggedQuestions.clear();
+  resetMockAttemptResults();
+  resetMockBenchmark();
 };
 export const getMockAttempt = (id: string): AttemptViewSchema | undefined =>
   mockAttempts.get(id);
@@ -615,6 +617,185 @@ export const flagRealismHandler = http.post(
   },
 );
 
+// =====================================================================
+// FE-4 slice 2 handlers — pause / resume / submit / result polling /
+// benchmark `next` / start-attempt / resolve-test. State lives in the
+// same module-scope `mockAttempts` / `mockTests` maps as slice 1.
+// =====================================================================
+
+type AttemptResultSchema = components["schemas"]["AttemptResultResponse"];
+type AttemptStartRequestSchema = components["schemas"]["AttemptStartRequest"];
+
+// Per-attempt result state — drives the GradingOverlay polling.
+// Default: "ready" so a test that submits + polls finds the result on
+// the first poll. Tests can override via setMockAttemptResult().
+const mockAttemptResults: Map<string, AttemptResultSchema> = new Map();
+
+export const setMockAttemptResult = (
+  attemptId: string,
+  result: AttemptResultSchema,
+): void => {
+  mockAttemptResults.set(attemptId, result);
+};
+
+export const resetMockAttemptResults = (): void => {
+  mockAttemptResults.clear();
+};
+
+const defaultResult = (attemptId: string): AttemptResultSchema => ({
+  attempt_id: attemptId,
+  submitted_at: "2026-05-27T10:30:00Z",
+  status: "ready",
+  overall_score: 0.8,
+  outcome: "pass",
+  questions: null,
+});
+
+export const pauseAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/pause`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      paused: true,
+      pause_seconds_remaining: 300,
+      pause_reason: null,
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json({ status: "paused" });
+  },
+);
+
+export const resumeAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/resume`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      paused: false,
+      pause_seconds_remaining: null,
+      pause_reason: null,
+      pauses_used: attempt.pauses_used + 1,
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json({ status: "resumed" });
+  },
+);
+
+export const submitAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/submit`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      submitted_at: "2026-05-27T10:30:00Z",
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json(updated);
+  },
+);
+
+export const attemptResultHandler = http.get(
+  `${API}/v1/attempts/:attempt_id/result`,
+  ({ params }) => {
+    const attemptId = String(params.attempt_id);
+    const attempt = mockAttempts.get(attemptId);
+    if (!attempt) return attemptNotFound;
+    const result = mockAttemptResults.get(attemptId) ?? defaultResult(attemptId);
+    return HttpResponse.json(result);
+  },
+);
+
+// Benchmark `next` mock — a small in-memory walker. Returns Q2..N
+// from `DEFAULT_QUESTIONS` then `{ done: true }` after the last.
+const benchmarkPositions = new Map<string, number>();
+
+export const resetMockBenchmark = (): void => {
+  benchmarkPositions.clear();
+};
+
+export const benchmarkNextHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/next`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const pos = (benchmarkPositions.get(attempt.id) ?? 0) + 1;
+    benchmarkPositions.set(attempt.id, pos);
+    const questions = DEFAULT_QUESTIONS;
+    if (pos >= questions.length) {
+      return HttpResponse.json({ done: true, step: pos, asked: pos });
+    }
+    return HttpResponse.json({
+      done: false,
+      step: pos + 1,
+      asked: pos + 1,
+      question: questions[pos],
+    });
+  },
+);
+
+const startAttemptHandler = http.post(`${API}/v1/attempts`, async ({ request }) => {
+  const body = (await request
+    .json()
+    .catch(() => null)) as AttemptStartRequestSchema | null;
+  if (!body || typeof body.test_id !== "string") {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "bad_request",
+          message: "test_id required.",
+          detail: null,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const test = mockTests.get(body.test_id);
+  if (!test) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "not_found",
+          message: "Test not found.",
+          detail: null,
+        },
+      },
+      { status: 404 },
+    );
+  }
+  // Synthesise a fresh attempt id so test assertions on the redirect
+  // path can distinguish it from the default fixture.
+  const newId = `11111111-1111-1111-1111-${String(Date.now()).padStart(12, "0")}`;
+  const created: AttemptViewSchema = {
+    ...DEFAULT_ATTEMPT,
+    id: newId,
+    test_id: test.id,
+  };
+  mockAttempts.set(newId, created);
+  return HttpResponse.json(created, { status: 201 });
+});
+
+// `GET /v1/tests/resolve?pill_id&difficulty` — 200 with the default
+// test id if the pill_id matches our fixture pattern; 404 otherwise.
+// Tests override per-scenario via `server.use(...)`.
+export const resolveTestHandler = http.get(`${API}/v1/tests/resolve`, ({ request }) => {
+  const url = new URL(request.url);
+  const pillId = url.searchParams.get("pill_id");
+  if (!pillId) {
+    return HttpResponse.json(
+      { error: { code: "bad_request", message: "pill_id required.", detail: null } },
+      { status: 400 },
+    );
+  }
+  // Default behaviour: any pill resolves to the default fixture
+  // test. Tests that want a 404 (no matching test at difficulty)
+  // can override via `server.use(...)`.
+  return HttpResponse.json({ test_id: FIXTURE_TEST_ID });
+});
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -628,7 +809,18 @@ export const handlers = [
   cataloguePillDetailHandler,
   learningMaterialHandler,
   getAttemptHandler,
+  // `resolveTestHandler` MUST come before `getTestHandler` — both
+  // match the path `/v1/tests/resolve` (the latter interprets
+  // `resolve` as a `:test_id` path param). MSW dispatches in handler-
+  // array order, so resolve-first preserves the literal route.
+  resolveTestHandler,
   getTestHandler,
   autosaveHandler,
   flagRealismHandler,
+  pauseAttemptHandler,
+  resumeAttemptHandler,
+  submitAttemptHandler,
+  attemptResultHandler,
+  benchmarkNextHandler,
+  startAttemptHandler,
 ];

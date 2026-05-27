@@ -187,6 +187,75 @@ export function useAutosaveAttempt(attemptId: string) {
   });
 }
 
+export function usePauseAttempt(attemptId: string) {
+  return useMutation({
+    mutationKey: ["attempts", attemptId, "pause"],
+    mutationFn: async () =>
+      unwrap(
+        client.POST("/v1/attempts/{attempt_id}/pause", {
+          params: { path: { attempt_id: attemptId } },
+        }),
+      ),
+  });
+}
+
+export function useResumeAttempt(attemptId: string) {
+  return useMutation({
+    mutationKey: ["attempts", attemptId, "resume"],
+    mutationFn: async () =>
+      unwrap(
+        client.POST("/v1/attempts/{attempt_id}/resume", {
+          params: { path: { attempt_id: attemptId } },
+        }),
+      ),
+  });
+}
+
+export function useSubmitAttempt(attemptId: string) {
+  return useMutation({
+    mutationKey: ["attempts", attemptId, "submit"],
+    mutationFn: async () =>
+      unwrap(
+        client.POST("/v1/attempts/{attempt_id}/submit", {
+          params: { path: { attempt_id: attemptId } },
+        }),
+      ),
+  });
+}
+
+export function useBenchmarkNext(attemptId: string) {
+  return useMutation({
+    mutationKey: ["attempts", attemptId, "next"],
+    mutationFn: async () =>
+      unwrap(
+        client.POST("/v1/attempts/{attempt_id}/next", {
+          params: { path: { attempt_id: attemptId } },
+        }),
+      ),
+  });
+}
+
+export type ResolveTestQuery = { pill_id: string; difficulty: number };
+
+export function useResolveAndStartAttempt() {
+  return useMutation({
+    mutationKey: ["attempts", "resolve-and-start"],
+    mutationFn: async (input: ResolveTestQuery) => {
+      const resolved = await unwrap(
+        client.GET("/v1/tests/resolve", {
+          params: { query: { pill_id: input.pill_id, difficulty: input.difficulty } },
+        }),
+      );
+      const attempt = await unwrap(
+        client.POST("/v1/attempts", {
+          body: { test_id: resolved.test_id, origin: "self_initiated" },
+        }),
+      );
+      return attempt;
+    },
+  });
+}
+
 export function useFlagRealism(attemptId: string) {
   return useMutation({
     mutationKey: ["attempts", attemptId, "flag-realism"],

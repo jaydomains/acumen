@@ -30,6 +30,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useAttemptView } from "@/lib/queries/attempts";
 import { narrowPresentedList } from "@/lib/attempts/presented-question";
+import { BenchmarkRunner } from "@/components/attempt/BenchmarkRunner";
 import { FrozenRunner } from "@/components/attempt/FrozenRunner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
@@ -39,7 +40,6 @@ import { Button } from "@/components/ui/button";
 export default function AttemptRunnerPage() {
   const params = useParams<{ attemptId: string }>();
   const attemptId = params?.attemptId ?? "";
-  const router = useRouter();
   const { user } = useAuth();
   const { attempt, test, status, error } = useAttemptView(attemptId);
 
@@ -71,14 +71,22 @@ export default function AttemptRunnerPage() {
     return <PerTesteeModePlaceholder />;
   }
 
+  const userName = user?.name?.trim() || user?.email || "Testee";
+
   if (test.mode === "benchmark") {
     return (
-      <BenchmarkSlicePlaceholder attemptId={attemptId} onExit={() => router.push("/")} />
+      <BenchmarkRunner
+        attempt={attempt}
+        test={test}
+        initialQuestion={presentedQuestions[0] ?? null}
+        userName={userName}
+        pillName={test.name}
+        difficulty={test.target_difficulty ?? null}
+      />
     );
   }
 
   // frozen + hand_authored share the same runner.
-  const userName = user?.name?.trim() || user?.email || "Testee";
   return (
     <FrozenRunner
       attempt={attempt}
@@ -102,30 +110,6 @@ function PerTesteeModePlaceholder() {
         body="Per-Testee tests stream Q1..N over time and land with FE-5. For now, contact your admin if this attempt was assigned to you."
         actions={
           <Button variant="outline" onClick={() => router.push("/")}>
-            Back to dashboard
-          </Button>
-        }
-      />
-    </div>
-  );
-}
-
-function BenchmarkSlicePlaceholder({
-  attemptId,
-  onExit,
-}: {
-  attemptId: string;
-  onExit: () => void;
-}) {
-  return (
-    <div className="min-h-screen bg-bg">
-      <BoundaryFrame
-        glyph={<Icon name="flag" size={24} />}
-        eyebrow="ATTEMPT"
-        title="Benchmark runner lands in slice 2"
-        body={`This deep-link (${attemptId.slice(0, 7)}…) routes to the benchmark sequential walker — it's wired in the next slice of FE-4.`}
-        actions={
-          <Button variant="outline" onClick={onExit}>
             Back to dashboard
           </Button>
         }

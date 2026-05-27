@@ -179,13 +179,17 @@ describe("Attempt runner · mode-guards", () => {
     expect(screen.queryByTestId("question-mcq")).toBeNull();
   });
 
-  it("benchmark renders the slice-2-pending placeholder in slice 1", async () => {
+  it("benchmark mounts the sequential runner (no autosave / no flag-realism)", async () => {
     const t = getMockTest("22222222-2222-2222-2222-000000000001");
     if (!t) throw new Error("default test missing");
     setMockTest({ ...t, mode: "benchmark" });
     render(mountTree(attemptPage()));
-    await waitFor(() =>
-      expect(screen.getByText(/Benchmark runner lands in slice 2/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("attempt-shell")).toBeInTheDocument());
+    // The benchmark "Next" button is present; FlagRealismButton is not.
+    expect(screen.getByTestId("benchmark-next")).toBeInTheDocument();
+    expect(screen.queryByTestId("flag-realism-button")).toBeNull();
+    // AutosaveIndicator stays in idle (no per-question debounce queue).
+    const indicator = screen.getByTestId("autosave-indicator");
+    expect(indicator).toHaveAttribute("data-state", "idle");
   });
 });

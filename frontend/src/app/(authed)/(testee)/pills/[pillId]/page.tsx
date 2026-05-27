@@ -18,7 +18,7 @@
  */
 
 import { use } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,9 @@ import {
   useRegenerateLearningMaterial,
 } from "@/lib/queries/pills";
 import { subjectById } from "@/lib/catalogue/subjects";
+import { ApiError } from "@/lib/api/errors";
+import { useResolveAndStartAttempt } from "@/lib/queries/attempts";
+import { setInflightAttemptId } from "@/lib/attempts/resume-detection";
 
 // Avoid `use(useParams())` confusion — useParams returns an object
 // in client components, NOT a promise. We use it directly.
@@ -45,10 +48,12 @@ export default function PillDetailPage() {
   void use; // silence unused import; kept for future server-component split
   const params = useParams<{ pillId: string }>();
   const pillId = params?.pillId ?? "";
+  const router = useRouter();
 
   const pillQuery = usePillDetail(pillId);
   const materialQuery = useLearningMaterial(pillId);
   const regenerate = useRegenerateLearningMaterial(pillId);
+  const resolveAndStart = useResolveAndStartAttempt();
 
   if (pillQuery.isError) {
     // The route-level error.tsx boundary takes over on thrown errors,
@@ -83,10 +88,35 @@ export default function PillDetailPage() {
   const pill = pillQuery.data;
   const subject = subjectById(pill.subject_id);
 
+  // FE-4 slice 2: resolve → start attempt → set inflight bridge →
+  // route to the runner. `GET /v1/tests/resolve` returns 404 when no
+  // matching test exists at (pill_id, difficulty) — we surface that
+  // as a sonner toast pointing at admin (find-or-generate is a
+  // backend follow-up; FE-3 §H(b) item 3 closure).
   const handleStart = (difficulty: number) => {
-    toast(`Start attempt at D${difficulty}`, {
-      description: "Attempt runner lands in FE-4 — this is the entry-point CTA.",
-    });
+    if (resolveAndStart.isPending) return;
+    resolveAndStart.mutate(
+      { pill_id: pillId, difficulty },
+      {
+        onSuccess: (attempt) => {
+          setInflightAttemptId(attempt.id);
+          router.push(`/attempts/${attempt.id}`);
+        },
+        onError: (err) => {
+          const code = err instanceof ApiError ? err.code : null;
+          if (err instanceof ApiError && err.status === 404) {
+            toast(`No test at D${difficulty} for this pill yet`, {
+              description:
+                "Find-or-generate is a backend follow-up. Ask an admin to publish a test at this difficulty.",
+            });
+            return;
+          }
+          toast.error("Couldn't start the attempt — try again", {
+            ...(code ? { description: `(${code})` } : {}),
+          });
+        },
+      },
+    );
   };
 
   return (

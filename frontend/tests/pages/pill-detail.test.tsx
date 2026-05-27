@@ -23,16 +23,18 @@ const SAFETY_PILL_ID = "aaaaaaaa-aaaa-aaaa-aaaa-000000000012"; // Confined Space
 
 let mockParams: Record<string, string> = { pillId: STANDARD_PILL_ID };
 
+const mockedRouter = {
+  replace: vi.fn(),
+  push: vi.fn(),
+  back: vi.fn(),
+  forward: vi.fn(),
+  refresh: vi.fn(),
+  prefetch: vi.fn(),
+};
+
 vi.mock("next/navigation", () => ({
   useParams: () => mockParams,
-  useRouter: () => ({
-    replace: vi.fn(),
-    push: vi.fn(),
-    back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
-    prefetch: vi.fn(),
-  }),
+  useRouter: () => mockedRouter,
   usePathname: () => `/pills/${mockParams.pillId}`,
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -58,6 +60,9 @@ beforeEach(() => {
   mockParams = { pillId: STANDARD_PILL_ID };
   vi.mocked(toast).mockClear();
   vi.mocked(toast.error).mockClear();
+  mockedRouter.push.mockClear();
+  mockedRouter.replace.mockClear();
+  localStorage.removeItem("acumen.attempts.inflight");
 });
 
 afterEach(() => {
@@ -136,18 +141,42 @@ describe("Pill detail page · standard branch", () => {
     await waitFor(() => expect(screen.getByText("Fresh body.")).toBeInTheDocument());
   });
 
-  it("'Practice at D{n}' toasts no-op (FE-4 entry-point)", async () => {
+  it("'Practice at D{n}' resolves test → starts attempt → routes to runner (FE-4 slice 2)", async () => {
     const user = userEvent.setup();
     render(mountTree(<PillDetailPage />));
     await waitFor(() =>
       expect(screen.getByTestId("sticky-start-cta")).toBeInTheDocument(),
     );
     await user.click(screen.getByTestId("sticky-start-cta"));
-    expect(toast).toHaveBeenCalledWith(
-      expect.stringMatching(/Start attempt at D\d+/),
-      expect.objectContaining({
-        description: expect.stringMatching(/FE-4/),
-      }),
+    await waitFor(() => expect(mockedRouter.push).toHaveBeenCalled());
+    const [path] = mockedRouter.push.mock.calls[0] ?? [];
+    expect(path).toMatch(/^\/attempts\//);
+    // Inflight bridge populated for the dashboard resume prompt.
+    expect(localStorage.getItem("acumen.attempts.inflight")).toBeTruthy();
+  });
+
+  it("toasts when the resolver returns 404 (no test at this difficulty)", async () => {
+    server.use(
+      http.get("http://localhost:8000/v1/tests/resolve", () =>
+        HttpResponse.json(
+          {
+            error: { code: "not_found", message: "No matching test.", detail: null },
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    render(mountTree(<PillDetailPage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("sticky-start-cta")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId("sticky-start-cta"));
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/No test at D\d+/),
+        expect.any(Object),
+      ),
     );
   });
 });
