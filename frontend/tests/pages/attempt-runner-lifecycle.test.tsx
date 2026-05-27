@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AttemptRunnerPage from "@/app/(authed)/(testee)/attempts/[attemptId]/page";
-import { getMockTest, setMockTest } from "@/mocks/handlers";
+import { getMockTest, mockAutosaveCalls, setMockTest } from "@/mocks/handlers";
 
 const ATTEMPT_ID = "11111111-1111-1111-1111-000000000001";
 
@@ -127,6 +127,30 @@ describe("Benchmark sequential walk", () => {
     await waitFor(() => {
       const next = screen.getByTestId("question-view");
       expect(next.getAttribute("data-question-id")).not.toBe(initialQid);
+    });
+  });
+
+  it("Next click autosaves the current answer before /next (Gitar #019e683d regression)", async () => {
+    const t = getMockTest("22222222-2222-2222-2222-000000000001");
+    if (!t) throw new Error("default test missing");
+    setMockTest({ ...t, mode: "benchmark" });
+    // Reset the slice-1 autosave call log so we can assert exactly
+    // one autosave round-trip fires when the user answers + clicks
+    // Next.
+    mockAutosaveCalls.length = 0;
+    const user = userEvent.setup();
+    render(mountTree(<AttemptRunnerPage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("question-mcq-option-0")).toBeInTheDocument(),
+    );
+    // Answer Q1 (MCQ option 0) — benchmark doesn't auto-debounce,
+    // but the answer is saved when we click Next.
+    await user.click(screen.getByTestId("question-mcq-option-0"));
+    expect(mockAutosaveCalls.length).toBe(0);
+    await user.click(screen.getByTestId("benchmark-next"));
+    await waitFor(() => expect(mockAutosaveCalls.length).toBe(1));
+    expect(mockAutosaveCalls[0]).toMatchObject({
+      answer_payload: { choice: 0 },
     });
   });
 });

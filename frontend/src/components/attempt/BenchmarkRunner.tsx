@@ -32,8 +32,13 @@ import { QuestionView } from "./QuestionView";
 import { SubmitConfirmModal } from "./SubmitConfirmModal";
 import { useIntegrity } from "@/lib/attempts/use-integrity";
 import { useNow } from "@/lib/attempts/use-now";
-import { isAnswered, type AnswerPayload } from "@/lib/attempts/answer-payloads";
 import {
+  isAnswered,
+  toServerPayload,
+  type AnswerPayload,
+} from "@/lib/attempts/answer-payloads";
+import {
+  useAutosaveAttempt,
   useBenchmarkNext,
   useSubmitAttempt,
   type AttemptView,
@@ -75,6 +80,13 @@ export function BenchmarkRunner({
 
   const nextMutation = useBenchmarkNext(attemptId);
   const submitMutation = useSubmitAttempt(attemptId);
+  // Benchmark "saves on /next only" — but `/next` itself accepts no
+  // body (verified against api.d.ts — `requestBody?: never` on the
+  // next-question operation). So we persist the current answer via
+  // /autosave BEFORE calling /next (and again before submit). Without
+  // this, answers exist only in ephemeral component state and the
+  // backend grades nothing.
+  const autosaveMutation = useAutosaveAttempt(attemptId);
   const integrity = useIntegrity({ paused: false });
   const nowMs = useNow();
 
@@ -115,44 +127,85 @@ export function BenchmarkRunner({
     [current],
   );
 
+  // Save the current question's answer (if any) before advancing or
+  // submitting. /next + /submit both treat the persisted Response
+  // rows as the source of truth; without this round-trip benchmark
+  // answers are lost.
+  const persistCurrentAnswer = useCallback(async () => {
+    if (!current) return;
+    const payload = answers.get(current.id);
+    if (!payload || !isAnswered(payload)) return;
+    try {
+      await autosaveMutation.mutateAsync({
+        question_id: current.id,
+        answer_payload: toServerPayload(payload),
+        time_ms: null,
+      });
+    } catch (err) {
+      // Surface the failure but let the caller decide whether to
+      // proceed — for benchmark we don't proceed (the answer would
+      // be silently dropped). handleNext / handleConfirmSubmit catch
+      // and toast.
+      throw err;
+    }
+  }, [autosaveMutation, answers, current]);
+
   const handleNext = useCallback(() => {
-    nextMutation.mutate(undefined, {
-      onSuccess: (data) => {
-        if (data.done) {
-          setDone(true);
-          setSubmitOpen(true);
-          return;
-        }
-        const narrowed = data.question ? narrowPresented(data.question) : null;
-        if (narrowed) {
-          setCurrent(narrowed);
-          setStep(data.step ?? step + 1);
-          setAsked(data.asked ?? asked + 1);
-        }
-      },
-      onError: (err) => {
+    persistCurrentAnswer()
+      .then(() =>
+        nextMutation.mutate(undefined, {
+          onSuccess: (data) => {
+            if (data.done) {
+              setDone(true);
+              setSubmitOpen(true);
+              return;
+            }
+            const narrowed = data.question ? narrowPresented(data.question) : null;
+            if (narrowed) {
+              setCurrent(narrowed);
+              setStep(data.step ?? step + 1);
+              setAsked(data.asked ?? asked + 1);
+            }
+          },
+          onError: (err) => {
+            const code = err instanceof ApiError ? err.code : null;
+            toast.error("Couldn't load the next question — try again", {
+              ...(code ? { description: `(${code})` } : {}),
+            });
+          },
+        }),
+      )
+      .catch((err) => {
         const code = err instanceof ApiError ? err.code : null;
-        toast.error("Couldn't load the next question — try again", {
+        toast.error("Couldn't save your answer — try again", {
           ...(code ? { description: `(${code})` } : {}),
         });
-      },
-    });
-  }, [nextMutation, step, asked]);
+      });
+  }, [persistCurrentAnswer, nextMutation, step, asked]);
 
   const handleConfirmSubmit = useCallback(() => {
-    submitMutation.mutate(undefined, {
-      onSuccess: () => {
-        setSubmitOpen(false);
-        setGraded(true);
-      },
-      onError: (err) => {
+    persistCurrentAnswer()
+      .then(() =>
+        submitMutation.mutate(undefined, {
+          onSuccess: () => {
+            setSubmitOpen(false);
+            setGraded(true);
+          },
+          onError: (err) => {
+            const code = err instanceof ApiError ? err.code : null;
+            toast.error("Submit failed — try again", {
+              ...(code ? { description: `(${code})` } : {}),
+            });
+          },
+        }),
+      )
+      .catch((err) => {
         const code = err instanceof ApiError ? err.code : null;
-        toast.error("Submit failed — try again", {
+        toast.error("Couldn't save your final answer — try again", {
           ...(code ? { description: `(${code})` } : {}),
         });
-      },
-    });
-  }, [submitMutation]);
+      });
+  }, [persistCurrentAnswer, submitMutation]);
 
   const handleExit = useCallback(() => {
     router.push("/");
