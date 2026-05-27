@@ -88,11 +88,11 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Results page (score, delta, time, Q-by-Q) | FE-6 | AC-D9, AC-D19 | `frontend/src/app/(testee)/attempts/[attemptId]/result/page.tsx` | missing | — |
-| AI-grading review-pending state | FE-6 | AC-D19 | per-Q row | missing | — |
-| Adaptive loop card + steps | FE-6 | AC-D6 | loop-step component | missing | — |
-| PDF export download (Blob URL pattern) | FE-6 | AC-CD6 | result page download link | missing | — |
-| Realism feedback flow (results-page integration of per-Q button) | FE-6 | AC-D22 | result page realism summary | missing | — |
+| Results page (score, delta, time, Q-by-Q) | FE-6 | AC-D9, AC-D19 | `frontend/src/app/(authed)/(testee)/attempts/[attemptId]/result/page.tsx` | ✅ landed | PR #59 slice 2 — ResultHero (stats + ReviewBanner) + slice 3 ByQuestionCard. |
+| AI-grading review-pending state | FE-6 | AC-D19 | per-Q row | ✅ landed | PR #59 slice 3 — AiReviewChip (pending / confirmed / flagged) + under_admin_review status, polled via slice 2 useQuery refetchInterval. |
+| Adaptive loop card + steps | FE-6 | AC-D6 | loop-step component | ✅ landed | PR #59 slice 4 — AdaptiveLoopCard + LoopStepRow (explainer / external_link_set / retest_queued + step_down_hint). |
+| PDF export download (Blob URL pattern) | FE-6 | AC-CD6 | result page download link | ✅ landed | PR #59 slice 5 — PdfExportButton with five states + Content-Disposition filename parsing + Sonner toasts. |
+| Realism feedback flow (results-page integration of per-Q button) | FE-6 | AC-D22 | result page realism summary | ✅ landed | PR #59 slice 5 — RealismAggregateCard + RealismFlagRow + AttemptView realism triple surfaced by slice 1's view_attempt extension. |
 
 ## FE-7 — Constellation + history
 

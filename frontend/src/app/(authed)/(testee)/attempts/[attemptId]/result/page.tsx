@@ -29,6 +29,9 @@ import { ByQuestionCard } from "@/components/result/by-question-card";
 import { ByPillCard } from "@/components/result/by-pill-card";
 import { AdaptiveLoopCard } from "@/components/result/adaptive-loop-card";
 import { TransparencyBlock } from "@/components/result/transparency-block";
+import { RealismAggregateCard } from "@/components/result/realism-aggregate-card";
+import { PdfExportButton } from "@/components/result/pdf-export-button";
+import { useAttemptDetail } from "@/lib/queries/attempts";
 import { deriveResultStatus } from "@/lib/result/derive-status";
 import type { ReviewBannerVariant } from "@/components/result/review-banner";
 import type { components } from "@/lib/api/types";
@@ -58,6 +61,13 @@ export default function AttemptResultPage() {
   });
 
   const result = resultQuery.data as AttemptResultResponse | undefined;
+  // Secondary fetch for the realism aggregate — gated on `ready` so we
+  // don't double-fetch during the pending window. AttemptView.questions
+  // is `list[dict]` (FE-6 §B.8 doc-comment promise); RealismAggregateCard
+  // narrows the realism triple per-row.
+  const attemptDetail = useAttemptDetail(
+    attemptId && result?.status === "ready" ? attemptId : null,
+  );
 
   const reviewVariant = useMemo<ReviewBannerVariant>(() => {
     const state = deriveResultStatus({
@@ -110,7 +120,15 @@ export default function AttemptResultPage() {
             {result && result.status === "ready" ? (
               <>
                 <ByPillCard pills={result.pills} />
-                <ByQuestionCard questions={result.questions} />
+                <ByQuestionCard
+                  questions={result.questions}
+                  headerSlot={
+                    <PdfExportButton
+                      attemptId={attemptId}
+                      isGated={result.status !== "ready"}
+                    />
+                  }
+                />
               </>
             ) : null}
           </section>
@@ -125,6 +143,7 @@ export default function AttemptResultPage() {
                   summary={result.review_summary}
                   status={result.status}
                 />
+                <RealismAggregateCard questions={attemptDetail.data?.questions ?? null} />
               </>
             ) : null}
           </aside>
