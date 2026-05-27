@@ -19,6 +19,12 @@
 
 import { http, HttpResponse } from "msw";
 import type { UserResponse, components } from "@/lib/api/types";
+import {
+  buildSseResponse,
+  sseStreamFixture,
+  type SseFixtureFrame,
+  type SseFixtureOpts,
+} from "@/mocks/sse-fixtures";
 
 // MSW only runs in dev / test, where the backend URL is known and
 // matches `MSW_FALLBACK_CONFIG` in src/lib/config.ts. Hardcoded here
@@ -525,6 +531,7 @@ export const resetMockAttemptState = (): void => {
   mockFlaggedQuestions.clear();
   resetMockAttemptResults();
   resetMockBenchmark();
+  resetMockStream();
 };
 export const getMockAttempt = (id: string): AttemptViewSchema | undefined =>
   mockAttempts.get(id);
@@ -613,6 +620,89 @@ export const flagRealismHandler = http.post(
       question_id: questionId,
       testee_id: attempt.testee_id,
       created: !wasFlagged,
+    });
+  },
+);
+
+// =====================================================================
+// FE-5 SSE stream handler — ``GET /v1/attempts/:id/stream``.
+// Default behaviour: emit a single terminal ``done`` (empty buffer).
+// Tests that need richer event sequences install a custom stream
+// builder via ``setMockStreamHandler(...)``; the helper signature
+// matches MSW's resolver shape so callers can read the cursor /
+// header.
+// =====================================================================
+
+export type MockStreamHandler = (args: {
+  request: Request;
+  attempt_id: string;
+  since: number | null;
+  lastEventId: string | null;
+}) => Response | Promise<Response>;
+
+let mockStreamHandler: MockStreamHandler | null = null;
+
+export const setMockStreamHandler = (fn: MockStreamHandler | null): void => {
+  mockStreamHandler = fn;
+};
+
+export const resetMockStream = (): void => {
+  mockStreamHandler = null;
+};
+
+/**
+ * Convenience: stand up a one-shot fixture-driven stream handler.
+ *
+ *   setMockStreamFixture([
+ *     { kind: "question", id: 2, attempt_position: 2, attempt_id: ATTEMPT_ID },
+ *     { kind: "done", completed_positions: [2] },
+ *   ]);
+ *
+ * The default is reset by ``resetMockAttemptState`` between tests.
+ */
+export const setMockStreamFixture = (
+  frames: SseFixtureFrame[],
+  opts?: SseFixtureOpts,
+): void => {
+  mockStreamHandler = () => buildSseResponse(frames, opts);
+};
+
+export const streamAttemptHandler = http.get(
+  `${API}/v1/attempts/:attempt_id/stream`,
+  async ({ request, params }) => {
+    const attemptId = String(params.attempt_id);
+    const url = new URL(request.url);
+    const sinceRaw = url.searchParams.get("since");
+    const since = sinceRaw !== null ? Number(sinceRaw) : null;
+    const lastEventId = request.headers.get("Last-Event-ID");
+
+    if (mockStreamHandler) {
+      return mockStreamHandler({
+        request,
+        attempt_id: attemptId,
+        since,
+        lastEventId,
+      });
+    }
+
+    const attempt = mockAttempts.get(attemptId);
+    if (!attempt) return attemptNotFound;
+
+    // Default fixture: nothing to orchestrate; emit a terminal done
+    // with whatever cursor the FE sent so the iterator exits cleanly.
+    const body = sseStreamFixture([
+      {
+        kind: "done",
+        completed_positions: [],
+        replayed_positions: [],
+      },
+    ]);
+    return new HttpResponse(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+      },
     });
   },
 );
@@ -823,4 +913,5 @@ export const handlers = [
   attemptResultHandler,
   benchmarkNextHandler,
   startAttemptHandler,
+  streamAttemptHandler,
 ];
