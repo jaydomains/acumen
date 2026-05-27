@@ -26,6 +26,9 @@ import { PageHeader } from "@/components/shell/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResultHero } from "@/components/result/result-hero";
 import { ByQuestionCard } from "@/components/result/by-question-card";
+import { ByPillCard } from "@/components/result/by-pill-card";
+import { AdaptiveLoopCard } from "@/components/result/adaptive-loop-card";
+import { TransparencyBlock } from "@/components/result/transparency-block";
 import { deriveResultStatus } from "@/lib/result/derive-status";
 import type { ReviewBannerVariant } from "@/components/result/review-banner";
 import type { components } from "@/lib/api/types";
@@ -100,17 +103,31 @@ export default function AttemptResultPage() {
         ) : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-12">
-          <section data-testid="result-questions-slot" className="lg:col-span-7">
+          <section
+            data-testid="result-questions-slot"
+            className="flex flex-col gap-6 lg:col-span-7"
+          >
             {result && result.status === "ready" ? (
-              <ByQuestionCard questions={result.questions} />
+              <>
+                <ByPillCard pills={result.pills} />
+                <ByQuestionCard questions={result.questions} />
+              </>
             ) : null}
           </section>
-          {/* Slice 4/5 — ByPillCard / AdaptiveLoopCard / TransparencyBlock /
-              RealismAggregateCard mount in this column. */}
           <aside
             data-testid="result-side-slot"
-            className="lg:col-span-5 flex flex-col gap-6"
-          />
+            className="flex flex-col gap-6 lg:col-span-5"
+          >
+            {result && result.status === "ready" ? (
+              <>
+                <AdaptiveLoopCard steps={result.adaptive_loop} status={result.status} />
+                <TransparencyBlock
+                  summary={result.review_summary}
+                  status={result.status}
+                />
+              </>
+            ) : null}
+          </aside>
         </div>
       </div>
     </div>
