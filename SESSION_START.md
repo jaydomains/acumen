@@ -143,6 +143,17 @@ are *documented, not built* in v1.
   follow-on edits. This protects authored prose from silent edits made
   under audit cover, and keeps the audit/edit decisions in the user's
   hands.
+- **Pre-build drift sweep.** At the start of any P-N / FE-N build
+  phase, before authoring the plan, run `/drift-sweep <phase-id>`. The
+  drift-sweep subagent walks the canonical anchors and per-phase
+  fe-spec cited by the phase row against the current implementation
+  surface and emits a findings list (severity: `blocker` / `spec-drift`
+  / `impl-drift` / `absorbable`). Findings feed the plan-mode
+  AskUserQuestion that locks resolutions (absorb with `R-x` / `F-x`,
+  spec amendment PR first, or open question) before code lands. This
+  operationalises the spec-drift-is-surfaced and audit-pattern rules
+  for the build-phase case; the agent is constrained by the
+  reviewer-mode rule (no pre-loaded checklist).
 - **Prescriptive-checks lesson (reviewer mode).** When entering
   reviewer mode (Gitar review, code review, security review), do
   **not** pre-load a "things to watch" checklist before reading the
@@ -399,11 +410,15 @@ Copy this verbatim at the start of every session:
 > Read SESSION_START.md and the most recent handover in /handovers/. Then
 > read SPEC.md and CODE_SPEC.md to refresh context. Open ROADMAP.md and
 > tell me which phase we're on and what the done-when criteria are. Plan
-> mode ON. Show me the plan before any code.
+> mode ON. Run /drift-sweep <phase-id> and walk the findings with me,
+> then show me the plan before any code.
 
 ## Session-end checklist
 
 - [ ] All work committed on the feature branch (nothing on main).
+- [ ] `/handover-drafter <pr-number> <slug>` run after final slice push
+      and Gitar green; draft reviewed, section 9 traps promoted from
+      `[OPERATOR-REVIEW: ...]` brackets to plain text.
 - [ ] Handover authored in `/handovers/` from `HANDOVER_TEMPLATE.md`,
       every section filled, structure intact.
 - [ ] PR opened with the handover linked.
