@@ -590,6 +590,110 @@ class BenchmarkNextResponse(_Base):
 # F14 mixed-test display gate: a deterministic result page surfaces
 # scores immediately; an attempt containing any AI-graded question
 # returns ``status = "review_pending"`` until P6 review completes.
+#
+# FE-6 widened the per-Q + top-level contract: hero stats, cross-family
+# review summary, per-pill weakness rows, adaptive-loop steps, per-Q
+# review chip. Fields that the backend doesn't compute yet (cross-test
+# medians, pre/post competence snapshots) are nullable so the FE handles
+# them via existing edge-case rules. Per-Q ``grade`` is null when
+# ``status == "under_admin_review"`` (no score leak — AC-D19 v1.7).
+
+
+class ResultGrade(_Base):
+    """Per-question grade rendered on the results page (FE-6 §B.4).
+
+    ``is_correct`` collapses the three-state GradeVerdict to a tri-state
+    boolean (full=True, none=False, partial=None) so the FE row chip
+    renders cleanly. ``review_verdict`` mirrors the GradeReview status
+    (``confirmed`` / ``flagged`` / ``pending``); null for deterministic
+    grades that don't get an AI cross-family pass. ``ai_grader_model``
+    / ``reviewer_model`` come from ``AIProvenanceMixin.ai_model`` per
+    AC-CD18 — surfaced as-is, never hardcoded on the FE.
+    """
+
+    is_correct: bool | None = None
+    points_awarded: float | None = None
+    points_possible: float | None = None
+    source: str | None = None  # "ai" | "deterministic"
+    ai_grader_model: str | None = None
+    ai_reasoning: str | None = None
+    review_verdict: str | None = None  # "confirmed" | "flagged" | "pending"
+    review_reasoning: str | None = None
+    reviewer_model: str | None = None
+
+
+class ResultQuestion(_Base):
+    """Per-question row on the results page (FE-6 §B.4)."""
+
+    question_id: uuid.UUID
+    attempt_position: int | None = None
+    prompt_text: str | None = None
+    question_type: str
+    has_figure: bool = False
+    is_ai_graded: bool = False
+    status: str | None = None  # "under_admin_review" or null
+    # FE-6 §B.4 response payload — wire shape is
+    # `{"answer_payload": <discriminated union>}`. Modelled with
+    # `additionalProperties: true` via `json_schema_extra` so the
+    # regenerated TS type is `Record<string, unknown>` rather than
+    # `Record<string, never>` (openapi-typescript's strict default for
+    # unconstrained dicts). The FE then narrows via
+    # `formatAnswerPayload`.
+    response: dict[str, Any] | None = Field(
+        default=None, json_schema_extra={"additionalProperties": True}
+    )
+    grade: ResultGrade | None = None
+
+
+class ResultPill(_Base):
+    """Per-pill weakness row (FE-6 §B.3).
+
+    ``confidence`` is the AC-D20 calibration confidence enum
+    (preliminary→confident at the per-tenant threshold). ``severity``
+    is the FE chip tone (``critical`` / ``severe`` / ``info``), derived
+    server-side from ``WeaknessReportPill.severity`` so the FE doesn't
+    re-implement the threshold logic.
+    """
+
+    pill_id: uuid.UUID
+    pill_name: str
+    subject_id: uuid.UUID | None = None
+    score_percent: float | None = None
+    missed_count: int | None = None
+    total_count: int | None = None
+    band: str | None = None
+    competence_estimate: float | None = None
+    n: int = 0
+    confidence: str = "preliminary"  # "preliminary" | "confident"
+    severity: str = "info"  # "critical" | "severe" | "info"
+    is_safety_tagged: bool = False
+
+
+class ReviewSummary(_Base):
+    """Cross-family review summary block (FE-6 §B.6)."""
+
+    ai_grader_model: str | None = None
+    reviewer_model: str | None = None
+    flagged_count: int = 0
+    flagged_question_positions: list[int] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    review_duration_ms: int | None = None
+
+
+class LoopStep(_Base):
+    """Adaptive-loop step row (FE-6 §B.5)."""
+
+    type: str  # "explainer" | "external_link_set" | "retest_queued"
+    target_pill_id: uuid.UUID | None = None
+    target_pill_name: str | None = None
+    title: str
+    description: str | None = None
+    cta_label: str
+    route_href: str
+    status: str = "ready"  # "ready" | "optional" | "queued"
+    queued_for: datetime | None = None
+    step_down_hint: bool = False
 
 
 class AttemptResultResponse(_Base):
@@ -598,7 +702,19 @@ class AttemptResultResponse(_Base):
     status: str  # "ready" | "review_pending"
     overall_score: float | None = None
     outcome: str | None = None
-    questions: list[dict] | None = None
+    attempt_band: str | None = None
+    competence_estimate_after: float | None = None
+    competence_estimate_delta: float | None = None
+    time_on_test_seconds: int | None = None
+    median_time_seconds: int | None = None
+    review_summary: ReviewSummary | None = None
+    pills: list[ResultPill] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    adaptive_loop: list[LoopStep] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    questions: list[ResultQuestion] | None = None
 
 
 # --- Slice B testee own-scope listing (FE-7 history + sparkline) ------

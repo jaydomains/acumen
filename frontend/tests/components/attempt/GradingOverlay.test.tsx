@@ -59,6 +59,8 @@ describe("GradingOverlay · happy path", () => {
       status: "ready",
       overall_score: 0.9,
       outcome: "pass",
+      pills: [],
+      adaptive_loop: [],
       questions: null,
     });
     render(mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="frozen" />));
@@ -76,6 +78,8 @@ describe("GradingOverlay · benchmark phase-4 copy", () => {
       status: "review_pending",
       overall_score: null,
       outcome: null,
+      pills: [],
+      adaptive_loop: [],
       questions: null,
     });
     render(mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="benchmark" />));

@@ -173,11 +173,16 @@ def test_result_view_ready_when_all_confirmed(
     assert body["status"] == "ready"
     assert body["overall_score"] == pytest.approx(0.9)
     assert body["outcome"] == "pass"
-    # Per-question entries surface the AI grade for confirmed items.
-    ai_entries = [q for q in body["questions"] if q["source"] == "ai"]
+    # FE-6 widened shape: each Q carries ``is_ai_graded`` and a nested
+    # ``grade`` sub-object (or ``None`` for skipped / under-admin-review).
+    ai_entries = [q for q in body["questions"] if q["is_ai_graded"]]
     assert len(ai_entries) == 1
-    assert ai_entries[0]["verdict"] in ("full", "partial", "none")
-    assert ai_entries[0]["score"] is not None
+    grade = ai_entries[0]["grade"]
+    assert grade is not None
+    assert grade["is_correct"] in (True, False, None)
+    assert grade["points_awarded"] is not None
+    assert grade["source"] == "ai"
+    assert grade["review_verdict"] == "confirmed"
 
 
 def test_result_view_marks_flagged_under_admin_review(
@@ -218,12 +223,13 @@ def test_result_view_marks_flagged_under_admin_review(
     assert body["status"] == "ready"
     # overall_score = 1.0 (MCQ only) — flagged AI grade excluded.
     assert body["overall_score"] == pytest.approx(1.0)
-    # Flagged entry surfaces as under_admin_review with no AI grade leak.
-    ai_entries = [q for q in body["questions"] if q.get("source") == "ai"]
+    # FE-6: flagged entry surfaces as under_admin_review with grade
+    # suppressed entirely (no score / verdict leak per AC-D19 v1.7).
+    # ``is_ai_graded`` stays true so the FE can still identify the row.
+    ai_entries = [q for q in body["questions"] if q["is_ai_graded"]]
     assert len(ai_entries) == 1
     assert ai_entries[0]["status"] == "under_admin_review"
-    assert ai_entries[0].get("score") is None
-    assert ai_entries[0].get("verdict") is None
+    assert ai_entries[0]["grade"] is None
 
 
 def test_result_view_deterministic_only_unchanged(

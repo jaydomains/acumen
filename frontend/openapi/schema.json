@@ -6422,11 +6422,92 @@
             ],
             "title": "Outcome"
           },
+          "attempt_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Band"
+          },
+          "competence_estimate_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competence Estimate After"
+          },
+          "competence_estimate_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competence Estimate Delta"
+          },
+          "time_on_test_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time On Test Seconds"
+          },
+          "median_time_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Time Seconds"
+          },
+          "review_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pills": {
+            "items": {
+              "$ref": "#/components/schemas/ResultPill"
+            },
+            "type": "array",
+            "title": "Pills",
+            "default": []
+          },
+          "adaptive_loop": {
+            "items": {
+              "$ref": "#/components/schemas/LoopStep"
+            },
+            "type": "array",
+            "title": "Adaptive Loop",
+            "default": []
+          },
           "questions": {
             "anyOf": [
               {
                 "items": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ResultQuestion"
                 },
                 "type": "array"
               },
@@ -8046,6 +8127,92 @@
         "title": "LoopRejectResult",
         "description": "Response shape after a successful admin rejection. Compact\npayload \u2014 the flag is cleared and no follow-up created. Audit-\nlogged at ``loop.queue.reject`` for operator traceability."
       },
+      "LoopStep": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "target_pill_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pill Id"
+          },
+          "target_pill_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Pill Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "cta_label": {
+            "type": "string",
+            "title": "Cta Label"
+          },
+          "route_href": {
+            "type": "string",
+            "title": "Route Href"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ready"
+          },
+          "queued_for": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued For"
+          },
+          "step_down_hint": {
+            "type": "boolean",
+            "title": "Step Down Hint",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "cta_label",
+          "route_href"
+        ],
+        "title": "LoopStep",
+        "description": "Adaptive-loop step row (FE-6 \u00a7B.5)."
+      },
       "MeCompetencePill": {
         "properties": {
           "pill_id": {
@@ -9056,6 +9223,361 @@
           "refresh_token"
         ],
         "title": "RefreshRequest"
+      },
+      "ResultGrade": {
+        "properties": {
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "points_awarded": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points Awarded"
+          },
+          "points_possible": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points Possible"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "ai_grader_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Grader Model"
+          },
+          "ai_reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Reasoning"
+          },
+          "review_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Verdict"
+          },
+          "review_reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Reasoning"
+          },
+          "reviewer_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Model"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ResultGrade",
+        "description": "Per-question grade rendered on the results page (FE-6 \u00a7B.4).\n\n``is_correct`` collapses the three-state GradeVerdict to a tri-state\nboolean (full=True, none=False, partial=None) so the FE row chip\nrenders cleanly. ``review_verdict`` mirrors the GradeReview status\n(``confirmed`` / ``flagged`` / ``pending``); null for deterministic\ngrades that don't get an AI cross-family pass. ``ai_grader_model``\n/ ``reviewer_model`` come from ``AIProvenanceMixin.ai_model`` per\nAC-CD18 \u2014 surfaced as-is, never hardcoded on the FE."
+      },
+      "ResultPill": {
+        "properties": {
+          "pill_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pill Id"
+          },
+          "pill_name": {
+            "type": "string",
+            "title": "Pill Name"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "score_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Percent"
+          },
+          "missed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missed Count"
+          },
+          "total_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Count"
+          },
+          "band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band"
+          },
+          "competence_estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competence Estimate"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N",
+            "default": 0
+          },
+          "confidence": {
+            "type": "string",
+            "title": "Confidence",
+            "default": "preliminary"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "info"
+          },
+          "is_safety_tagged": {
+            "type": "boolean",
+            "title": "Is Safety Tagged",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pill_id",
+          "pill_name"
+        ],
+        "title": "ResultPill",
+        "description": "Per-pill weakness row (FE-6 \u00a7B.3).\n\n``confidence`` is the AC-D20 calibration confidence enum\n(preliminary\u2192confident at the per-tenant threshold). ``severity``\nis the FE chip tone (``critical`` / ``severe`` / ``info``), derived\nserver-side from ``WeaknessReportPill.severity`` so the FE doesn't\nre-implement the threshold logic."
+      },
+      "ResultQuestion": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Question Id"
+          },
+          "attempt_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Position"
+          },
+          "prompt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Text"
+          },
+          "question_type": {
+            "type": "string",
+            "title": "Question Type"
+          },
+          "has_figure": {
+            "type": "boolean",
+            "title": "Has Figure",
+            "default": false
+          },
+          "is_ai_graded": {
+            "type": "boolean",
+            "title": "Is Ai Graded",
+            "default": false
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "additionalProperties": true,
+            "title": "Response"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultGrade"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question_id",
+          "question_type"
+        ],
+        "title": "ResultQuestion",
+        "description": "Per-question row on the results page (FE-6 \u00a7B.4)."
+      },
+      "ReviewSummary": {
+        "properties": {
+          "ai_grader_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Grader Model"
+          },
+          "reviewer_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Model"
+          },
+          "flagged_count": {
+            "type": "integer",
+            "title": "Flagged Count",
+            "default": 0
+          },
+          "flagged_question_positions": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Flagged Question Positions",
+            "default": []
+          },
+          "review_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Duration Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewSummary",
+        "description": "Cross-family review summary block (FE-6 \u00a7B.6)."
       },
       "RuntimeConfigResponse": {
         "properties": {

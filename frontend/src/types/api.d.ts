@@ -1850,8 +1850,29 @@ export interface components {
             overall_score?: number | null;
             /** Outcome */
             outcome?: string | null;
+            /** Attempt Band */
+            attempt_band?: string | null;
+            /** Competence Estimate After */
+            competence_estimate_after?: number | null;
+            /** Competence Estimate Delta */
+            competence_estimate_delta?: number | null;
+            /** Time On Test Seconds */
+            time_on_test_seconds?: number | null;
+            /** Median Time Seconds */
+            median_time_seconds?: number | null;
+            review_summary?: components["schemas"]["ReviewSummary"] | null;
+            /**
+             * Pills
+             * @default []
+             */
+            pills: components["schemas"]["ResultPill"][];
+            /**
+             * Adaptive Loop
+             * @default []
+             */
+            adaptive_loop: components["schemas"]["LoopStep"][];
             /** Questions */
-            questions?: Record<string, never>[] | null;
+            questions?: components["schemas"]["ResultQuestion"][] | null;
         };
         /** AttemptStartRequest */
         AttemptStartRequest: {
@@ -2581,6 +2602,38 @@ export interface components {
              */
             weakness_report_id: string;
         };
+        /**
+         * LoopStep
+         * @description Adaptive-loop step row (FE-6 §B.5).
+         */
+        LoopStep: {
+            /** Type */
+            type: string;
+            /** Target Pill Id */
+            target_pill_id?: string | null;
+            /** Target Pill Name */
+            target_pill_name?: string | null;
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /** Cta Label */
+            cta_label: string;
+            /** Route Href */
+            route_href: string;
+            /**
+             * Status
+             * @default ready
+             */
+            status: string;
+            /** Queued For */
+            queued_for?: string | null;
+            /**
+             * Step Down Hint
+             * @default false
+             */
+            step_down_hint: boolean;
+        };
         /** MeCompetencePill */
         MeCompetencePill: {
             /**
@@ -2945,6 +2998,145 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * ResultGrade
+         * @description Per-question grade rendered on the results page (FE-6 §B.4).
+         *
+         *     ``is_correct`` collapses the three-state GradeVerdict to a tri-state
+         *     boolean (full=True, none=False, partial=None) so the FE row chip
+         *     renders cleanly. ``review_verdict`` mirrors the GradeReview status
+         *     (``confirmed`` / ``flagged`` / ``pending``); null for deterministic
+         *     grades that don't get an AI cross-family pass. ``ai_grader_model``
+         *     / ``reviewer_model`` come from ``AIProvenanceMixin.ai_model`` per
+         *     AC-CD18 — surfaced as-is, never hardcoded on the FE.
+         */
+        ResultGrade: {
+            /** Is Correct */
+            is_correct?: boolean | null;
+            /** Points Awarded */
+            points_awarded?: number | null;
+            /** Points Possible */
+            points_possible?: number | null;
+            /** Source */
+            source?: string | null;
+            /** Ai Grader Model */
+            ai_grader_model?: string | null;
+            /** Ai Reasoning */
+            ai_reasoning?: string | null;
+            /** Review Verdict */
+            review_verdict?: string | null;
+            /** Review Reasoning */
+            review_reasoning?: string | null;
+            /** Reviewer Model */
+            reviewer_model?: string | null;
+        };
+        /**
+         * ResultPill
+         * @description Per-pill weakness row (FE-6 §B.3).
+         *
+         *     ``confidence`` is the AC-D20 calibration confidence enum
+         *     (preliminary→confident at the per-tenant threshold). ``severity``
+         *     is the FE chip tone (``critical`` / ``severe`` / ``info``), derived
+         *     server-side from ``WeaknessReportPill.severity`` so the FE doesn't
+         *     re-implement the threshold logic.
+         */
+        ResultPill: {
+            /**
+             * Pill Id
+             * Format: uuid
+             */
+            pill_id: string;
+            /** Pill Name */
+            pill_name: string;
+            /** Subject Id */
+            subject_id?: string | null;
+            /** Score Percent */
+            score_percent?: number | null;
+            /** Missed Count */
+            missed_count?: number | null;
+            /** Total Count */
+            total_count?: number | null;
+            /** Band */
+            band?: string | null;
+            /** Competence Estimate */
+            competence_estimate?: number | null;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /**
+             * Confidence
+             * @default preliminary
+             */
+            confidence: string;
+            /**
+             * Severity
+             * @default info
+             */
+            severity: string;
+            /**
+             * Is Safety Tagged
+             * @default false
+             */
+            is_safety_tagged: boolean;
+        };
+        /**
+         * ResultQuestion
+         * @description Per-question row on the results page (FE-6 §B.4).
+         */
+        ResultQuestion: {
+            /**
+             * Question Id
+             * Format: uuid
+             */
+            question_id: string;
+            /** Attempt Position */
+            attempt_position?: number | null;
+            /** Prompt Text */
+            prompt_text?: string | null;
+            /** Question Type */
+            question_type: string;
+            /**
+             * Has Figure
+             * @default false
+             */
+            has_figure: boolean;
+            /**
+             * Is Ai Graded
+             * @default false
+             */
+            is_ai_graded: boolean;
+            /** Status */
+            status?: string | null;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            } | Record<string, never> | null;
+            grade?: components["schemas"]["ResultGrade"] | null;
+        };
+        /**
+         * ReviewSummary
+         * @description Cross-family review summary block (FE-6 §B.6).
+         */
+        ReviewSummary: {
+            /** Ai Grader Model */
+            ai_grader_model?: string | null;
+            /** Reviewer Model */
+            reviewer_model?: string | null;
+            /**
+             * Flagged Count
+             * @default 0
+             */
+            flagged_count: number;
+            /**
+             * Flagged Question Positions
+             * @default []
+             */
+            flagged_question_positions: number[];
+            /** Review Duration Ms */
+            review_duration_ms?: number | null;
         };
         /** RuntimeConfigResponse */
         RuntimeConfigResponse: {

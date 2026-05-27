@@ -193,7 +193,15 @@ test.describe("FE-4 frozen attempt round-trip", () => {
           status: "ready",
           overall_score: 0.85,
           outcome: "pass",
-          questions: null,
+          attempt_band: null,
+          competence_estimate_after: null,
+          competence_estimate_delta: null,
+          time_on_test_seconds: 600,
+          median_time_seconds: null,
+          review_summary: null,
+          pills: [],
+          adaptive_loop: [],
+          questions: [],
         },
       });
     });
@@ -254,7 +262,10 @@ test.describe("FE-4 frozen attempt round-trip", () => {
     await expect(page).toHaveURL(new RegExp(`/attempts/${ATTEMPT_ID}/result$`), {
       timeout: 10_000,
     });
-    await expect(page.getByText(/Your result has landed\./)).toBeVisible();
+    // FE-6 §B.1 — page composition replaces FE-4 placeholder.
+    await expect(page.getByText(/Your attempt result/)).toBeVisible();
+    // Deterministic-only attempt with no review_summary → AUTO-GRADED banner.
+    await expect(page.getByText(/AUTO-GRADED/)).toBeVisible();
 
     // Sanity-check the autosave bodies — at least one per answered
     // question, in roughly the order we clicked them.
