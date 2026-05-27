@@ -106,10 +106,19 @@ describe("ConstellationSVG", () => {
     expect(onSelect).toHaveBeenCalledWith(PILL_B);
   });
 
-  it("confidence-ring strokeDasharray scales with n (n=15 → ~50, n=30 → 100)", () => {
+  it("confidence-ring strokeDasharray scales with n and uses pathLength=100 so it reads as a percentage independent of star radius", () => {
     const pills = [
-      makePill({ pill_id: PILL_A, n: 15 }),
-      makePill({ pill_id: PILL_B, n: 30, subject_id: SUBJECT_PAINT }),
+      // Tiny star (small radius → small circumference) — without
+      // pathLength=100 the "50 100" pattern would over-wrap.
+      makePill({ pill_id: PILL_A, n: 15, competence_estimate: 1.0 }),
+      // Big star (large radius → large circumference) — without
+      // pathLength=100 "100 100" would render ~70% of the ring.
+      makePill({
+        pill_id: PILL_B,
+        n: 30,
+        competence_estimate: 9.5,
+        subject_id: SUBJECT_PAINT,
+      }),
     ];
     render(
       <ConstellationSVG
@@ -124,6 +133,12 @@ describe("ConstellationSVG", () => {
     if (!ring0 || !ring1) throw new Error("missing confidence rings");
     expect(ring0.getAttribute("stroke-dasharray")).toBe("50 100");
     expect(ring1.getAttribute("stroke-dasharray")).toBe("100 100");
+    // `pathLength=100` is load-bearing — without it the dasharray
+    // values would map to user-units along an actual circumference of
+    // 2π·(radius+5), so the visual encoding of confidence would
+    // silently break across star sizes.
+    expect(ring0.getAttribute("pathLength")).toBe("100");
+    expect(ring1.getAttribute("pathLength")).toBe("100");
   });
 
   it("safety-marked pills render the danger-coloured dot", () => {

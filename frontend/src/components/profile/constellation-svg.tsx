@@ -214,6 +214,15 @@ export function ConstellationSVG({
               fill="none"
               stroke={fill}
               strokeOpacity={confidenceFraction}
+              // `pathLength={100}` normalises the path to 100 user units
+              // regardless of actual circumference (which scales with the
+              // star radius — 2π·9 ≈ 56 for tiny stars vs 2π·23 ≈ 144
+              // for big ones). Without it, `strokeDasharray="50 100"`
+              // would render ~88% of a small star's ring and ~35% of a
+              // large star's ring — the visual encoding of confidence
+              // would silently break across star sizes (PR-061 Gitar
+              // finding).
+              pathLength={100}
               strokeDasharray={`${confidenceFraction * 100} 100`}
               strokeWidth="1.5"
               strokeLinecap="round"
