@@ -258,7 +258,15 @@ test.describe("FE-5 per-Testee streaming attempt", () => {
           status: "ready",
           overall_score: 0.85,
           outcome: "pass",
-          questions: null,
+          attempt_band: null,
+          competence_estimate_after: null,
+          competence_estimate_delta: null,
+          time_on_test_seconds: 600,
+          median_time_seconds: null,
+          review_summary: null,
+          pills: [],
+          adaptive_loop: [],
+          questions: [],
         },
       });
     });

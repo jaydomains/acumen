@@ -25,6 +25,7 @@ import { attemptQueryKeys } from "@/lib/queries/attempts";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResultHero } from "@/components/result/result-hero";
+import { ByQuestionCard } from "@/components/result/by-question-card";
 import { deriveResultStatus } from "@/lib/result/derive-status";
 import type { ReviewBannerVariant } from "@/components/result/review-banner";
 import type { components } from "@/lib/api/types";
@@ -99,8 +100,11 @@ export default function AttemptResultPage() {
         ) : null}
 
         <div className="mt-6 grid gap-6 lg:grid-cols-12">
-          {/* Slice 3 — ByQuestionCard mounts in this column. */}
-          <section data-testid="result-questions-slot" className="lg:col-span-7" />
+          <section data-testid="result-questions-slot" className="lg:col-span-7">
+            {result && result.status === "ready" ? (
+              <ByQuestionCard questions={result.questions} />
+            ) : null}
+          </section>
           {/* Slice 4/5 — ByPillCard / AdaptiveLoopCard / TransparencyBlock /
               RealismAggregateCard mount in this column. */}
           <aside

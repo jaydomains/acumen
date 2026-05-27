@@ -632,7 +632,16 @@ class ResultQuestion(_Base):
     has_figure: bool = False
     is_ai_graded: bool = False
     status: str | None = None  # "under_admin_review" or null
-    response: dict | None = None  # {"answer_payload": <discriminated union>}
+    # FE-6 §B.4 response payload — wire shape is
+    # `{"answer_payload": <discriminated union>}`. Modelled with
+    # `additionalProperties: true` via `json_schema_extra` so the
+    # regenerated TS type is `Record<string, unknown>` rather than
+    # `Record<string, never>` (openapi-typescript's strict default for
+    # unconstrained dicts). The FE then narrows via
+    # `formatAnswerPayload`.
+    response: dict[str, Any] | None = Field(
+        default=None, json_schema_extra={"additionalProperties": True}
+    )
     grade: ResultGrade | None = None
 
 

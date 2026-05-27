@@ -9502,6 +9502,7 @@
                 "type": "null"
               }
             ],
+            "additionalProperties": true,
             "title": "Response"
           },
           "grade": {

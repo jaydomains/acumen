@@ -3111,7 +3111,9 @@ export interface components {
             /** Status */
             status?: string | null;
             /** Response */
-            response?: Record<string, never> | null;
+            response?: {
+                [key: string]: unknown;
+            } | Record<string, never> | null;
             grade?: components["schemas"]["ResultGrade"] | null;
         };
         /**
