@@ -159,6 +159,11 @@ export function StreamingRunner({
     enabled: streamEnabled,
     initialArrivedIdx: Math.max(1, presentedQuestions.length),
   });
+  // ``useStreamingQueue`` returns a fresh object on every render —
+  // pin a ref so handlers below stay referentially stable across
+  // renders (mirrors the FrozenRunner mutation-ref pattern).
+  const streamRef = useRef(stream);
+  streamRef.current = stream;
 
   const integrity = useIntegrity({ paused: localPaused });
   const nowMs = useNow({ paused: localPaused });
@@ -267,15 +272,18 @@ export function StreamingRunner({
   // System-glitch resume — branches by reason. ``generation_failed``
   // calls POST /resume (backend marked the attempt paused);
   // ``reconnect_exhausted`` is FE-synthetic, so we only re-open the
-  // SSE stream (the attempt was never server-paused).
+  // SSE stream (the attempt was never server-paused). Reads
+  // ``streamRef.current`` so the callback identity is stable across
+  // renders even though the ``stream`` object isn't.
   const handleSystemResume = useCallback(() => {
-    if (stream.pausedReason === "generation_failed") {
+    const s = streamRef.current;
+    if (s.pausedReason === "generation_failed") {
       resumeRef.current.mutate(undefined, {
         onSuccess: () => {
           queryClient.invalidateQueries({
             queryKey: attemptQueryKeys.detail(attemptId),
           });
-          stream.reconnect();
+          streamRef.current.reconnect();
         },
         onError: (err) => {
           const code = err instanceof ApiError ? err.code : null;
@@ -284,10 +292,10 @@ export function StreamingRunner({
           });
         },
       });
-    } else if (stream.pausedReason === "reconnect_exhausted") {
-      stream.reconnect();
+    } else if (s.pausedReason === "reconnect_exhausted") {
+      s.reconnect();
     }
-  }, [stream, queryClient, attemptId]);
+  }, [queryClient, attemptId]);
 
   const handleOpenSubmit = useCallback(() => {
     setSubmitOpen(true);
@@ -498,13 +506,13 @@ export function StreamingRunner({
           if (submitMutation.isPending) return;
           setSubmitOpen(open);
         }}
-        mode="frozen"
+        mode="per_testee"
         answeredCount={answeredCount}
         totalCount={totalCount}
         onConfirm={handleConfirmSubmit}
         submitting={submitMutation.isPending}
       />
-      {graded && <GradingOverlay attemptId={attemptId} mode="frozen" />}
+      {graded && <GradingOverlay attemptId={attemptId} mode="per_testee" />}
     </AttemptShell>
   );
 }

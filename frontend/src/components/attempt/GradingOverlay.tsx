@@ -28,9 +28,10 @@ import { Button } from "@/components/ui/button";
 
 export type GradingOverlayProps = {
   attemptId: string;
-  /** "frozen" / "hand_authored" use the standard 4-phase copy;
-   * benchmark swaps phase-4 to its non-recency copy. */
-  mode: "frozen" | "hand_authored" | "benchmark";
+  /** "frozen" / "hand_authored" / "per_testee" use the standard
+   * 4-phase copy (same grading path); benchmark swaps phase-4 to
+   * its non-recency copy. */
+  mode: "frozen" | "hand_authored" | "benchmark" | "per_testee";
 };
 
 type Phase = {

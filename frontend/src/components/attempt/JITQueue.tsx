@@ -123,47 +123,47 @@ export function JITQueue({
           }`;
           const Tag = clickable ? "button" : "div";
           return (
-            <Tag
-              key={qid}
-              type={clickable ? "button" : undefined}
-              role="listitem"
-              aria-label={label}
-              data-testid={`jit-queue-item-${idx}`}
-              data-state={itemState}
-              data-answered={answered || undefined}
-              onClick={clickable ? () => onPick(idx) : undefined}
-              className={cn(
-                "flex w-full items-center justify-between gap-2 border px-3 py-2 text-left",
-                itemState === "current" &&
-                  "border-ink bg-bg-raised shadow-[inset_0_0_0_1px_var(--ink)]",
-                itemState === "ready" && "border-line bg-bg",
-                itemState === "done" && "border-line bg-bg-deep/40 text-ink-3",
-                clickable ? "cursor-pointer hover:border-ink-3" : "cursor-default",
-              )}
-            >
-              <span className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "inline-block h-1.5 w-1.5 rounded-full",
-                    itemState === "current" && "bg-accent",
-                    itemState === "ready" && "bg-accent",
-                    itemState === "done" && (answered ? "bg-ok" : "bg-ink-4"),
-                  )}
-                />
-                <span className="font-mono text-[11px] uppercase tracking-[0.06em]">
-                  Q{idx + 1}
+            <li key={qid}>
+              <Tag
+                type={clickable ? "button" : undefined}
+                aria-label={label}
+                data-testid={`jit-queue-item-${idx}`}
+                data-state={itemState}
+                data-answered={answered || undefined}
+                onClick={clickable ? () => onPick(idx) : undefined}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 border px-3 py-2 text-left",
+                  itemState === "current" &&
+                    "border-ink bg-bg-raised shadow-[inset_0_0_0_1px_var(--ink)]",
+                  itemState === "ready" && "border-line bg-bg",
+                  itemState === "done" && "border-line bg-bg-deep/40 text-ink-3",
+                  clickable ? "cursor-pointer hover:border-ink-3" : "cursor-default",
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      itemState === "current" && "bg-accent",
+                      itemState === "ready" && "bg-accent",
+                      itemState === "done" && (answered ? "bg-ok" : "bg-ink-4"),
+                    )}
+                  />
+                  <span className="font-mono text-[11px] uppercase tracking-[0.06em]">
+                    Q{idx + 1}
+                  </span>
                 </span>
-              </span>
-              <span className="font-mono text-[10.5px] tracking-[0.05em] text-ink-3">
-                {itemState === "current"
-                  ? "in progress"
-                  : itemState === "done"
-                    ? answered
-                      ? "answered"
-                      : "skipped"
-                    : "ready"}
-              </span>
-            </Tag>
+                <span className="font-mono text-[10.5px] tracking-[0.05em] text-ink-3">
+                  {itemState === "current"
+                    ? "in progress"
+                    : itemState === "done"
+                      ? answered
+                        ? "answered"
+                        : "skipped"
+                      : "ready"}
+                </span>
+              </Tag>
+            </li>
           );
         })}
         {showPulseRow && (
