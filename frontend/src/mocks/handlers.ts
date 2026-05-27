@@ -749,6 +749,41 @@ const defaultResult = (attemptId: string): AttemptResultSchema => ({
   questions: null,
 });
 
+/**
+ * FE-6 §B fixtures — richer per-state result payloads tests can set
+ * via `setMockAttemptResult(attemptId, makeRichResult(...))`.
+ * Kept append-only per the hard rule; no existing handler / fixture
+ * is rewritten.
+ */
+export type RichResultOverrides = Partial<AttemptResultSchema>;
+
+export const makeRichResult = (
+  attemptId: string,
+  overrides: RichResultOverrides = {},
+): AttemptResultSchema => ({
+  attempt_id: attemptId,
+  submitted_at: "2026-05-27T10:30:00Z",
+  status: "ready",
+  overall_score: 0.82,
+  outcome: "pass",
+  attempt_band: "working",
+  competence_estimate_after: 6.4,
+  competence_estimate_delta: 0.6,
+  time_on_test_seconds: 1_440,
+  median_time_seconds: 1_500,
+  review_summary: {
+    ai_grader_model: "claude-sonnet-4-5",
+    reviewer_model: "openai gpt-4o-mini",
+    flagged_count: 0,
+    flagged_question_positions: [],
+    review_duration_ms: 4_200,
+  },
+  pills: [],
+  adaptive_loop: [],
+  questions: [],
+  ...overrides,
+});
+
 export const pauseAttemptHandler = http.post(
   `${API}/v1/attempts/:attempt_id/pause`,
   ({ params }) => {

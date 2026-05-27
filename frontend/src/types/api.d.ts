@@ -1861,10 +1861,16 @@ export interface components {
             /** Median Time Seconds */
             median_time_seconds?: number | null;
             review_summary?: components["schemas"]["ReviewSummary"] | null;
-            /** Pills */
-            pills?: components["schemas"]["ResultPill"][];
-            /** Adaptive Loop */
-            adaptive_loop?: components["schemas"]["LoopStep"][];
+            /**
+             * Pills
+             * @default []
+             */
+            pills: components["schemas"]["ResultPill"][];
+            /**
+             * Adaptive Loop
+             * @default []
+             */
+            adaptive_loop: components["schemas"]["LoopStep"][];
             /** Questions */
             questions?: components["schemas"]["ResultQuestion"][] | null;
         };
@@ -3122,8 +3128,11 @@ export interface components {
              * @default 0
              */
             flagged_count: number;
-            /** Flagged Question Positions */
-            flagged_question_positions?: number[];
+            /**
+             * Flagged Question Positions
+             * @default []
+             */
+            flagged_question_positions: number[];
             /** Review Duration Ms */
             review_duration_ms?: number | null;
         };

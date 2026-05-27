@@ -666,7 +666,9 @@ class ReviewSummary(_Base):
     ai_grader_model: str | None = None
     reviewer_model: str | None = None
     flagged_count: int = 0
-    flagged_question_positions: list[int] = Field(default_factory=list)
+    flagged_question_positions: list[int] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     review_duration_ms: int | None = None
 
 
@@ -697,8 +699,12 @@ class AttemptResultResponse(_Base):
     time_on_test_seconds: int | None = None
     median_time_seconds: int | None = None
     review_summary: ReviewSummary | None = None
-    pills: list[ResultPill] = Field(default_factory=list)
-    adaptive_loop: list[LoopStep] = Field(default_factory=list)
+    pills: list[ResultPill] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    adaptive_loop: list[LoopStep] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
     questions: list[ResultQuestion] | None = None
 
 

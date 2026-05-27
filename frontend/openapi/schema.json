@@ -6492,14 +6492,16 @@
               "$ref": "#/components/schemas/ResultPill"
             },
             "type": "array",
-            "title": "Pills"
+            "title": "Pills",
+            "default": []
           },
           "adaptive_loop": {
             "items": {
               "$ref": "#/components/schemas/LoopStep"
             },
             "type": "array",
-            "title": "Adaptive Loop"
+            "title": "Adaptive Loop",
+            "default": []
           },
           "questions": {
             "anyOf": [
@@ -9556,7 +9558,8 @@
               "type": "integer"
             },
             "type": "array",
-            "title": "Flagged Question Positions"
+            "title": "Flagged Question Positions",
+            "default": []
           },
           "review_duration_ms": {
             "anyOf": [

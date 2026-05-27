@@ -270,3 +270,33 @@ select {
   font-family: var(--font-mono);
   font-feature-settings: "tnum";
 }
+
+/* ============================================================
+   FE-6 keyframes — pulse-dot (review-status banner + AI-review
+   chip + PDF-export generating state) and flash (anchor-link
+   row highlight from TransparencyBlock / RealismAggregateCard
+   → ByQuestionCard rows).
+   ============================================================ */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+@keyframes flash {
+  0% {
+    background-color: var(--accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.flash {
+  animation: flash 600ms ease-out;
+}
