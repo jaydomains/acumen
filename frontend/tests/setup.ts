@@ -14,7 +14,11 @@
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "@/mocks/node";
-import { resetMockAuthState, resetMockCatalogue } from "@/mocks/handlers";
+import {
+  resetMockAttemptState,
+  resetMockAuthState,
+  resetMockCatalogue,
+} from "@/mocks/handlers";
 import { MSW_FALLBACK_CONFIG, setRuntimeConfig } from "@/lib/config";
 import { setApiBaseUrl } from "@/lib/api/client";
 
@@ -28,6 +32,7 @@ afterEach(() => {
   server.resetHandlers();
   resetMockAuthState();
   resetMockCatalogue();
+  resetMockAttemptState();
 });
 
 afterAll(() => {

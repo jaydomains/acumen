@@ -392,6 +392,410 @@ export const learningMaterialHandler = http.post(
   },
 );
 
+// =====================================================================
+// FE-4 attempt-runner handlers (slice 1: GET /attempts/{id} +
+// GET /tests/{id} + POST /autosave + POST /flag-realism).
+// State lives in module-scope so test scenarios can pre-seed via
+// `setMockAttempt(...)` / `setMockTest(...)`. The default fixture is a
+// 3-question frozen-mode attempt that exercises MCQ + true/false +
+// short_answer — enough for the page integration test in slice 1.
+// =====================================================================
+
+type AttemptViewSchema = components["schemas"]["AttemptView"];
+type TestResponseSchema = components["schemas"]["TestResponse"];
+
+const FIXTURE_TESTEE = "00000000-0000-0000-0000-000000000001";
+const FIXTURE_ATTEMPT_ID = "11111111-1111-1111-1111-000000000001";
+const FIXTURE_TEST_ID = "22222222-2222-2222-2222-000000000001";
+
+const Q_MCQ_ID = "33333333-3333-3333-3333-000000000001";
+const Q_TF_ID = "33333333-3333-3333-3333-000000000002";
+const Q_SA_ID = "33333333-3333-3333-3333-000000000003";
+
+const DEFAULT_QUESTIONS = [
+  {
+    id: Q_MCQ_ID,
+    type: "multiple_choice",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt: "Which DFT measurement device pairs best with steel substrates?",
+      options: [
+        { text: "Eddy-current gauge", image_url: null },
+        { text: "Magnetic-induction gauge", image_url: null },
+        { text: "Ultrasonic gauge", image_url: null },
+        { text: "Hartmann field meter", image_url: null },
+      ],
+    },
+  },
+  {
+    id: Q_TF_ID,
+    type: "true_false",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt:
+        "Cathodic protection alone prevents pitting corrosion in immersion service.",
+    },
+  },
+  {
+    id: Q_SA_ID,
+    type: "short_answer",
+    question_group_id: null,
+    attempt_position: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    config: {
+      prompt:
+        "In one paragraph, explain why batch tracking matters when reference panels rotate across shifts.",
+      expected_seconds: 90,
+    },
+  },
+];
+
+const DEFAULT_ATTEMPT: AttemptViewSchema = {
+  id: FIXTURE_ATTEMPT_ID,
+  test_id: FIXTURE_TEST_ID,
+  testee_id: FIXTURE_TESTEE,
+  assignment_id: null,
+  origin: "self_initiated",
+  sequence_number: 1,
+  started_at: "2026-05-27T10:00:00Z",
+  submitted_at: null,
+  paused: false,
+  pauses_used: 0,
+  pause_allowance: 2,
+  pause_seconds_remaining: null,
+  pause_reason: null,
+  watermark: FIXTURE_TESTEE,
+  // `questions` is typed `Record<string, never>[]` on the wire schema
+  // (the FastAPI Pydantic model declares `list[dict]` so openapi-
+  // typescript can't infer a richer shape). The FE narrows via
+  // `narrowPresented` at the dispatch boundary; cast here is the
+  // single place we widen the untyped wire shape into our fixture.
+  questions: DEFAULT_QUESTIONS as unknown as Record<string, never>[],
+  q1: null,
+};
+
+const DEFAULT_TEST: TestResponseSchema = {
+  id: FIXTURE_TEST_ID,
+  name: "Reference Panels · Practice D5",
+  mode: "frozen",
+  status: "published",
+  visibility: "library",
+  timed: true,
+  duration_minutes: 30,
+  pause_allowance: 2,
+  timeout_behaviour: "auto_submit",
+  max_pause_duration_minutes: 5,
+  pass_threshold: 0.7,
+  target_difficulty: 5,
+  lock_mode: "open",
+  campaign_id: null,
+  benchmark_scope: null,
+  benchmark_target_testee_id: null,
+  randomise_question_order: false,
+  randomise_option_order: false,
+  pill_id: null,
+  created_at: "2026-05-01T00:00:00Z",
+  updated_at: "2026-05-01T00:00:00Z",
+};
+
+let mockAttempts: Map<string, AttemptViewSchema> = new Map([
+  [DEFAULT_ATTEMPT.id, DEFAULT_ATTEMPT],
+]);
+let mockTests: Map<string, TestResponseSchema> = new Map([
+  [DEFAULT_TEST.id, DEFAULT_TEST],
+]);
+
+export const setMockAttempt = (attempt: AttemptViewSchema): void => {
+  mockAttempts.set(attempt.id, attempt);
+};
+export const setMockTest = (test: TestResponseSchema): void => {
+  mockTests.set(test.id, test);
+};
+export const resetMockAttemptState = (): void => {
+  mockAttempts = new Map([[DEFAULT_ATTEMPT.id, DEFAULT_ATTEMPT]]);
+  mockTests = new Map([[DEFAULT_TEST.id, DEFAULT_TEST]]);
+  mockAutosaveCalls.length = 0;
+  mockFlaggedQuestions.clear();
+  resetMockAttemptResults();
+  resetMockBenchmark();
+};
+export const getMockAttempt = (id: string): AttemptViewSchema | undefined =>
+  mockAttempts.get(id);
+export const getMockTest = (id: string): TestResponseSchema | undefined =>
+  mockTests.get(id);
+
+export type AutosaveLogEntry = {
+  attempt_id: string;
+  question_id: string;
+  answer_payload: unknown;
+  time_ms: number | null;
+};
+export const mockAutosaveCalls: AutosaveLogEntry[] = [];
+export const mockFlaggedQuestions = new Set<string>();
+
+const attemptNotFound = HttpResponse.json(
+  {
+    error: {
+      code: "not_found",
+      message: "Attempt not found.",
+      detail: null,
+    },
+  },
+  { status: 404 },
+);
+
+export const getAttemptHandler = http.get(
+  `${API}/v1/attempts/:attempt_id`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    return HttpResponse.json(attempt);
+  },
+);
+
+export const getTestHandler = http.get(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const test = mockTests.get(String(params.test_id));
+  if (!test) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "Test not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(test);
+});
+
+export const autosaveHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/autosave`,
+  async ({ params, request }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const body = (await request.json().catch(() => null)) as {
+      question_id?: string;
+      answer_payload?: unknown;
+      time_ms?: number | null;
+    } | null;
+    if (!body || typeof body.question_id !== "string") {
+      return HttpResponse.json(
+        {
+          error: { code: "bad_request", message: "Missing question_id.", detail: null },
+        },
+        { status: 400 },
+      );
+    }
+    mockAutosaveCalls.push({
+      attempt_id: attempt.id,
+      question_id: body.question_id,
+      answer_payload: body.answer_payload ?? null,
+      time_ms: body.time_ms ?? null,
+    });
+    return HttpResponse.json({ status: "ok" });
+  },
+);
+
+export const flagRealismHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/questions/:question_id/flag-realism`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const questionId = String(params.question_id);
+    const key = `${attempt.id}:${questionId}`;
+    const wasFlagged = mockFlaggedQuestions.has(key);
+    if (!wasFlagged) mockFlaggedQuestions.add(key);
+    return HttpResponse.json({
+      realism_flag_id: `flag-${key}`,
+      question_id: questionId,
+      testee_id: attempt.testee_id,
+      created: !wasFlagged,
+    });
+  },
+);
+
+// =====================================================================
+// FE-4 slice 2 handlers — pause / resume / submit / result polling /
+// benchmark `next` / start-attempt / resolve-test. State lives in the
+// same module-scope `mockAttempts` / `mockTests` maps as slice 1.
+// =====================================================================
+
+type AttemptResultSchema = components["schemas"]["AttemptResultResponse"];
+type AttemptStartRequestSchema = components["schemas"]["AttemptStartRequest"];
+
+// Per-attempt result state — drives the GradingOverlay polling.
+// Default: "ready" so a test that submits + polls finds the result on
+// the first poll. Tests can override via setMockAttemptResult().
+const mockAttemptResults: Map<string, AttemptResultSchema> = new Map();
+
+export const setMockAttemptResult = (
+  attemptId: string,
+  result: AttemptResultSchema,
+): void => {
+  mockAttemptResults.set(attemptId, result);
+};
+
+export const resetMockAttemptResults = (): void => {
+  mockAttemptResults.clear();
+};
+
+const defaultResult = (attemptId: string): AttemptResultSchema => ({
+  attempt_id: attemptId,
+  submitted_at: "2026-05-27T10:30:00Z",
+  status: "ready",
+  overall_score: 0.8,
+  outcome: "pass",
+  questions: null,
+});
+
+export const pauseAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/pause`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      paused: true,
+      pause_seconds_remaining: 300,
+      pause_reason: null,
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json({ status: "paused" });
+  },
+);
+
+export const resumeAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/resume`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      paused: false,
+      pause_seconds_remaining: null,
+      pause_reason: null,
+      pauses_used: attempt.pauses_used + 1,
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json({ status: "resumed" });
+  },
+);
+
+export const submitAttemptHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/submit`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const updated: AttemptViewSchema = {
+      ...attempt,
+      submitted_at: "2026-05-27T10:30:00Z",
+    };
+    mockAttempts.set(attempt.id, updated);
+    return HttpResponse.json(updated);
+  },
+);
+
+export const attemptResultHandler = http.get(
+  `${API}/v1/attempts/:attempt_id/result`,
+  ({ params }) => {
+    const attemptId = String(params.attempt_id);
+    const attempt = mockAttempts.get(attemptId);
+    if (!attempt) return attemptNotFound;
+    const result = mockAttemptResults.get(attemptId) ?? defaultResult(attemptId);
+    return HttpResponse.json(result);
+  },
+);
+
+// Benchmark `next` mock — a small in-memory walker. Returns Q2..N
+// from `DEFAULT_QUESTIONS` then `{ done: true }` after the last.
+const benchmarkPositions = new Map<string, number>();
+
+export const resetMockBenchmark = (): void => {
+  benchmarkPositions.clear();
+};
+
+export const benchmarkNextHandler = http.post(
+  `${API}/v1/attempts/:attempt_id/next`,
+  ({ params }) => {
+    const attempt = mockAttempts.get(String(params.attempt_id));
+    if (!attempt) return attemptNotFound;
+    const pos = (benchmarkPositions.get(attempt.id) ?? 0) + 1;
+    benchmarkPositions.set(attempt.id, pos);
+    const questions = DEFAULT_QUESTIONS;
+    if (pos >= questions.length) {
+      return HttpResponse.json({ done: true, step: pos, asked: pos });
+    }
+    return HttpResponse.json({
+      done: false,
+      step: pos + 1,
+      asked: pos + 1,
+      question: questions[pos],
+    });
+  },
+);
+
+const startAttemptHandler = http.post(`${API}/v1/attempts`, async ({ request }) => {
+  const body = (await request
+    .json()
+    .catch(() => null)) as AttemptStartRequestSchema | null;
+  if (!body || typeof body.test_id !== "string") {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "bad_request",
+          message: "test_id required.",
+          detail: null,
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const test = mockTests.get(body.test_id);
+  if (!test) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "not_found",
+          message: "Test not found.",
+          detail: null,
+        },
+      },
+      { status: 404 },
+    );
+  }
+  // Synthesise a fresh attempt id so test assertions on the redirect
+  // path can distinguish it from the default fixture.
+  const newId = `11111111-1111-1111-1111-${String(Date.now()).padStart(12, "0")}`;
+  const created: AttemptViewSchema = {
+    ...DEFAULT_ATTEMPT,
+    id: newId,
+    test_id: test.id,
+  };
+  mockAttempts.set(newId, created);
+  return HttpResponse.json(created, { status: 201 });
+});
+
+// `GET /v1/tests/resolve?pill_id&difficulty` — 200 with the default
+// test id if the pill_id matches our fixture pattern; 404 otherwise.
+// Tests override per-scenario via `server.use(...)`.
+export const resolveTestHandler = http.get(`${API}/v1/tests/resolve`, ({ request }) => {
+  const url = new URL(request.url);
+  const pillId = url.searchParams.get("pill_id");
+  if (!pillId) {
+    return HttpResponse.json(
+      { error: { code: "bad_request", message: "pill_id required.", detail: null } },
+      { status: 400 },
+    );
+  }
+  // Default behaviour: any pill resolves to the default fixture
+  // test. Tests that want a 404 (no matching test at difficulty)
+  // can override via `server.use(...)`.
+  return HttpResponse.json({ test_id: FIXTURE_TEST_ID });
+});
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -404,4 +808,19 @@ export const handlers = [
   cataloguePillsHandler,
   cataloguePillDetailHandler,
   learningMaterialHandler,
+  getAttemptHandler,
+  // `resolveTestHandler` MUST come before `getTestHandler` — both
+  // match the path `/v1/tests/resolve` (the latter interprets
+  // `resolve` as a `:test_id` path param). MSW dispatches in handler-
+  // array order, so resolve-first preserves the literal route.
+  resolveTestHandler,
+  getTestHandler,
+  autosaveHandler,
+  flagRealismHandler,
+  pauseAttemptHandler,
+  resumeAttemptHandler,
+  submitAttemptHandler,
+  attemptResultHandler,
+  benchmarkNextHandler,
+  startAttemptHandler,
 ];
