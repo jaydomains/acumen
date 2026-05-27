@@ -211,6 +211,20 @@ function frameToEvent(frame: SseFrame, attemptIdFallback: string): StreamEvent |
   }
 
   if (frame.event === "paused") {
+    // Backend currently only emits ``reason: "generation_failed"``. If
+    // a future backend introduces a new reason we don't yet know
+    // about, log it (dev observability) and fall through to the same
+    // overlay UX — ``reconnect_exhausted`` is FE-synthetic and must
+    // not be reachable from a server-emitted frame.
+    const rawReason = typeof payload.reason === "string" ? payload.reason : null;
+    if (rawReason !== null && rawReason !== "generation_failed") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[openAttemptStream] unknown paused reason ${JSON.stringify(rawReason)}; ` +
+          `mapping to "generation_failed". Update PausedReason when the ` +
+          `backend contract changes.`,
+      );
+    }
     return {
       kind: "paused",
       reason: "generation_failed",

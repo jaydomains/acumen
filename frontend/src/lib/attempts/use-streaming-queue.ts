@@ -177,7 +177,7 @@ export function useStreamingQueue(opts: UseStreamingQueueOpts): StreamingQueue {
     (async () => {
       try {
         for await (const event of stream.events) {
-          if (cancelled) break;
+          if (cancelled) return;
           switch (event.kind) {
             case "question":
               dispatch({
@@ -187,12 +187,18 @@ export function useStreamingQueue(opts: UseStreamingQueueOpts): StreamingQueue {
               await queryClient.invalidateQueries({
                 queryKey: attemptQueryKeys.detail(attemptId),
               });
+              // Belt-and-suspenders: ``invalidateQueries`` is awaited
+              // and can resolve after the cleanup has set
+              // ``cancelled``; bail out before the next iteration
+              // dispatches.
+              if (cancelled) return;
               break;
             case "done":
               dispatch({ type: "done" });
               await queryClient.invalidateQueries({
                 queryKey: attemptQueryKeys.detail(attemptId),
               });
+              if (cancelled) return;
               break;
             case "paused":
               dispatch({
@@ -209,6 +215,7 @@ export function useStreamingQueue(opts: UseStreamingQueueOpts): StreamingQueue {
               await queryClient.invalidateQueries({
                 queryKey: attemptQueryKeys.detail(attemptId),
               });
+              if (cancelled) return;
               break;
           }
         }
