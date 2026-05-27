@@ -168,15 +168,14 @@ describe("Attempt runner · realism flag idempotent", () => {
 });
 
 describe("Attempt runner · mode-guards", () => {
-  it("per_testee renders the FE-5-pending placeholder, not the runner", async () => {
+  it("per_testee mounts the FE-5 streaming runner (JIT queue sidebar visible)", async () => {
     const t = getMockTest("22222222-2222-2222-2222-000000000001");
     if (!t) throw new Error("default test missing");
     setMockTest({ ...t, mode: "per_testee" });
     render(mountTree(attemptPage()));
-    await waitFor(() =>
-      expect(screen.getByText(/Streaming mode coming soon/i)).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId("question-mcq")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("attempt-shell")).toBeInTheDocument());
+    expect(screen.getByTestId("jit-queue")).toBeInTheDocument();
+    expect(screen.queryByText(/Streaming mode coming soon/i)).toBeNull();
   });
 
   it("benchmark mounts the sequential runner (no autosave / no flag-realism)", async () => {
