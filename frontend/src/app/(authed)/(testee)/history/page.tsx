@@ -67,7 +67,10 @@ export default function TesteeHistoryPage() {
           HistoryTable arrives in Slice 4. First page rows:{" "}
           <span className="font-mono">{rows.length}</span>.
         </div>
-        <ul className="flex flex-col divide-y divide-line text-[13px]" data-testid="history-row-list">
+        <ul
+          className="flex flex-col divide-y divide-line text-[13px]"
+          data-testid="history-row-list"
+        >
           {rows.map((row) => (
             <li
               key={row.attempt_id}
@@ -77,9 +80,7 @@ export default function TesteeHistoryPage() {
               className="flex items-baseline justify-between gap-3 py-2"
             >
               <span className="text-ink-2 flex-1 truncate">{row.pill_name}</span>
-              <span className="font-mono text-[11px] text-ink-3">
-                {row.origin}
-              </span>
+              <span className="font-mono text-[11px] text-ink-3">{row.origin}</span>
               <span className="font-mono text-[11px] text-ink-3">
                 {row.score_percent.toFixed(0)}%
               </span>

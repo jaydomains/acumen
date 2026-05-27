@@ -36,7 +36,10 @@ const attemptId = (n: number): string =>
   `cccccccc-cccc-cccc-cccc-${String(n).padStart(12, "0")}`;
 const PILL_A = "11111111-1111-1111-1111-aaaaaaaaaaaa";
 
-const makeAttempt = (n: number, overrides: Partial<AttemptListItem> = {}): AttemptListItem => ({
+const makeAttempt = (
+  n: number,
+  overrides: Partial<AttemptListItem> = {},
+): AttemptListItem => ({
   attempt_id: attemptId(n),
   pill_id: PILL_A,
   pill_name: "Antifouling",
@@ -91,9 +94,7 @@ describe("History page · happy first page", () => {
   });
 
   it("renders sentinel-pending marker when the first page reports more pages", async () => {
-    setMockMeAttempts(
-      Array.from({ length: 60 }, (_, i) => makeAttempt(i + 1)),
-    );
+    setMockMeAttempts(Array.from({ length: 60 }, (_, i) => makeAttempt(i + 1)));
     render(mountTree(<HistoryPage />));
     await waitFor(() => expect(screen.getByTestId("history-happy")).toBeInTheDocument());
     expect(screen.getByTestId("history-sentinel-pending")).toBeInTheDocument();

@@ -33,15 +33,15 @@ vi.mock("next/navigation", () => ({
   }),
   usePathname: () => "/profile",
   useSearchParams: () =>
-    mockParamId
-      ? new URLSearchParams({ pill: mockParamId })
-      : new URLSearchParams(),
+    mockParamId ? new URLSearchParams({ pill: mockParamId }) : new URLSearchParams(),
 }));
 
 const PILL_A = "11111111-1111-1111-1111-aaaaaaaaaaaa";
 const PILL_B = "22222222-2222-2222-2222-bbbbbbbbbbbb";
 
-const makePill = (input: Partial<MeCompetencePill> & { pill_id: string }): MeCompetencePill => ({
+const makePill = (
+  input: Partial<MeCompetencePill> & { pill_id: string },
+): MeCompetencePill => ({
   pill_name: "Antifouling",
   subject_id: "11111111-1111-1111-1111-000000000111",
   competence_estimate: 6.4,
@@ -104,32 +104,26 @@ describe("Profile page · happy state", () => {
     ]);
     render(mountTree(<ProfilePage />));
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenCalledWith(
-        `?pill=${encodeURIComponent(PILL_B)}`,
-        { scroll: false },
-      ),
+      expect(routerReplace).toHaveBeenCalledWith(`?pill=${encodeURIComponent(PILL_B)}`, {
+        scroll: false,
+      }),
     );
   });
 
   it("falls back to default + replaces URL when ?pill= references an unknown id", async () => {
     mockParamId = "unknown-pill-id";
-    setMockMeCompetence([
-      makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 5 }),
-    ]);
+    setMockMeCompetence([makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 5 })]);
     render(mountTree(<ProfilePage />));
     await waitFor(() =>
-      expect(routerReplace).toHaveBeenCalledWith(
-        `?pill=${encodeURIComponent(PILL_A)}`,
-        { scroll: false },
-      ),
+      expect(routerReplace).toHaveBeenCalledWith(`?pill=${encodeURIComponent(PILL_A)}`, {
+        scroll: false,
+      }),
     );
   });
 
   it("does NOT call router.replace when ?pill= already matches the selected id", async () => {
     mockParamId = PILL_A;
-    setMockMeCompetence([
-      makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 5 }),
-    ]);
+    setMockMeCompetence([makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 5 })]);
     render(mountTree(<ProfilePage />));
     await waitFor(() => expect(screen.getByTestId("profile-happy")).toBeInTheDocument());
     expect(routerReplace).not.toHaveBeenCalled();

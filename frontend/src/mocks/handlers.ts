@@ -1144,33 +1144,30 @@ export const resetMockMeAttempts = (): void => {
   meAttemptsStatus = 200;
 };
 
-export const meAttemptsListHandler = http.get(
-  `${API}/v1/attempts`,
-  ({ request }) => {
-    if (meAttemptsStatus !== 200) {
-      return HttpResponse.json(
-        {
-          error: {
-            code: meAttemptsStatus === 404 ? "not_found" : "internal",
-            message: "Attempts list unavailable.",
-            detail: null,
-          },
+export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }) => {
+  if (meAttemptsStatus !== 200) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: meAttemptsStatus === 404 ? "not_found" : "internal",
+          message: "Attempts list unavailable.",
+          detail: null,
         },
-        { status: meAttemptsStatus },
-      );
-    }
-    const url = new URL(request.url);
-    const cursor = url.searchParams.get("cursor");
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
-    const start = cursor ? Number(cursor) : 0;
-    const slice = mockMeAttempts.slice(start, start + limit);
-    const nextStart = start + slice.length;
-    const next_cursor = nextStart < mockMeAttempts.length ? String(nextStart) : null;
-    const page: AttemptsPage = { data: slice, meta: { next_cursor } };
-    return HttpResponse.json(page);
-  },
-);
+      },
+      { status: meAttemptsStatus },
+    );
+  }
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockMeAttempts.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockMeAttempts.length ? String(nextStart) : null;
+  const page: AttemptsPage = { data: slice, meta: { next_cursor } };
+  return HttpResponse.json(page);
+});
 
 export const handlers = [
   meHandler,

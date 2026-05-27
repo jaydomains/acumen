@@ -9,11 +9,7 @@
  * hooks + keys from this module; no inline key construction.
  */
 
-import {
-  useInfiniteQuery,
-  useQuery,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, type InfiniteData } from "@tanstack/react-query";
 import { client, unwrap } from "@/lib/api/client";
 import type { components } from "@/lib/api/types";
 

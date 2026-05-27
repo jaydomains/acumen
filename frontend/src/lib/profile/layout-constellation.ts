@@ -72,7 +72,8 @@ export function layoutConstellation(
     const c = subjectCentres[subjectId];
     if (!c) continue; // pill references a subject the cluster ring doesn't cover; skip silently
     const sorted = list.slice().sort((a, b) => (a.pill_id < b.pill_id ? -1 : 1));
-    const phaseSeed = subjectId.length > 0 ? subjectId.charCodeAt(0) * PHASE_SEED_FACTOR : 0;
+    const phaseSeed =
+      subjectId.length > 0 ? subjectId.charCodeAt(0) * PHASE_SEED_FACTOR : 0;
     sorted.forEach((p, i) => {
       const angle = (i / sorted.length) * Math.PI * 2 + phaseSeed;
       // Per-pill radial offset within the cluster. The math mirrors the

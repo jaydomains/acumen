@@ -71,8 +71,7 @@ export default function TesteeProfilePage() {
 
   // Endpoint-absent placeholder branch — drift-mode for 404/405 only;
   // any other failure escalates to the Pattern C boundary.
-  const apiError =
-    competence.error instanceof ApiError ? competence.error : null;
+  const apiError = competence.error instanceof ApiError ? competence.error : null;
   const endpointAbsent =
     apiError !== null && (apiError.status === 404 || apiError.status === 405);
   if (competence.error && !endpointAbsent) {
@@ -89,8 +88,7 @@ export default function TesteeProfilePage() {
         <ProfileHero eyebrow="Your competency · Coming in v1.x" />
         <Card className="p-6 bg-bg-sunk text-center text-[13px] text-ink-3">
           Your competence profile arrives once we light up the{" "}
-          <code className="font-mono">/v1/me/competence</code> endpoint. No data
-          yet.
+          <code className="font-mono">/v1/me/competence</code> endpoint. No data yet.
         </Card>
       </div>
     );
@@ -112,10 +110,7 @@ export default function TesteeProfilePage() {
       <ProfileHero
         eyebrow={`Your competency · ${pillsCount} pill${pillsCount === 1 ? "" : "s"} · calibrated`}
       />
-      <div
-        className="mb-6 flex items-center gap-2"
-        data-testid="profile-view-toggle"
-      >
+      <div className="mb-6 flex items-center gap-2" data-testid="profile-view-toggle">
         <button
           type="button"
           data-active={view === "constellation"}
@@ -159,10 +154,7 @@ export default function TesteeProfilePage() {
           </div>
         </div>
       ) : (
-        <Card
-          data-testid="profile-matrix-slot"
-          className="p-6 text-[12px] text-ink-3"
-        >
+        <Card data-testid="profile-matrix-slot" className="p-6 text-[12px] text-ink-3">
           MatrixTable arrives in Slice 3.
         </Card>
       )}
@@ -179,8 +171,8 @@ function ProfileHero({ eyebrow }: { eyebrow: string }) {
       </h1>
       <p className="mt-3 max-w-[52ch] text-[14px] text-ink-3">
         Each star is a pill. Brightness is your competence. The ring around it is
-        calibration confidence — faded rings mean we haven&apos;t seen enough
-        attempts to be sure yet. Lines connect related pills.
+        calibration confidence — faded rings mean we haven&apos;t seen enough attempts to
+        be sure yet. Lines connect related pills.
       </p>
     </div>
   );
