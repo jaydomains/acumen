@@ -211,8 +211,13 @@ test.describe("FE-6 results page", () => {
     await expect(page.getByText(/in 4\.2s/)).toBeVisible();
 
     // By-pill card with one severe row, preliminary confidence.
+    // Scope the "Antifouling" text-match to the card — the loop step's
+    // title "Read this explainer on Antifouling" matches too, which
+    // trips Playwright's strict mode.
     await expect(page.getByTestId("by-pill-card")).toBeVisible();
-    await expect(page.getByText("Antifouling")).toBeVisible();
+    await expect(
+      page.getByTestId("by-pill-card").getByText("Antifouling"),
+    ).toBeVisible();
     await expect(page.getByText("SEVERE")).toBeVisible();
 
     // By-question card with both rows; row 2 surfaces "Admin reviewing".
@@ -250,6 +255,13 @@ test.describe("FE-6 results page", () => {
         status: 200,
         contentType: "application/pdf",
         headers: {
+          // `Access-Control-Expose-Headers` is required so the
+          // cross-origin (localhost:3000 → localhost:8000) `fetch()`
+          // reads the filename via response.headers.get(). Without it
+          // browsers hide non-safelisted response headers and the
+          // PdfExportButton's `parseContentDisposition` returns null —
+          // the button falls back to `attempt-<prefix>.pdf`.
+          "Access-Control-Expose-Headers": "Content-Disposition",
           "Content-Disposition": `attachment; filename="acumen-attempt-${ATTEMPT_ID}.pdf"`,
         },
         body: Buffer.from("%PDF-1.4\n%mock\n"),
