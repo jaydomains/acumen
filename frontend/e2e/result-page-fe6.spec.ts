@@ -215,9 +215,7 @@ test.describe("FE-6 results page", () => {
     // title "Read this explainer on Antifouling" matches too, which
     // trips Playwright's strict mode.
     await expect(page.getByTestId("by-pill-card")).toBeVisible();
-    await expect(
-      page.getByTestId("by-pill-card").getByText("Antifouling"),
-    ).toBeVisible();
+    await expect(page.getByTestId("by-pill-card").getByText("Antifouling")).toBeVisible();
     await expect(page.getByText("SEVERE")).toBeVisible();
 
     // By-question card with both rows; row 2 surfaces "Admin reviewing".
