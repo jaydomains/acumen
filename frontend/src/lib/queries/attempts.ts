@@ -49,6 +49,14 @@ export const attemptQueryKeys = {
    * collide.
    */
   inFlight: () => [...attemptQueryKeys.all, "__inflight"] as const,
+  /**
+   * Per-attempt SSE stream cursor key (FE-5 §C.4). Not used to power a
+   * TanStack-Query subscription — SSE is an async iterable, not a
+   * query — but exists so any future cross-component coordination of
+   * "this attempt's stream cursor" has a single key vocabulary. FE-5
+   * itself reads stream state from ``useStreamingQueue``.
+   */
+  stream: (id: string) => [...attemptQueryKeys.all, id, "stream"] as const,
 };
 
 export function invalidateAttempt(qc: QueryClient, attemptId: string) {

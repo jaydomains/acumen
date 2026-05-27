@@ -77,11 +77,12 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| SSE client (fetch-streaming adapter, Last-Event-ID resume) | FE-5 | AC-D25, AC-CD10, AC-CD22 | `frontend/src/lib/api/sse.ts` | missing | — |
-| JIT queue UI + arrivedIdx reducer | FE-5 | AC-D25, AC-CD22 | `frontend/src/components/attempt/jit-queue.tsx` | missing | — |
-| Streaming progress dots + animations | FE-5 | AC-D25 | progress-dots component | missing | — |
-| Terminal `paused` event handling | FE-5 | AC-D11, AC-D25 | attempt hero error state | missing | — |
-| Per-Testee + benchmark routing (SSE only in per_testee) | FE-5 | AC-D5, AC-D13, AC-D25 | attempt-mode resolver | missing | — |
+| SSE client (fetch-streaming adapter, Last-Event-ID resume) | FE-5 | AC-D25, AC-CD10, AC-CD22 | `frontend/src/lib/api/sse.ts` | ✅ landed | PR #56 slice 1 — `openAttemptStream` adapter + `parseSseFrames` parser + 32 unit tests covering bearer/Accept headers, cursor precedence, one-reconnect with `Last-Event-ID`, synthetic `reconnect_exhausted` after second failure, clean `close()` exit, `409 not_per_testee` ApiError surface, terminal `done` / `paused (generation_failed)` events. |
+| JIT queue UI + arrivedIdx reducer | FE-5 | AC-D25, AC-CD22 | `frontend/src/components/attempt/JITQueue.tsx` | ✅ landed | PR #56 slice 2 — `JITQueue` sidebar + `useStreamingQueue` reducer hook. Per-item state matrix (done / current / ready) sized dynamically from `presentedQuestions.length`; streaming pulse row at the foot while `status === "streaming" \| "connecting"`; mobile-hidden via `hidden md:flex`. Reducer covers `arrivedIdx` advance + refetch invalidation + terminal handling (done / generation_failed / reconnect_exhausted) + enabled gating + `reconnect()`. |
+| Streaming progress dots + animations | FE-5 | AC-D25 | progress-dots component | ✅ landed (dynamic-count carve-out) | PR #56 slice 2 — the runner derives queue length from `presentedQuestions.length` dynamically (no `question_count` on `AttemptView` / `TestResponse` in v1), so the "Q2..N generating" cards compress into a single "streaming…" pulse row. `ProgressDots` itself is FE-4 unchanged. Documented in `StreamingRunner.tsx` header. |
+| Terminal `paused` event handling | FE-5 | AC-D11, AC-D25 | `frontend/src/components/attempt/SystemGlitchOverlay.tsx` | ✅ landed | PR #56 slice 2 — `SystemGlitchOverlay` with serif "*Connection* issue." headline, expandable code / trace / buffer rows, no pause-budget copy (regression-guarded). Resume CTA branches: `generation_failed` → POST /resume + reconnect; `reconnect_exhausted` → reconnect only. |
+| Per-Testee + benchmark routing (SSE only in per_testee) | FE-5 | AC-D5, AC-D13, AC-D25 | attempt-mode resolver | ✅ landed | PR #56 slice 2 — `page.tsx` branches `mode === "per_testee"` to `<StreamingRunner>`; `benchmark` + `frozen` / `hand_authored` unchanged. SSE opened only when `mode === "per_testee" && !attempt.paused && !attempt.submitted_at`. |
+| Playwright E2E (happy / reconnect / system-glitch) | FE-5 | AC-D25, AC-CD22 | `frontend/e2e/attempt-per-testee-roundtrip.spec.ts` | ✅ landed | PR #56 slice 3 — full round-trip via Playwright `page.route` + chunked stream fulfillment. |
 
 ## FE-6 — Results + adaptive loop + grade review
 

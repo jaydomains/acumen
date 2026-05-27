@@ -3,11 +3,12 @@
 /**
  * SubmitConfirmModal (FE-4 §B.1 §2, AC-D19 copy).
  *
- * shadcn `AlertDialog`. Frozen + benchmark share the component and
- * branch on `mode` for the eyebrow / body copy:
- *   - frozen: "Submit attempt" + "...AI-graded responses run through
- *     OpenAI cross-family review before your result is shown —
- *     usually 3–6 seconds." (AC-D19)
+ * shadcn `AlertDialog`. Frozen + benchmark + per_testee share the
+ * component and branch on `mode` for the eyebrow / body copy:
+ *   - frozen / per_testee: "Submit attempt" + "...AI-graded
+ *     responses run through OpenAI cross-family review before your
+ *     result is shown — usually 3–6 seconds." (AC-D19). Per-Testee
+ *     runs the same grading path as frozen, so the copy is shared.
  *   - benchmark: "Submit benchmark" + "Benchmarks can't be re-taken
  *     — once submitted, your result is locked into the SiteMesh
  *     Annual Competency record."
@@ -24,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export type SubmitMode = "frozen" | "benchmark";
+export type SubmitMode = "frozen" | "benchmark" | "per_testee";
 
 export type SubmitConfirmModalProps = {
   open: boolean;

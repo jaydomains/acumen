@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * Attempt runner page (FE-4 §B.1, §B.2).
+ * Attempt runner page (FE-4 §B.1, §B.2 + FE-5 §B.1, §C.1).
  *
  * Branches on `test.mode`:
- *   - `frozen` / `hand_authored` → `<FrozenRunner />` (slice 1)
- *   - `benchmark` → slice 2 will mount `<BenchmarkRunner />`; slice 1
- *     shows a "lands in next slice" placeholder so the route is
- *     reachable but the UI doesn't half-render.
- *   - `per_testee` → FE-5-pending placeholder (no streaming runner
- *     in v1.x yet).
+ *   - `frozen` / `hand_authored` → `<FrozenRunner />`.
+ *   - `benchmark` → `<BenchmarkRunner />`.
+ *   - `per_testee` → `<StreamingRunner />` (FE-5 slice 2).
  *
  * Reads `attemptId` via `useParams()` (the FE-3 pill-detail
  * precedent — `useParams` returns the path-params object directly in
@@ -26,16 +23,14 @@
  */
 
 import { useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useAttemptView } from "@/lib/queries/attempts";
 import { narrowPresentedList } from "@/lib/attempts/presented-question";
 import { BenchmarkRunner } from "@/components/attempt/BenchmarkRunner";
 import { FrozenRunner } from "@/components/attempt/FrozenRunner";
+import { StreamingRunner } from "@/components/attempt/StreamingRunner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
-import { Icon } from "@/components/primitives/Icon";
-import { Button } from "@/components/ui/button";
 
 export default function AttemptRunnerPage() {
   const params = useParams<{ attemptId: string }>();
@@ -67,11 +62,20 @@ export default function AttemptRunnerPage() {
     throw error ?? new Error("Failed to load attempt");
   }
 
-  if (test.mode === "per_testee") {
-    return <PerTesteeModePlaceholder />;
-  }
-
   const userName = user?.name?.trim() || user?.email || "Testee";
+
+  if (test.mode === "per_testee") {
+    return (
+      <StreamingRunner
+        attempt={attempt}
+        test={test}
+        presentedQuestions={presentedQuestions}
+        userName={userName}
+        pillName={test.name}
+        difficulty={test.target_difficulty ?? null}
+      />
+    );
+  }
 
   if (test.mode === "benchmark") {
     return (
@@ -96,24 +100,5 @@ export default function AttemptRunnerPage() {
       pillName={test.name}
       difficulty={test.target_difficulty ?? null}
     />
-  );
-}
-
-function PerTesteeModePlaceholder() {
-  const router = useRouter();
-  return (
-    <div className="min-h-screen bg-bg">
-      <BoundaryFrame
-        glyph={<Icon name="flag" size={24} />}
-        eyebrow="MODE"
-        title="Streaming mode coming soon"
-        body="Per-Testee tests stream Q1..N over time and land with FE-5. For now, contact your admin if this attempt was assigned to you."
-        actions={
-          <Button variant="outline" onClick={() => router.push("/")}>
-            Back to dashboard
-          </Button>
-        }
-      />
-    </div>
   );
 }
