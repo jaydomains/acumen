@@ -624,9 +624,14 @@ async def list_me_competence(
         related_by_pill.setdefault(row.pill_id, []).append(row.related_pill_id)
 
     # Derive ``n`` per pill from submitted Attempt rows joined to Test
-    # for the canonical pill linkage (B.3 ``Test.pill_id``). One bulk
-    # load per table; the cross-product walk is bounded by attempt count
-    # per testee (v1 scale ~tens per testee).
+    # for the canonical pill linkage (B.3 ``Test.pill_id``). The Attempt
+    # query is testee-scoped so it loads only this testee's attempts;
+    # the Test lookups are bounded equality queries (one per distinct
+    # ``test_id`` in the testee's submitted attempts, ~tens at v1
+    # scale) so we don't scan the whole tenant Test catalogue —
+    # important because Test is a tenant-wide table whereas Attempt is
+    # already testee-scoped. AC-CD15 forbids ``.in_()`` so we iterate
+    # equality lookups instead of batching.
     attempts_result = await db.execute(
         select(Attempt).where(Attempt.testee_id == testee_id)
     )
@@ -636,13 +641,14 @@ async def list_me_competence(
         if a.submitted_at is not None and a.tenant_id == SEED_TENANT_ID
     ]
     test_ids = {a.test_id for a in submitted_attempts}
-    if test_ids:
+    tests_by_id: dict[uuid.UUID, Test] = {}
+    for tid in test_ids:
         tests_result = await db.execute(
-            select(Test).where(Test.tenant_id == SEED_TENANT_ID)
+            select(Test).where(Test.tenant_id == SEED_TENANT_ID, Test.id == tid)
         )
-        tests_by_id = {t.id: t for t in tests_result.scalars().all() if t.id in test_ids}
-    else:
-        tests_by_id = {}
+        t = tests_result.scalar_one_or_none()
+        if t is not None:
+            tests_by_id[t.id] = t
     n_by_pill: dict[uuid.UUID, int] = {}
     for attempt in submitted_attempts:
         test = tests_by_id.get(attempt.test_id)

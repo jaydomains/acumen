@@ -47,13 +47,16 @@ export function useMeCompetence() {
 
 /**
  * Cursor-paginated history — `useInfiniteQuery` consuming the canonical
- * `Page<AttemptListItem>` envelope per LOCK-1. The sub-key carries the
- * `limit` so the profile-page one-shot fetch (`limit: 200`) and the
- * history-page paginator (`limit: 50`) don't collide in cache.
+ * `Page<AttemptListItem>` envelope per LOCK-1. The `"infinite"`
+ * discriminator + `{limit}` sub-key keep this entry distinct from the
+ * one-shot capped entry below regardless of what `limit` either caller
+ * passes — TanStack stores InfiniteData under one key and a flat page
+ * under another, so a discriminator-only collision would be a runtime
+ * type mismatch.
  */
 export function useMeAttemptsInfinite(limit: number = HISTORY_PAGE_SIZE) {
   return useInfiniteQuery({
-    queryKey: [...meQueryKeys.attempts(), { limit }],
+    queryKey: [...meQueryKeys.attempts(), "infinite", { limit }],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -70,12 +73,13 @@ export function useMeAttemptsInfinite(limit: number = HISTORY_PAGE_SIZE) {
 /**
  * Cap-only fetch for the profile-page sparkline derivation
  * (`derive-sparkline.ts` consumes the cached row array). One page; no
- * pagination affordance on `/profile`. Sub-key separates this entry from
- * the history paginator's cache.
+ * pagination affordance on `/profile`. `"capped"` discriminator keeps
+ * this entry from colliding with the paginator above regardless of the
+ * limit value either caller passes.
  */
 export function useMeAttemptsCapped(limit: number = PROFILE_ATTEMPTS_CAP) {
   return useQuery({
-    queryKey: [...meQueryKeys.attempts(), { limit }],
+    queryKey: [...meQueryKeys.attempts(), "capped", { limit }],
     queryFn: () =>
       unwrap(
         client.GET("/v1/attempts", {

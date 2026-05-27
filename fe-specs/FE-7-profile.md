@@ -167,11 +167,10 @@ const competence = useQuery({
 });
 
 const attempts = useQuery({
-  queryKey: [...meQueryKeys.attempts(), { limit: 200 }],
+  queryKey: [...meQueryKeys.attempts(), "capped", { limit: 200 }],
   queryFn: () => unwrap(client.GET("/v1/attempts", { params: { query: { limit: 200 } } })),
-  // 200-row cap for sparkline derivation (covers ~6 months of typical activity); pagination not exercised on /profile.
-  // History page (B.2) uses useInfiniteQuery against the same key root with a {cursor,limit:50} sub-key, so the two
-  // page-shapes don't collide in cache.
+  // "capped" discriminator + {limit:200} sub-key keep this entry distinct from the history-page paginator's
+  // ["attempts", "infinite", {limit:50}] InfiniteData entry regardless of what limit either caller passes.
 });
 
 const sparklineValues = useMemo(
@@ -393,7 +392,7 @@ n/a — read-only page. **TanStack Query notes:**
 
 ```ts
 const attempts = useInfiniteQuery({
-  queryKey: [...meQueryKeys.attempts(), { limit: 50 }],
+  queryKey: [...meQueryKeys.attempts(), "infinite", { limit: 50 }],
   queryFn: ({ pageParam }) => unwrap(client.GET("/v1/attempts", {
     params: { query: { cursor: pageParam, limit: 50 } }
   })),
