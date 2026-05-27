@@ -1512,9 +1512,7 @@ async def result_view(db: AsyncSession, attempt: Attempt, test: Test) -> dict[st
         config: dict[str, Any] = (
             db_question.config
             if db_question is not None
-            else (snap_entry or {}).get("config")
-            or spec.get("config")
-            or {}
+            else (snap_entry or {}).get("config") or spec.get("config") or {}
         )
         prompt = config.get("prompt") if isinstance(config, dict) else None
         has_figure = bool(
@@ -1684,9 +1682,7 @@ def _result_review_summary(
     }
 
 
-async def _result_attempt_band(
-    db: AsyncSession, attempt: Attempt
-) -> str | None:
+async def _result_attempt_band(db: AsyncSession, attempt: Attempt) -> str | None:
     """Derive the attempt-level band from the testee's strongest
     relevant CompetencyProfile entry. v1 surfaces a single band on the
     hero (no per-pill drill-down on hero); the per-pill weakness card
@@ -1704,9 +1700,7 @@ async def _result_attempt_band(
     )
     profiles = list(result.scalars().all())
     estimates = [
-        p.competence_estimate
-        for p in profiles
-        if p.competence_estimate is not None
+        p.competence_estimate for p in profiles if p.competence_estimate is not None
     ]
     if not estimates:
         return None
@@ -1716,9 +1710,7 @@ async def _result_attempt_band(
     return band_string(sum(estimates) / len(estimates))
 
 
-async def _result_pills(
-    db: AsyncSession, attempt: Attempt
-) -> list[dict[str, Any]]:
+async def _result_pills(db: AsyncSession, attempt: Attempt) -> list[dict[str, Any]]:
     """Build the per-pill weakness rows for FE-6 §B.3. Reads the latest
     ``WeaknessReport`` for this attempt and walks ``WeaknessReportPill``
     rows; hydrates with Pill name + safety flag, CompetencyProfile
@@ -1922,9 +1914,7 @@ async def _result_adaptive_loop(
                 ),
                 "cta_label": "Open Drive" if is_safety else "Open",
                 "route_href": (
-                    f"/pills/{pill.id}/safety-links"
-                    if is_safety
-                    else f"/pills/{pill.id}"
+                    f"/pills/{pill.id}/safety-links" if is_safety else f"/pills/{pill.id}"
                 ),
                 "status": "optional" if is_safety else "ready",
                 "queued_for": None,
