@@ -26,12 +26,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
 import type { Band } from "@/components/primitives/bands";
 import { subjectById } from "@/lib/catalogue/subjects";
-import { useMeCompetence, type MeCompetencePill } from "@/lib/queries/me";
+import { deriveSparkline } from "@/lib/profile/derive-sparkline";
+import {
+  useMeAttemptsCapped,
+  useMeCompetence,
+  type MeCompetencePill,
+} from "@/lib/queries/me";
 import type { ConstellationSubject } from "@/lib/profile/layout-constellation";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConstellationSVG } from "@/components/profile/constellation-svg";
+import { HowToReadCard } from "@/components/profile/how-to-read";
 import { Legend } from "@/components/profile/legend";
+import { MatrixTable } from "@/components/profile/matrix-table";
+import { SelectedPillDetailCard } from "@/components/profile/selected-pill-detail-card";
 import { ViewToggle } from "@/components/profile/view-toggle";
 
 type ViewMode = "constellation" | "matrix";
@@ -66,12 +74,22 @@ export default function TesteeProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const competence = useMeCompetence();
+  // Sparkline source: capped one-shot fetch shares cache root with the
+  // /history page's paginator (different discriminator + limit, so no
+  // collision; LOCK-1 envelope). Missing data is non-fatal — sparkline
+  // renders the em-dash placeholder when there are <2 points.
+  const attempts = useMeAttemptsCapped();
   const [view, setView] = useState<ViewMode>("constellation");
 
   const pills = useMemo(() => competence.data?.pills ?? [], [competence.data]);
   const pillsCount = pills.length;
   const subjects = useMemo(() => deriveSubjects(pills), [pills]);
   const bandCounts = useMemo(() => deriveBandCounts(pills), [pills]);
+  const pillsById = useMemo(() => {
+    const map: Record<string, MeCompetencePill> = {};
+    for (const p of pills) map[p.pill_id] = p;
+    return map;
+  }, [pills]);
 
   const defaultSelectedId = useMemo<string | null>(() => {
     if (pills.length === 0) return null;
@@ -83,6 +101,18 @@ export default function TesteeProfilePage() {
   const knownIds = useMemo(() => new Set(pills.map((p) => p.pill_id)), [pills]);
   const resolvedSelectedId =
     paramId && knownIds.has(paramId) ? paramId : defaultSelectedId;
+  const selectedPill = resolvedSelectedId
+    ? (pillsById[resolvedSelectedId] ?? null)
+    : null;
+  const selectedSubject = useMemo<{ name: string; color: string } | null>(() => {
+    if (!selectedPill) return null;
+    const meta = subjectById(selectedPill.subject_id);
+    return { name: meta.name, color: meta.colour };
+  }, [selectedPill]);
+  const sparklineValues = useMemo(() => {
+    if (!resolvedSelectedId) return [] as number[];
+    return deriveSparkline(attempts.data?.data ?? [], resolvedSelectedId);
+  }, [attempts.data, resolvedSelectedId]);
 
   useEffect(() => {
     if (!resolvedSelectedId) return;
@@ -91,6 +121,9 @@ export default function TesteeProfilePage() {
       scroll: false,
     });
   }, [resolvedSelectedId, paramId, router]);
+
+  const navigateToPill = (pillId: string) =>
+    router.replace(`?pill=${encodeURIComponent(pillId)}`, { scroll: false });
 
   // Endpoint-absent placeholder branch — drift-mode for 404/405 only;
   // any other failure escalates to the Pattern C boundary.
@@ -146,39 +179,29 @@ export default function TesteeProfilePage() {
               pills={pills}
               subjects={subjects}
               selectedId={resolvedSelectedId}
-              onSelect={(id) =>
-                router.replace(`?pill=${encodeURIComponent(id)}`, { scroll: false })
-              }
+              onSelect={navigateToPill}
             />
           </Card>
           <div className="flex flex-col gap-4 lg:col-span-4">
-            <Card
-              data-testid="profile-detail-card-slot"
-              className="p-6 text-[12px] text-ink-3"
-            >
-              SelectedPillDetailCard arrives in Slice 3.
-              {resolvedSelectedId ? (
-                <>
-                  {" "}
-                  Selected:{" "}
-                  <code className="font-mono" data-testid="profile-selected-pill-echo">
-                    {resolvedSelectedId}
-                  </code>
-                </>
-              ) : null}
-            </Card>
-            <Card
-              data-testid="profile-how-to-read-slot"
-              className="p-6 text-[12px] text-ink-3"
-            >
-              HowToReadCard arrives in Slice 3.
-            </Card>
+            {selectedPill ? (
+              <SelectedPillDetailCard
+                pill={selectedPill}
+                subject={selectedSubject}
+                sparklineValues={sparklineValues}
+                pillsById={pillsById}
+                onSelectRelated={navigateToPill}
+              />
+            ) : null}
+            <HowToReadCard />
           </div>
         </div>
       ) : (
-        <Card data-testid="profile-matrix-slot" className="p-6 text-[12px] text-ink-3">
-          MatrixTable arrives in Slice 3.
-        </Card>
+        <MatrixTable
+          pills={pills}
+          subjects={subjects}
+          selectedId={resolvedSelectedId}
+          onSelect={navigateToPill}
+        />
       )}
     </div>
   );

@@ -20,11 +20,12 @@ import {
 import type { MeCompetencePill } from "@/lib/queries/me";
 
 const routerReplace = vi.fn();
+const routerPush = vi.fn();
 let mockParamId: string | null = null;
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPush,
     replace: routerReplace,
     back: vi.fn(),
     forward: vi.fn(),
@@ -67,6 +68,7 @@ function mountTree(node: React.ReactNode) {
 
 beforeEach(() => {
   routerReplace.mockClear();
+  routerPush.mockClear();
   mockParamId = null;
   resetMockMeCompetence();
 });
@@ -81,7 +83,7 @@ describe("Profile page · loading skeleton", () => {
 });
 
 describe("Profile page · happy state", () => {
-  it("renders hero, view-toggle, legend, and constellation SVG after fetch resolves", async () => {
+  it("renders hero, view-toggle, legend, constellation SVG, detail card, and how-to-read after fetch resolves", async () => {
     setMockMeCompetence([
       makePill({ pill_id: PILL_A, pill_name: "Antifouling", n: 22 }),
       makePill({ pill_id: PILL_B, pill_name: "DFT", n: 8 }),
@@ -94,8 +96,52 @@ describe("Profile page · happy state", () => {
     expect(screen.getByTestId("view-toggle")).toBeInTheDocument();
     expect(screen.getByTestId("profile-legend")).toBeInTheDocument();
     expect(screen.getByTestId("constellation-svg")).toBeInTheDocument();
-    expect(screen.getByTestId("profile-detail-card-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("profile-how-to-read-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("selected-pill-detail-card")).toBeInTheDocument();
+    expect(screen.getByTestId("how-to-read-card")).toBeInTheDocument();
+  });
+
+  it("clicking a related-pill chip in the detail card routes via router.replace with the new pill id", async () => {
+    mockParamId = PILL_A;
+    setMockMeCompetence([
+      makePill({
+        pill_id: PILL_A,
+        pill_name: "Antifouling",
+        related_pill_ids: [PILL_B],
+      }),
+      makePill({ pill_id: PILL_B, pill_name: "DFT" }),
+    ]);
+    const user = userEvent.setup();
+    render(mountTree(<ProfilePage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("selected-pill-detail-card")).toBeInTheDocument(),
+    );
+    const chip = screen.getByTestId("detail-related-chip");
+    expect(chip).toHaveAttribute("data-pill-id", PILL_B);
+    await user.click(chip);
+    expect(routerReplace).toHaveBeenLastCalledWith(
+      `?pill=${encodeURIComponent(PILL_B)}`,
+      { scroll: false },
+    );
+  });
+
+  it("Practice + Step-up CTAs router.push into FE-3 pill detail with the rounded difficulty", async () => {
+    mockParamId = PILL_A;
+    setMockMeCompetence([
+      makePill({
+        pill_id: PILL_A,
+        pill_name: "Antifouling",
+        competence_estimate: 6.7,
+      }),
+    ]);
+    const user = userEvent.setup();
+    render(mountTree(<ProfilePage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("selected-pill-detail-card")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId("detail-cta-practice"));
+    expect(routerPush).toHaveBeenLastCalledWith(`/pills/${PILL_A}?d=7`);
+    await user.click(screen.getByTestId("detail-cta-step-up"));
+    expect(routerPush).toHaveBeenLastCalledWith(`/pills/${PILL_A}?d=8`);
   });
 
   it("defaults selection to the first pill with n > 0 (URL replaces with ?pill=)", async () => {
@@ -151,21 +197,25 @@ describe("Profile page · happy state", () => {
     });
   });
 
-  it("toggles between constellation SVG and matrix slot when the segmented buttons are clicked", async () => {
+  it("toggles between constellation SVG (with detail card + how-to-read) and the matrix table", async () => {
     setMockMeCompetence([makePill({ pill_id: PILL_A, pill_name: "Antifouling" })]);
     const user = userEvent.setup();
     render(mountTree(<ProfilePage />));
     await waitFor(() =>
       expect(screen.getByTestId("constellation-svg")).toBeInTheDocument(),
     );
+    expect(screen.getByTestId("selected-pill-detail-card")).toBeInTheDocument();
+    expect(screen.getByTestId("how-to-read-card")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /matrix/i }));
-    expect(screen.getByTestId("profile-matrix-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("matrix-table")).toBeInTheDocument();
     expect(screen.queryByTestId("constellation-svg")).toBeNull();
+    expect(screen.queryByTestId("selected-pill-detail-card")).toBeNull();
+    expect(screen.queryByTestId("how-to-read-card")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /constellation/i }));
     expect(screen.getByTestId("constellation-svg")).toBeInTheDocument();
-    expect(screen.queryByTestId("profile-matrix-slot")).toBeNull();
+    expect(screen.queryByTestId("matrix-table")).toBeNull();
   });
 });
 
