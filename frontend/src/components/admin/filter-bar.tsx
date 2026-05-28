@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,14 @@ export function FilterBar({
 }: FilterBarProps) {
   const [draft, setDraft] = useState(searchValue ?? "");
 
+  // Stabilise the callback reference so the debounce effect below
+  // doesn't tear down + re-install its timer on every parent re-render.
+  // Without this, a parent that passes an inline arrow (the common case)
+  // would reset the 300ms timer every render and the debounced search
+  // might never land. Same pattern as StreamingRunner.tsx:121–130.
+  const onSearchChangeRef = useRef(onSearchChange);
+  onSearchChangeRef.current = onSearchChange;
+
   // Keep local draft in sync with externally-driven value changes
   // (e.g. URL hydration / reset). Doesn't fire onSearchChange.
   useEffect(() => {
@@ -50,13 +58,14 @@ export function FilterBar({
 
   // Debounced fire to onSearchChange. The cleanup runs on every keystroke,
   // so the timer resets each time — only the last value lands after the
-  // user pauses 300ms.
+  // user pauses 300ms. Reads the callback via ref so parent re-renders
+  // don't reset the timer.
   useEffect(() => {
-    if (!onSearchChange) return;
+    if (!onSearchChangeRef.current) return;
     if (draft === (searchValue ?? "")) return;
-    const id = window.setTimeout(() => onSearchChange(draft), DEBOUNCE_MS);
+    const id = window.setTimeout(() => onSearchChangeRef.current?.(draft), DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [draft, onSearchChange, searchValue]);
+  }, [draft, searchValue]);
 
   return (
     <div

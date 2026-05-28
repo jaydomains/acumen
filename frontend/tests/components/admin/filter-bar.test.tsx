@@ -73,6 +73,37 @@ describe("FilterBar — search debounce (300ms)", () => {
     expect(onSearchChange).toHaveBeenNthCalledWith(5, "antif");
   });
 
+  it("does not reset the debounce timer when the parent re-renders with a fresh callback identity (regression: Gitar #65)", async () => {
+    const stable = vi.fn<(next: string) => void>();
+    const { rerender } = render(
+      <FilterBar searchValue="" onSearchChange={() => stable("inline")} />,
+    );
+
+    const input = screen.getByTestId("filter-bar-search") as HTMLInputElement;
+
+    // Type one char inside the debounce window.
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "a" } });
+      await vi.advanceTimersByTimeAsync(100);
+    });
+
+    // Parent re-renders with a NEW inline callback — common React idiom.
+    // Pre-fix, this tore down + re-installed the debounce timer; the
+    // 300ms window restarted from 0 and the search never fired even
+    // after the user paused. Post-fix, the ref stabilises the call site
+    // so the timer keeps counting down from the keystroke.
+    rerender(<FilterBar searchValue="" onSearchChange={() => stable("inline")} />);
+    rerender(<FilterBar searchValue="" onSearchChange={() => stable("inline")} />);
+
+    // Advance to just past the original debounce.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220);
+    });
+
+    expect(stable).toHaveBeenCalledTimes(1);
+    expect(stable).toHaveBeenCalledWith("inline");
+  });
+
   it("does not fire when searchValue is externally hydrated", async () => {
     const onSearchChange = vi.fn<(next: string) => void>();
     const { rerender } = render(
