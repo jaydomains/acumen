@@ -459,15 +459,21 @@ function MemberPickerModal({
     );
     const ok = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.length - ok;
+    setSubmitting(false);
     if (failed === 0) {
       toast(`Added ${ok} member${ok === 1 ? "" : "s"}`);
-    } else if (ok === 0) {
+      onClose();
+      return;
+    }
+    // Partial / total failure: keep the modal open and reduce the
+    // selection to only the rejected user_ids so the admin can retry
+    // without re-searching + re-clicking.
+    if (ok === 0) {
       toast.error(`Couldn't add ${failed} member${failed === 1 ? "" : "s"}`);
     } else {
       toast(`Added ${ok} of ${results.length} — ${failed} failed`);
     }
-    setSubmitting(false);
-    onClose();
+    setSelected(new Set(ids.filter((_, i) => results[i]?.status === "rejected")));
   };
 
   return (
