@@ -1965,7 +1965,232 @@ const adminPathsHandlers = [
   adminPathDeleteHandler,
 ];
 
-export const adminUsersListHandler = http.get(`${API}/v1/users`, adminEmptyPage);
+// FE-8 Slice 8 — stateful Users CRUD (per admin-identity §B.1).
+// Replaces the Slice-1 empty-page stub.
+
+type UserResponseSchema = components["schemas"]["UserResponse"];
+type AdminCreateUserRequestSchema = components["schemas"]["AdminCreateUserRequest"];
+type UserUpdateSchema = components["schemas"]["UserUpdate"];
+
+const ADMIN_USER_ISO = "2026-03-15T00:00:00Z";
+
+const adminUserId = (n: number): string =>
+  `aaaa2222-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_USERS: UserResponseSchema[] = [
+  {
+    id: adminUserId(1),
+    email: "jay@sitemesh.co",
+    name: "Jay Phillips",
+    role: "admin",
+    status: "active",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+  {
+    id: adminUserId(2),
+    email: "lerato@sitemesh.co",
+    name: "Lerato Dlamini",
+    role: "testee",
+    status: "active",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+  // Invited heuristic: active + privacy_ack_at=null (§B.1 §7).
+  {
+    id: adminUserId(3),
+    email: "kabelo@sitemesh.co",
+    name: "Kabelo Mokoena",
+    role: "testee",
+    status: "active",
+    privacy_ack_at: null,
+    created_at: ADMIN_USER_ISO,
+  },
+  {
+    id: adminUserId(4),
+    email: "themba@sitemesh.co",
+    name: "Themba Nkosi",
+    role: "testee",
+    status: "deactivated",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+];
+
+let mockAdminUsers: UserResponseSchema[] = [...DEFAULT_ADMIN_USERS];
+let nextAdminUserSeq = DEFAULT_ADMIN_USERS.length + 1;
+
+export const setMockAdminUsers = (users: UserResponseSchema[]): void => {
+  mockAdminUsers = [...users];
+};
+
+export const resetMockAdminUsers = (): void => {
+  mockAdminUsers = [...DEFAULT_ADMIN_USERS];
+  nextAdminUserSeq = DEFAULT_ADMIN_USERS.length + 1;
+};
+
+export const getMockAdminUsers = (): UserResponseSchema[] => [...mockAdminUsers];
+
+const adminUsersListHandler = http.get(`${API}/v1/users`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const role = url.searchParams.get("role");
+  const status = url.searchParams.get("status");
+  const filtered = mockAdminUsers.filter((u) => {
+    if (role && u.role !== role) return false;
+    if (status && u.status !== status) return false;
+    return true;
+  });
+  const start = cursor ? Number(cursor) : 0;
+  const slice = filtered.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < filtered.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminUserCreateHandler = http.post(`${API}/v1/users`, async ({ request }) => {
+  const body = (await request
+    .json()
+    .catch(() => null)) as AdminCreateUserRequestSchema | null;
+  const detail: { loc: (string | number)[]; msg: string; type: string }[] = [];
+  if (!body || typeof body.email !== "string" || !body.email.includes("@")) {
+    detail.push({
+      loc: ["body", "email"],
+      msg: "valid email required",
+      type: "value_error",
+    });
+  }
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    detail.push({ loc: ["body", "name"], msg: "name required", type: "missing" });
+  }
+  if (!body || (body.role !== "admin" && body.role !== "testee")) {
+    detail.push({
+      loc: ["body", "role"],
+      msg: "role must be admin or testee",
+      type: "value_error",
+    });
+  }
+  if (detail.length > 0) {
+    return HttpResponse.json({ detail }, { status: 422 });
+  }
+  if (mockAdminUsers.some((u) => u.email === body!.email)) {
+    return HttpResponse.json(
+      {
+        detail: [
+          {
+            loc: ["body", "email"],
+            msg: "email already exists",
+            type: "value_error",
+          },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: UserResponseSchema = {
+    id: adminUserId(nextAdminUserSeq),
+    email: body!.email,
+    name: body!.name,
+    role: body!.role,
+    status: "active",
+    privacy_ack_at: null,
+    created_at: ADMIN_USER_ISO,
+  };
+  nextAdminUserSeq += 1;
+  mockAdminUsers = [created, ...mockAdminUsers];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminUserGetHandler = http.get(`${API}/v1/users/:user_id`, ({ params }) => {
+  const u = mockAdminUsers.find((x) => x.id === String(params.user_id));
+  if (!u) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "User not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(u);
+});
+
+const adminUserUpdateHandler = http.patch(
+  `${API}/v1/users/:user_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as UserUpdateSchema | null;
+    const next: UserResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      role: body?.role ?? existing.role,
+    };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUserDeactivateHandler = http.post(
+  `${API}/v1/users/:user_id/deactivate`,
+  ({ params }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: UserResponseSchema = { ...existing, status: "deactivated" };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUserReactivateHandler = http.post(
+  `${API}/v1/users/:user_id/reactivate`,
+  ({ params }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: UserResponseSchema = { ...existing, status: "active" };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUsersHandlers = [
+  adminUsersListHandler,
+  adminUserCreateHandler,
+  adminUserGetHandler,
+  adminUserUpdateHandler,
+  adminUserDeactivateHandler,
+  adminUserReactivateHandler,
+];
+
 export const adminGroupsListHandler = http.get(`${API}/v1/groups`, adminEmptyPage);
 export const adminGroupMembersListHandler = http.get(
   `${API}/v1/groups/:group_id/members`,
@@ -2026,7 +2251,7 @@ export const handlers = [
   ...adminSubjectsHandlers,
   ...adminProposalsHandlers,
   ...adminPathsHandlers,
-  adminUsersListHandler,
+  ...adminUsersHandlers,
   adminGroupsListHandler,
   adminGroupMembersListHandler,
   adminAssignmentsListHandler,

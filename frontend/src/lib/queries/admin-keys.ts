@@ -55,14 +55,16 @@ export const adminKeys = {
     detail: (pathId: string) => [...adminKeys.paths.all(), "detail", pathId] as const,
   },
 
-  // Users (consumed by FE-8-admin-identity.md §B.1)
+  // Users (consumed by FE-8-admin-identity.md §B.1).
+  // Wire `UserStatus` enum is `active | deactivated` only — "invited" is
+  // a derived display status (see `frontend/src/lib/identity/
+  // derive-invited-status.ts`). Slice 8 drift Finding #1: align the key
+  // filter type to the wire enum; "invited" filtering happens
+  // client-side over the cached pages.
   users: {
     all: () => [...adminKeys.all, "users"] as const,
-    list: (filters: {
-      q?: string;
-      role?: "admin" | "testee";
-      status?: "active" | "inactive" | "invited";
-    }) => [...adminKeys.users.all(), "list", filters] as const,
+    list: (filters: { role?: "admin" | "testee"; status?: "active" | "deactivated" }) =>
+      [...adminKeys.users.all(), "list", filters] as const,
     detail: (userId: string) => [...adminKeys.users.all(), "detail", userId] as const,
   },
 
