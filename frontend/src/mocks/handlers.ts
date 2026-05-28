@@ -1359,6 +1359,11 @@ const buildAdminPill = (input: {
   available_difficulty_min?: number;
   available_difficulty_max?: number;
   retired?: boolean;
+  /** Override the auto-derived `safety_relevant_overridden_at`. Pass
+   *  `null` to model an auto-tagged safety pill (no admin override).
+   *  Default: ADMIN_PILL_ISO when safety_relevant is true (admin
+   *  override), null otherwise. */
+  safety_overridden_at?: string | null;
 }): PillResponse => ({
   id: adminPillId(input.n),
   subject_id: input.subject_id,
@@ -1368,7 +1373,12 @@ const buildAdminPill = (input: {
   available_difficulty_max: input.available_difficulty_max ?? 10,
   discoverable: input.discoverable ?? true,
   safety_relevant: input.safety_relevant ?? false,
-  safety_relevant_overridden_at: input.safety_relevant ? ADMIN_PILL_ISO : null,
+  safety_relevant_overridden_at:
+    input.safety_overridden_at !== undefined
+      ? input.safety_overridden_at
+      : input.safety_relevant
+        ? ADMIN_PILL_ISO
+        : null,
   estimated_minutes: null,
   retired_at: input.retired ? ADMIN_PILL_ISO : null,
   created_at: ADMIN_PILL_ISO,
@@ -1406,6 +1416,17 @@ const DEFAULT_ADMIN_PILLS: PillResponse[] = [
     name: "Confined Space Entry",
     subject_id: ADMIN_SUBJECT_IDS.safety,
     safety_relevant: true,
+    // Admin override (default) — exercises Slice 5 §B.5 §5
+    // `row_override_source_admin` state.
+  }),
+  buildAdminPill({
+    n: 6,
+    name: "Working at Height",
+    subject_id: ADMIN_SUBJECT_IDS.safety,
+    safety_relevant: true,
+    // Auto-tagged at create — exercises Slice 5 §B.5 §5
+    // `row_override_source_auto` state.
+    safety_overridden_at: null,
   }),
 ];
 
