@@ -64,14 +64,34 @@ def test_me_competence_pill_band_literal_enforced() -> None:
         )
 
 
-def test_me_competence_pill_allows_null_estimate_and_activity() -> None:
+def test_me_competence_pill_estimate_non_nullable() -> None:
+    """FE-7 LOCK-2 — ``competence_estimate`` is non-nullable on the
+    wire so the FE never has to null-guard the float; null rows are
+    filtered server-side in :func:`list_me_competence`. The schema
+    enforces the contract at the validation boundary."""
+    with pytest.raises(ValidationError):
+        MeCompetencePill(
+            pill_id=uuid.uuid4(),
+            pill_name="Fresh Pill",
+            subject_id=uuid.uuid4(),
+            competence_estimate=None,  # type: ignore[arg-type]
+            band="novice",
+            n=0,
+            confidence="preliminary",
+            last_activity_at=None,
+            related_pill_ids=[],
+            safety_relevant=False,
+        )
+    # ``last_activity_at`` stays nullable — a freshly-computed estimate
+    # may exist before the first ``apply_competence_update`` stamps the
+    # column (AC-D9 cold-start semantics).
     MeCompetencePill(
         pill_id=uuid.uuid4(),
         pill_name="Fresh Pill",
         subject_id=uuid.uuid4(),
-        competence_estimate=None,
-        band="novice",
-        n=0,
+        competence_estimate=4.2,
+        band="junior",
+        n=2,
         confidence="preliminary",
         last_activity_at=None,
         related_pill_ids=[],

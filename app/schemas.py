@@ -751,10 +751,16 @@ class AttemptListItem(_Base):
 
 
 class MeCompetencePill(_Base):
+    # ``competence_estimate`` is non-nullable per FE-7-profile.md §B.1
+    # contract: rows with ``competence_estimate IS NULL`` are filtered
+    # server-side (see :func:`app.domain.competence.list_me_competence`)
+    # so the FE never has to null-guard the float on rendering paths
+    # (BandTag, Stat ``toFixed(1)``, legend per-band counts, default
+    # selection rule).
     pill_id: uuid.UUID
     pill_name: str
     subject_id: uuid.UUID
-    competence_estimate: float | None
+    competence_estimate: float
     band: Band
     n: int
     confidence: Confidence

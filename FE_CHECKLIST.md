@@ -98,13 +98,13 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Competency constellation SVG | FE-7 | AC-D9, AC-D20, AC-D27 | `frontend/src/components/constellation/*` | missing | — |
-| Selected-pill detail card (band, n, confidence, trend, related, CTAs) | FE-7 | AC-D9, AC-D20 | constellation profile page | missing | — |
-| Sparkline derived client-side from attempts list | FE-7 | AC-D9 | sparkline component | missing | — |
-| Matrix-view toggle | FE-7 | AC-D9 | matrix view component | missing | — |
-| Attempt history table | FE-7 | AC-D3 | `frontend/src/app/(testee)/history/page.tsx` | missing | — |
-| **Backend dep (must merge before FE-7 opens):** `GET /v1/attempts` (own scope) | FE-7 | (spec-drift PR, user-authored) | backend | missing | — |
-| **Backend dep (must merge before FE-7 opens):** `GET /v1/me/competence` | FE-7 | (spec-drift PR, user-authored) | backend | missing | — |
+| Competency constellation SVG | FE-7 | AC-D9, AC-D20, AC-D27 | `frontend/src/components/profile/constellation-svg.tsx` | ✅ landed | PR #61 slice 2 — subject-clustered polar layout via `layout-constellation.ts`; band-coloured stars sized by `competence_estimate`; confidence ring length `min(1, n/30)` normalised by `pathLength={100}`; safety mark + selected ring + label-on-gate; edges from `related_pill_ids` de-duped by `p.id < rid`. |
+| Selected-pill detail card (band, n, confidence, trend, related, CTAs) | FE-7 | AC-D9, AC-D20 | `frontend/src/components/profile/selected-pill-detail-card.tsx` | ✅ landed | PR #61 slice 3 — first-class consumer of `BandTag` `estimate` + `confidence` pair (FE-2 §B.6); 2-Stat grid + BandPips + Sparkline + related chip row + Practice/Step-up CTAs into FE-3 pill detail. |
+| Sparkline derived client-side from attempts list | FE-7 | AC-D9 | `frontend/src/lib/profile/derive-sparkline.ts` + `frontend/src/components/profile/sparkline.tsx` | ✅ landed | PR #61 slice 1 + 3 — helper filters by `pill_id`, sorts asc by `submitted_at`, projects `score_percent/10`, truncates to 6; component renders path + fill + dots, em-dash placeholder for <2 points. |
+| Matrix-view toggle | FE-7 | AC-D9 | `frontend/src/components/profile/{view-toggle,matrix-table}.tsx` | ✅ landed | PR #61 slice 2 + 3 — segmented two-button ViewToggle (controlled, aria-pressed); MatrixTable 11-col CSS grid with band-tinted cells filling up to `round(competence_estimate)`, current-difficulty cell at opacity-100 bearing the float; selected row `bg-accent-soft`. |
+| Attempt history table | FE-7 | AC-D3 | `frontend/src/components/profile/{history-table,history-row}.tsx` + `frontend/src/app/(authed)/(testee)/history/page.tsx` | ✅ landed | PR #61 slice 4 — When / Pill / Origin / Score / Band / Δcomp columns; `IntersectionObserver` sentinel drives `fetchNextPage`; LOCK-4 long-form origin enum; row click → `/attempts/{id}/result`. |
+| **Backend dep:** `GET /v1/attempts` (own scope) | FE-7 | (spec-drift PR, user-authored) | backend | ✅ landed | Merged on `main` ahead of FE-7 open; PR #61 amends the spec body in §B.2 §3 / §H(a) item 3 to LOCK-1 canonical `Page<T>` envelope. |
+| **Backend dep:** `GET /v1/me/competence` | FE-7 | (spec-drift PR, user-authored) | backend | ✅ landed | Merged on `main` ahead of FE-7 open; PR #61 backend amendment (LOCK-2 + LOCK-3 expanded + Finding 10) tightens schema to non-nullable estimate, filters tenant + NULL rows, derives `n` from `Attempt` rows. |
 
 ## FE-8 — Admin authoring
 

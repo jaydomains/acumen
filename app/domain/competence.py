@@ -534,15 +534,24 @@ async def apply_competence_update(db: AsyncSession, attempt: Attempt) -> None:
 # FE-only; BE returns the derived string so the constellation can render
 # without a client-side band-lookup). Confidence reuses the AC-D20
 # threshold (default 20) — n >= threshold → confident, else preliminary.
-# n is sourced from CompetencyProfile.retake_count (closest existing
-# attempt-count field; AC-D20 v1.2 names it as the threshold input).
+#
+# ``n`` is the testee's submitted-attempt count on the pill, derived at
+# request time from the ``Attempt`` table (PR-NNN FE-7 / drift-sweep
+# finding LOCK-3 expanded). The prior implementation read
+# ``CompetencyProfile.retake_count``, which is structurally dead in v1
+# (no production code path increments it — verified by ``git grep``
+# across :func:`apply_competence_update`, crons, and service modules at
+# FE-7 build time); shipping against it would have rendered every
+# confidence ring at 0% length and every BandTag as "preliminary" in
+# production. The column itself stays in the schema as a deferred-
+# migration concern; ``list_me_competence`` no longer reads it.
 
 
 def band_string(competence_estimate: float | None) -> str:
     """Map a 1.0–10.0 competence estimate to the 5-band FE axis. A
-    None estimate (testee has no data yet) emits the lowest band so the
-    constellation has a valid string to render against — the empty-state
-    path filters n==0 pills out of any per-band aggregations anyway."""
+    None estimate (testee has no data yet) emits the lowest band so
+    callers outside :func:`list_me_competence` (which filters NULL out
+    per LOCK-2) still get a valid string."""
     if competence_estimate is None:
         return "novice"
     if competence_estimate < 3:
@@ -561,12 +570,32 @@ async def list_me_competence(
 ) -> list[dict[str, Any]]:
     """Per-pill competency snapshot for the testee (FE-7-profile.md
     §B.1 locked contract). One row per CompetencyProfile, joined with
-    its Pill (for name + subject + safety) and PillRelated (for
-    related_pill_ids). Ordered by pill name for a stable constellation
-    layout (FE-7 §5 assumes deterministic order across requests)."""
+    its Pill (for name + subject + safety), its PillRelated rows (for
+    ``related_pill_ids``), and a derived attempt count (for ``n`` /
+    AC-D20 confidence). Ordered by pill name for a stable constellation
+    layout (FE-7 §5 assumes deterministic order across requests).
+
+    Filters per FE-7 spec body §B.1 §7 and the FE-7 drift-sweep locks:
+
+    - ``tenant_id == SEED_TENANT_ID`` on the CompetencyProfile query
+      (Finding 10): symmetric with the adjacent Pill / PillRelated
+      tenant filters; port-time insurance for the v1.x RLS rollout.
+    - ``competence_estimate IS NOT NULL`` (LOCK-2): the spec contract
+      declares ``competence_estimate: number`` (not nullable); pills
+      with no signal yet are filtered server-side rather than rendered
+      as "novice" stars on the constellation.
+    - ``n`` derived from the ``Attempt`` table by counting the testee's
+      submitted attempts per pill via the ``Test.pill_id`` join
+      (LOCK-3 expanded). AC-CD15-safe — equality-only WHERE on
+      ``Attempt.testee_id`` with the submitted-only + pill-mapping
+      filters applied in Python. Mirrors the pattern used by
+      :func:`app.domain.attempts.list_own_submitted_attempts`.
+    """
     from app.models import (  # local import — competence.py is in the AC-CD2 hot path
+        Attempt,
         Pill,
         PillRelated,
+        Test,
     )
 
     settings = await _system_settings(db)
@@ -575,11 +604,15 @@ async def list_me_competence(
     profiles_result = await db.execute(
         select(CompetencyProfile).where(CompetencyProfile.testee_id == testee_id)
     )
-    profiles = list(profiles_result.scalars().all())
+    profiles = [
+        p
+        for p in profiles_result.scalars().all()
+        if p.tenant_id == SEED_TENANT_ID and p.competence_estimate is not None
+    ]
     if not profiles:
         return []
 
-    pill_ids = [p.pill_id for p in profiles]
+    pill_ids = {p.pill_id for p in profiles}
     pills_result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
     pills_by_id = {p.id: p for p in pills_result.scalars().all() if p.id in pill_ids}
 
@@ -590,12 +623,45 @@ async def list_me_competence(
     for row in related_result.scalars().all():
         related_by_pill.setdefault(row.pill_id, []).append(row.related_pill_id)
 
+    # Derive ``n`` per pill from submitted Attempt rows joined to Test
+    # for the canonical pill linkage (B.3 ``Test.pill_id``). The Attempt
+    # query is testee-scoped so it loads only this testee's attempts;
+    # the Test lookups are bounded equality queries (one per distinct
+    # ``test_id`` in the testee's submitted attempts, ~tens at v1
+    # scale) so we don't scan the whole tenant Test catalogue —
+    # important because Test is a tenant-wide table whereas Attempt is
+    # already testee-scoped. AC-CD15 forbids ``.in_()`` so we iterate
+    # equality lookups instead of batching.
+    attempts_result = await db.execute(
+        select(Attempt).where(Attempt.testee_id == testee_id)
+    )
+    submitted_attempts = [
+        a
+        for a in attempts_result.scalars().all()
+        if a.submitted_at is not None and a.tenant_id == SEED_TENANT_ID
+    ]
+    test_ids = {a.test_id for a in submitted_attempts}
+    tests_by_id: dict[uuid.UUID, Test] = {}
+    for tid in test_ids:
+        tests_result = await db.execute(
+            select(Test).where(Test.tenant_id == SEED_TENANT_ID, Test.id == tid)
+        )
+        t = tests_result.scalar_one_or_none()
+        if t is not None:
+            tests_by_id[t.id] = t
+    n_by_pill: dict[uuid.UUID, int] = {}
+    for attempt in submitted_attempts:
+        test = tests_by_id.get(attempt.test_id)
+        if test is None or test.pill_id is None:
+            continue
+        n_by_pill[test.pill_id] = n_by_pill.get(test.pill_id, 0) + 1
+
     items: list[dict[str, Any]] = []
     for profile in profiles:
         pill = pills_by_id.get(profile.pill_id)
         if pill is None:
             continue
-        n = profile.retake_count or 0
+        n = n_by_pill.get(profile.pill_id, 0)
         items.append(
             {
                 "pill_id": profile.pill_id,

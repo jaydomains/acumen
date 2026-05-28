@@ -929,6 +929,246 @@ export const resolveTestHandler = http.get(`${API}/v1/tests/resolve`, ({ request
   return HttpResponse.json({ test_id: FIXTURE_TEST_ID });
 });
 
+// =====================================================================
+// FE-7 me-domain handlers — GET /v1/me/competence + GET /v1/attempts.
+// Fixtures key off `subject_id` UUIDs (not slugs) per the live wire
+// contract; the FE's `subjectById` helper resolves UUIDs to a neutral
+// unknown-fallback, which is acceptable per the FE-7 plan-mode handover
+// note (subject-colour halos render neutral grey until
+// GET /v1/catalogue/subjects lands per FE-3 §H(b) item 5).
+// =====================================================================
+
+type MeCompetencePill = components["schemas"]["MeCompetencePill"];
+type AttemptListItem = components["schemas"]["AttemptListItem"];
+type MeCompetenceResponse = components["schemas"]["MeCompetenceResponse"];
+type AttemptsPage = components["schemas"]["Page_AttemptListItem_"];
+
+const FE7_SUBJECT_PAINT = "11111111-1111-1111-1111-000000000111";
+const FE7_SUBJECT_MARINE = "11111111-1111-1111-1111-000000000222";
+const FE7_SUBJECT_SAFETY = "11111111-1111-1111-1111-000000000333";
+
+const fe7PillId = (slug: string): string =>
+  `bbbbbbbb-bbbb-bbbb-bbbb-${slug.padStart(12, "0")}`;
+
+const FE7_DEFAULT_PILLS: MeCompetencePill[] = [
+  {
+    pill_id: fe7PillId("antifouling"),
+    pill_name: "Antifouling Systems",
+    subject_id: FE7_SUBJECT_MARINE,
+    competence_estimate: 6.7,
+    band: "working",
+    n: 22,
+    confidence: "confident",
+    last_activity_at: "2026-05-25T09:00:00Z",
+    related_pill_ids: [fe7PillId("cathodic"), fe7PillId("immersion")],
+    safety_relevant: false,
+  },
+  {
+    pill_id: fe7PillId("cathodic"),
+    pill_name: "Cathodic Protection",
+    subject_id: FE7_SUBJECT_MARINE,
+    competence_estimate: 5.2,
+    band: "working",
+    n: 14,
+    confidence: "preliminary",
+    last_activity_at: "2026-05-20T09:00:00Z",
+    related_pill_ids: [fe7PillId("antifouling")],
+    safety_relevant: false,
+  },
+  {
+    pill_id: fe7PillId("immersion"),
+    pill_name: "Immersion Service",
+    subject_id: FE7_SUBJECT_MARINE,
+    competence_estimate: 4.3,
+    band: "junior",
+    n: 8,
+    confidence: "preliminary",
+    last_activity_at: "2026-05-15T09:00:00Z",
+    related_pill_ids: [fe7PillId("antifouling")],
+    safety_relevant: false,
+  },
+  {
+    pill_id: fe7PillId("dft"),
+    pill_name: "DFT Measurement",
+    subject_id: FE7_SUBJECT_PAINT,
+    competence_estimate: 7.8,
+    band: "advanced",
+    n: 30,
+    confidence: "confident",
+    last_activity_at: "2026-05-26T11:00:00Z",
+    related_pill_ids: [fe7PillId("adhesion")],
+    safety_relevant: false,
+  },
+  {
+    pill_id: fe7PillId("adhesion"),
+    pill_name: "Adhesion Testing",
+    subject_id: FE7_SUBJECT_PAINT,
+    competence_estimate: 6.1,
+    band: "working",
+    n: 18,
+    confidence: "preliminary",
+    last_activity_at: "2026-05-24T11:00:00Z",
+    related_pill_ids: [fe7PillId("dft")],
+    safety_relevant: false,
+  },
+  {
+    pill_id: fe7PillId("confined"),
+    pill_name: "Confined Space Entry",
+    subject_id: FE7_SUBJECT_SAFETY,
+    competence_estimate: 8.6,
+    band: "expert",
+    n: 26,
+    confidence: "confident",
+    last_activity_at: "2026-05-27T09:00:00Z",
+    related_pill_ids: [],
+    safety_relevant: true,
+  },
+];
+
+let mockMeCompetence: MeCompetenceResponse = { pills: [...FE7_DEFAULT_PILLS] };
+let meCompetenceStatus: number = 200;
+
+export const setMockMeCompetence = (pills: MeCompetencePill[]): void => {
+  mockMeCompetence = { pills: [...pills] };
+};
+
+export const setMockMeCompetenceStatus = (status: number): void => {
+  meCompetenceStatus = status;
+};
+
+export const resetMockMeCompetence = (): void => {
+  mockMeCompetence = { pills: [...FE7_DEFAULT_PILLS] };
+  meCompetenceStatus = 200;
+};
+
+export const meCompetenceHandler = http.get(`${API}/v1/me/competence`, () => {
+  if (meCompetenceStatus !== 200) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: meCompetenceStatus === 404 ? "not_found" : "internal",
+          message: "Me competence unavailable.",
+          detail: null,
+        },
+      },
+      { status: meCompetenceStatus },
+    );
+  }
+  return HttpResponse.json(mockMeCompetence);
+});
+
+const fe7AttemptId = (n: number): string =>
+  `cccccccc-cccc-cccc-cccc-${String(n).padStart(12, "0")}`;
+
+const buildFe7Attempt = (input: {
+  n: number;
+  pill_id: string;
+  pill_name: string;
+  submitted_at: string;
+  score_percent: number;
+  band: AttemptListItem["band"];
+  origin: AttemptListItem["origin"];
+  competence_delta?: number | null;
+}): AttemptListItem => ({
+  attempt_id: fe7AttemptId(input.n),
+  pill_id: input.pill_id,
+  pill_name: input.pill_name,
+  submitted_at: input.submitted_at,
+  score_percent: input.score_percent,
+  band: input.band,
+  origin: input.origin,
+  competence_delta: input.competence_delta ?? null,
+});
+
+const FE7_DEFAULT_ATTEMPTS: AttemptListItem[] = [
+  buildFe7Attempt({
+    n: 1,
+    pill_id: fe7PillId("antifouling"),
+    pill_name: "Antifouling Systems",
+    submitted_at: "2026-05-26T09:00:00Z",
+    score_percent: 78,
+    band: "advanced",
+    origin: "assignment_driven",
+  }),
+  buildFe7Attempt({
+    n: 2,
+    pill_id: fe7PillId("antifouling"),
+    pill_name: "Antifouling Systems",
+    submitted_at: "2026-05-20T09:00:00Z",
+    score_percent: 62,
+    band: "working",
+    origin: "self_initiated",
+  }),
+  buildFe7Attempt({
+    n: 3,
+    pill_id: fe7PillId("dft"),
+    pill_name: "DFT Measurement",
+    submitted_at: "2026-05-26T11:00:00Z",
+    score_percent: 86,
+    band: "expert",
+    origin: "loop_driven",
+  }),
+  buildFe7Attempt({
+    n: 4,
+    pill_id: fe7PillId("dft"),
+    pill_name: "DFT Measurement",
+    submitted_at: "2026-05-22T11:00:00Z",
+    score_percent: 71,
+    band: "working",
+    origin: "self_initiated",
+  }),
+  buildFe7Attempt({
+    n: 5,
+    pill_id: fe7PillId("immersion"),
+    pill_name: "Immersion Service",
+    submitted_at: "2026-05-15T09:00:00Z",
+    score_percent: 47,
+    band: "junior",
+    origin: "self_initiated",
+  }),
+];
+
+let mockMeAttempts: AttemptListItem[] = [...FE7_DEFAULT_ATTEMPTS];
+let meAttemptsStatus: number = 200;
+
+export const setMockMeAttempts = (attempts: AttemptListItem[]): void => {
+  mockMeAttempts = [...attempts];
+};
+
+export const setMockMeAttemptsStatus = (status: number): void => {
+  meAttemptsStatus = status;
+};
+
+export const resetMockMeAttempts = (): void => {
+  mockMeAttempts = [...FE7_DEFAULT_ATTEMPTS];
+  meAttemptsStatus = 200;
+};
+
+export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }) => {
+  if (meAttemptsStatus !== 200) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: meAttemptsStatus === 404 ? "not_found" : "internal",
+          message: "Attempts list unavailable.",
+          detail: null,
+        },
+      },
+      { status: meAttemptsStatus },
+    );
+  }
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockMeAttempts.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockMeAttempts.length ? String(nextStart) : null;
+  const page: AttemptsPage = { data: slice, meta: { next_cursor } };
+  return HttpResponse.json(page);
+});
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -955,6 +1195,14 @@ export const handlers = [
   submitAttemptHandler,
   attemptResultHandler,
   benchmarkNextHandler,
+  // `meAttemptsListHandler` (GET /v1/attempts) MUST precede
+  // `startAttemptHandler` (POST /v1/attempts) in this array. They share
+  // the same path; MSW dispatches in array order, and although the
+  // method discriminates correctly today, keeping GET-before-POST
+  // mirrors the FE-4 resolve-before-detail handler-order trap so the
+  // ordering remains intentional and reviewer-visible.
+  meAttemptsListHandler,
   startAttemptHandler,
   streamAttemptHandler,
+  meCompetenceHandler,
 ];
