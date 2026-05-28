@@ -93,7 +93,7 @@ FE-0 (PR-032) shipped the Next.js 15 / App Router scaffold, the typed `openapi-f
 - `TodaysReading` (`frontend/src/components/dashboard/readings.tsx`) — frontend-only deterministic-by-day widget. `READINGS` array ported verbatim from `testee.jsx:21–46`. Selection: `Math.floor(daysSinceUtcEpoch()) % READINGS.length`. **Note:** the prototype rotates per minute (`Date.now() / 60000`) for demo purposes; the FE_CHECKLIST row says "deterministic by day" — FE-3 ships day-stable.
 - `AssignmentsCard` (`frontend/src/components/dashboard/assignments-card.tsx`) — segmented control (All / Mandatory / Follow-ups) + list of `AssignmentRow`. Props: `{ assignments: AssignmentRowVM[] }`. Local state: `tab: "all" | "mandatory" | "follow-ups"`.
 - `AssignmentRow` (co-located in `assignments-card.tsx`) — single line matching `testee.jsx:199–222`: subject colour bar + pill name + tags (Mandatory / Follow-up) + metadata + Start/Resume button.
-- `RecentAttemptsCard` (`frontend/src/components/dashboard/recent-attempts-card.tsx`) — list of recent attempt rows matching `testee.jsx:149–175`. Mounted only when `flags.recentAttemptsWidget` is true. v1 default: false. Card not rendered + query not fired when flag off.
+- `RecentAttemptsCard` (`frontend/src/components/dashboard/RecentAttemptsCard.tsx`) — list of recent attempt rows matching `testee.jsx:149–175`. Consumes `GET /v1/attempts` via `useMeAttemptsCapped(5)`; live in v1 since the FE-7 flag-flip (`GET /v1/attempts` landed under LOCK-1). Rows click-through to `/attempts/{attempt_id}/result`.
 - `AdaptiveLoopCard` (`frontend/src/components/dashboard/adaptive-loop-card.tsx`) — accent-background card with hardcoded copy matching `testee.jsx:177–192`. Two CTAs ("Read the explainer", "Defer"); v1 wires "Read the explainer" to a placeholder route (§E item 4) and "Defer" to a sonner toast no-op.
 
 *Dropped from FE-3 per user lock:* `RecommendedCard`, `RecommendPillCard` — see §F.1.
@@ -104,17 +104,17 @@ FE-0 (PR-032) shipped the Next.js 15 / App Router scaffold, the typed `openapi-f
 |---|---|---|
 | `GET /v1/me/competence` | Hero stats (overall competence, pills at working+, derived from per-pill `competence_estimate` per AC-D9 and band tags per AC-D20) | **DRIFT** — competency router exists at `app/routers/competency.py` but is unmounted/empty in v1. See §H (a) item 5. v1 fallback: hero renders v1.x-pending copy per §E item 1. |
 | `GET /v1/me/assignments` | Assigned-to-you card. Surfaces AC-D26 `engagement_status` per assignment | **DRIFT** — admin-only `GET /v1/admin/engagement/pending` exists; no testee-scoped equivalent. See §H (a) item 6. v1 fallback: card renders "Assigned-to-you" placeholder copy per §E item 2. |
-| `GET /v1/me/attempts` | Recent attempts card | **DRIFT** — endpoint absent. Card feature-flagged off in v1 per FE_ROADMAP done-when wording (§E item 3). |
+| `GET /v1/attempts` | Recent attempts card (capped to 5) | **LIVE** — LOCK-1 `Page<AttemptListItem>` envelope landed in FE-7; flag-flip wired the card via `useMeAttemptsCapped(5)`. |
 | (none) | Today's Reading | Frontend-only; deterministic by day. **Not anchored** — frontend-only widget per FE_CHECKLIST FE-3 row. |
 | (none) | Adaptive-loop card | Static copy in v1; CTAs per §E item 4. |
 
-Day streak: derivable from attempts history if `GET /v1/me/attempts` lands; otherwise rendered as the v1.x-pending placeholder per §E item 1.
+Day streak: derivable from `GET /v1/attempts` history; hero-stats consumer wiring is deferred to v1.x (§E item 1), so the value still renders the v1.x-pending placeholder until then.
 
 **4. Form fields + zod rules + react-hook-form integration shape**
 
 n/a — dashboard is read-only. Data fetching via TanStack Query per AC-CD21:
 
-- Query keys: `['me', 'competence']`, `['me', 'assignments']`, `['me', 'attempts']` (feature-flagged). Centralised in `frontend/src/lib/queries/me.ts` per §B.5 / §C.2.
+- Query keys: `['me', 'competence']`, `['me', 'assignments']`, `['me', 'attempts']`. Centralised in `frontend/src/lib/queries/me.ts` per §B.5 / §C.2. The capped recent-attempts entry is namespaced `[...attempts(), 'capped', {limit:5}]`, distinct from the profile-page cap of 200 (FE-7).
 - Default `staleTime: 30_000` per AC-CD21.
 - No mutations on this page.
 - Queries against unimplemented endpoints **do not run** (the dashboard reads the drift state and renders placeholder copy without firing the request). This prevents 404 noise in dev logs and stops the boundary from surfacing on first paint.
@@ -129,8 +129,10 @@ n/a — dashboard is read-only. Data fetching via TanStack Query per AC-CD21:
 | Assignments loaded | Array resolved | `AssignmentRow` list; segmented control filters in-memory |
 | Assignments empty | Empty array | "No outstanding items" copy in card body |
 | Assignments placeholder (drift) | Endpoint absent (v1 default) | Card body reads "Assigned-to-you appears here when the backend endpoint lands" |
-| Recent attempts hidden | Feature flag off (v1 default) | Card not rendered |
-| Recent attempts visible | Feature flag on | List of last N attempts: pill name + when + origin · score (mono) · delta (green/red) |
+| Recent attempts loading | Capped query in flight | Card rendered with "Loading…" copy |
+| Recent attempts loaded | Query resolves with rows | List of up to 5 attempts: pill name + when · origin · score (mono) · delta (green/red, or "—" while `competence_delta` ships null on the wire) |
+| Recent attempts empty | Query resolves with `[]` | Card body reads "No attempts yet — your last results will appear here." |
+| Recent attempts error | Query throws | Card body reads "Couldn’t load recent attempts." |
 | Today's Reading | Always | Glyph row → eyebrow → body (with `<mark>`) → fortune signature |
 | Error (any per-card query) | Query throws ApiError | Per-card inline error with Retry button (Pattern A per AC-CD21) |
 
@@ -167,18 +169,20 @@ Scenario: AssignmentsCard segmented control filters mandatory assignments
   When the Testee clicks the "Mandatory" tab
   Then exactly 2 AssignmentRows are visible
 
-Scenario: Recent attempts card is hidden when the feature flag is off
-  Given flags.recentAttemptsWidget is false (v1 default)
+Scenario: Recent attempts card renders the Testee's last 5 attempts
+  Given the Testee has at least 5 submitted attempts
   When the Testee navigates to the dashboard
-  Then the "Your last attempts" card does not render
-  And no GET /v1/me/attempts request fires
+  Then the "Your last attempts" card renders
+  And exactly 5 attempt rows are visible
+  And a GET /v1/attempts?limit=5 request fires
+  And each row click routes to /attempts/{attempt_id}/result
 ```
 
 **7. Edge cases / gotchas**
 
 - **Auth posture flicker.** `(testee)/layout.tsx` (FE-2) gates render on auth resolution; the dashboard must not flash placeholder copy to an unauthenticated user. The layout guard already handles this; verify in the build session.
 - **Today's Reading determinism — UTC vs local.** Selection uses UTC day-of-year so the body is stable across timezone changes (a user travelling east doesn't see the body change mid-day). The downside is the rollover happens at UTC midnight, which is mid-afternoon / early-morning in non-UTC zones — acceptable trade for v1; not a blocker.
-- **Drift placeholders must not fire failing requests.** The dashboard reads from `flags.recentAttemptsWidget` and from the "endpoint absent" knowledge baked into the spec; queries against unimplemented endpoints are guarded by a `enabled: false` flag (or simply not constructed) so the network tab stays clean.
+- **Drift placeholders must not fire failing requests.** The hero + assignments widgets read the "endpoint absent" knowledge baked into the spec; queries against unimplemented endpoints are guarded by a `enabled: false` flag (or simply not constructed) so the network tab stays clean. Recent-attempts is now live and DOES fire `GET /v1/attempts` — it is no longer a drift placeholder.
 - **AssignmentRow CTA semantics.** "Start" vs "Resume" depends on the assignment having `progress > 0` (or equivalent). If the payload shape lacks a progress field, default to "Start" and surface as a build-session finding.
 - **AdaptiveLoopCard CTAs.** "Read the explainer" routes to a placeholder; "Defer" is a sonner toast no-op. Tag both with `// TODO(v1.x): wire to real explainer / defer endpoint`.
 - **Skeleton heights must match real-content heights** to avoid layout shift on hero / AssignmentsCard resolve.
@@ -589,7 +593,7 @@ n/a — convention library.
 | `HeroStats` | Dashboard hero composition (3 Stats + greeting eyebrow row) | `testee.jsx:88–103` |
 | `TodaysReading` | Day-stable horoscope-style widget | `testee.jsx:21–68` |
 | `AssignmentsCard` + `AssignmentRow` | Dashboard assignments list with segmented filter | `testee.jsx:110–127, 199–222` |
-| `RecentAttemptsCard` | Dashboard recent activity (feature-flagged) | `testee.jsx:149–175` |
+| `RecentAttemptsCard` | Dashboard recent activity (live; consumes `GET /v1/attempts`) | `testee.jsx:149–175` |
 | `AdaptiveLoopCard` | Dashboard accent card | `testee.jsx:177–192` |
 | `FilterBar` | Catalogue search + subject filter row | `testee.jsx:260–268` |
 | `PillCard` | Catalogue card with per-Testee overlay | `testee.jsx:277–302` |
@@ -645,13 +649,7 @@ Catalogue filter inputs sync to URL via `useRouter().replace()` (Next.js App Rou
 
 ### C.8 Feature flags — `frontend/src/lib/flags.ts`
 
-```ts
-export const flags = {
-  recentAttemptsWidget: false,  // FE_ROADMAP: ships off in v1 pending GET /v1/me/attempts
-} as const;
-```
-
-Wired into the dashboard so disabled widgets don't render and don't run their queries. New flag for v1.x: flip to `true` once `GET /v1/me/attempts` lands.
+Empty flag map as of the FE-3 flag-flip follow-up (post-FE-7). The original `recentAttemptsWidget` gate was flipped and removed once `GET /v1/attempts` landed; the module persists as the canonical home for any future in-process flags. See §F.4.
 
 ### C.9 Inter-page dependencies
 
@@ -673,12 +671,12 @@ FE-3 does not exercise Figure / InlineFigure / ChoiceFigure. The pill descriptio
 - Query-key constants — round-trip + invalidation behaviour against an in-memory `QueryClient`; sibling-key isolation.
 - Subject colour helper — known ids resolve, unknown ids return a fallback shape.
 - `StickyDifficultyBar` local state — initial seed from `recommendedDifficulty`, fallback to mid-range, clamp behaviour outside `available_difficulty_range`, button enabled/disabled per range.
-- Feature-flag wiring — when `flags.recentAttemptsWidget` is false, the component does not render and the query function is not constructed.
+- `RecentAttemptsCard` rendering — capped query fires with `limit=5`, rows render, empty/error/loading branches surface; click + Enter navigate to `/attempts/{attempt_id}/result`; null `competence_delta` renders `—` in `--ink-3`.
 - `parseFilterQuery` — URL searchParams → filter state object round-trip.
 
 ### D.2 Page integration tests
 
-- **Dashboard page** — happy path (mocked endpoints resolve); drift placeholder path (endpoints absent, render placeholders without firing requests); `AssignmentsCard` segmented filter (All / Mandatory / Follow-ups); RecentAttemptsCard hidden when flag off.
+- **Dashboard page** — happy path (mocked endpoints resolve); drift placeholder path (hero + assignments endpoints absent, render placeholders without firing requests); `AssignmentsCard` segmented filter (All / Mandatory / Follow-ups); `RecentAttemptsCard` renders 5 rows from `GET /v1/attempts`.
 - **Catalogue page** — initial load (50 cards); subject filter (URL update + query fire); search debounce (300ms idle); pagination (sentinel intersection); empty filtered state with Clear-filters action; error boundary; per-Testee overlay omitted when `GET /v1/me/competence` absent.
 - **Pill detail page (standard)** — POST-on-mount fires once; `MaterialLoading` → `MaterialReady` transition; regenerate flow disables the button + invalidates the cache.
 - **Pill detail page (safety)** — branch on `safety_relevant: true`; `SafetyLinks` with N items; `SafetyEmpty` when links array empty; `SafetyPosterCard` rendered in left column.
@@ -706,7 +704,6 @@ Vitest coverage covers the new files under `frontend/src/components/dashboard/`,
 |---|---|---|---|
 | 1 | Dashboard hero stats render "—" + "Coming in v1.x" copy when `GET /v1/me/competence` is absent | `frontend/src/components/dashboard/hero-stats.tsx` | Wire to real data once endpoint lands per §H (a) item 5 |
 | 2 | Assigned-to-you card renders "Appears here when the backend endpoint lands" placeholder | `frontend/src/components/dashboard/assignments-card.tsx` | Wire to real data once `GET /v1/me/assignments` lands per §H (a) item 6 |
-| 3 | Recent attempts card feature-flagged off (`flags.recentAttemptsWidget: false`) | `frontend/src/lib/flags.ts` | Flip flag when `GET /v1/me/attempts` lands; per FE_ROADMAP done-when |
 | 4 | AdaptiveLoopCard "Read the explainer" CTA routes to a placeholder; "Defer" no-ops | `frontend/src/components/dashboard/adaptive-loop-card.tsx` | Wire to real explainer surface (likely v1.x Learning Center) and a real defer endpoint |
 | 5 | Pill detail deep-link relies on catalogue prefetch; bare deep-link surfaces an explicit drift boundary | `frontend/src/app/(testee)/pills/[pillId]/page.tsx` and `error.tsx` | Replace boundary with real fetch when `GET /v1/catalogue/pills/{pill_id}` lands per §H (a) item 2 |
 | 6 | "Practice at D{n}" CTA destination pending §H (b) item 3 resolution | `frontend/src/components/pill-detail/sticky-difficulty-bar.tsx` | Wire to real attempt-creation flow per build-session resolution |
@@ -733,9 +730,9 @@ No `v6-fe3-*-dashboard.png` or `v6-fe3-*-catalogue.png` is in `frontend/design-r
 
 Anchored at AC-CD21; the library file itself is a structural addition per the AC-CD-level structural carve-out (SESSION_START.md). Three files (`catalogue.ts`, `pills.ts`, `me.ts`) + `index.ts` re-exports. No new deps; pure TS. Propagates to FE-4+ as the source-of-truth pattern.
 
-### F.4 `frontend/src/lib/flags.ts` — new feature-flag module
+### F.4 `frontend/src/lib/flags.ts` — feature-flag module
 
-Tiny in-process feature-flag object. Not anchored elsewhere; structural addition. Recent-attempts widget is the only flag at FE-3 ship. FE-4+ may add flags here.
+Tiny in-process feature-flag object. Not anchored elsewhere; structural addition. Shipped at FE-3 build with `recentAttemptsWidget: false`; the flag was flipped and removed in the FE-3 flag-flip follow-up once `GET /v1/attempts` landed in FE-7. The module is now an empty-map skeleton — kept as the canonical home so future flags add new keys here.
 
 ### F.5 `frontend/src/lib/catalogue/subjects.ts` — subject colour helper
 
@@ -812,9 +809,9 @@ Disallowed deviations:
 
 1. **Today's Reading: frontend-only, deterministic by UTC day.** `READINGS` array ported verbatim from `testee.jsx:21–46` into `frontend/src/components/dashboard/readings.tsx`. Selection: UTC day-of-year; not minute-of-hour as in the prototype. Vitest unit-tested for stability + rotation.
 
-2. **Feature flag for recent attempts widget.** New `frontend/src/lib/flags.ts` with `recentAttemptsWidget: false` (v1 default) per FE_ROADMAP done-when wording. See §F.4.
+2. **Feature flag for recent attempts widget.** New `frontend/src/lib/flags.ts` shipped at FE-3 build with `recentAttemptsWidget: false`; flipped and removed in the FE-3 flag-flip follow-up once `GET /v1/attempts` landed in FE-7. See §F.4.
 
-3. **Dashboard drift placeholders.** Where endpoints don't exist (hero stats, assignments), render explicit "v1.x-pending" copy + "—" stat values rather than skeletons-that-never-resolve or fake data. Recent attempts widget hidden behind the feature flag.
+3. **Dashboard drift placeholders.** Where endpoints don't exist (hero stats, assignments), render explicit "v1.x-pending" copy + "—" stat values rather than skeletons-that-never-resolve or fake data. Recent-attempts is now live (post-FE-7 flag-flip) and no longer a drift placeholder.
 
 4. **Subject colour helper.** Static map at `frontend/src/lib/catalogue/subjects.ts` seeded from prototype `window.SUBJECTS`. See §F.5.
 

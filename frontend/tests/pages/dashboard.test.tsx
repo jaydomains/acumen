@@ -1,10 +1,14 @@
 /**
  * Dashboard integration test (FE-3 §B.1, §B.6).
  *
- * Critical invariant: NO request to `/v1/me/competence`, `assignments`,
- * or `attempts` fires from this page in v1. The MSW server is configured
- * with `onUnhandledRequest: "error"` (tests/setup.ts), so any spurious
- * request to those endpoints would fail the test loudly.
+ * Critical invariant: NO request to `/v1/me/competence` or
+ * `/v1/me/assignments` fires from this page in v1 — those endpoints
+ * are absent and the corresponding widgets render drift placeholders.
+ * MSW is configured with `onUnhandledRequest: "error"` (tests/setup.ts)
+ * so any spurious request to those endpoints would fail loudly.
+ *
+ * `RecentAttemptsCard` now consumes `GET /v1/attempts` live (FE-7); the
+ * MSW `meAttemptsListHandler` resolves it on every dashboard render.
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -86,9 +90,10 @@ describe("Testee dashboard page", () => {
     expect(screen.getByTestId("adaptive-loop-card")).toBeInTheDocument();
   });
 
-  it("does NOT render RecentAttemptsCard (flag default false)", () => {
+  it("renders RecentAttemptsCard with attempts from the wire (FE-7 flag-flip)", async () => {
     render(mountTree(<TesteeDashboardPage />));
-    expect(screen.queryByTestId("recent-attempts-card")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("recent-attempts-card")).toBeInTheDocument();
+    expect(await screen.findAllByTestId("recent-attempts-row")).toHaveLength(5);
   });
 
   it("hero placeholders render '—' (no /v1/me/competence fires under onUnhandledRequest=error)", () => {

@@ -6,12 +6,13 @@
  * URL stays `/` because both route groups `(authed)` and `(testee)`
  * are parenthesised — Next.js strips them from the URL.
  *
- * Drift-mode rendering: `GET /v1/me/competence|assignments|attempts`
- * are unmounted/absent in v1, so the corresponding widgets render
+ * Drift-mode rendering: `GET /v1/me/competence|assignments` are
+ * unmounted/absent in v1, so the corresponding widgets render
  * placeholder copy and DO NOT construct queries (spec Gherkin "no
  * request fires" — satisfied by the absence of the hook call).
  *
- * RecentAttemptsCard is feature-flagged off by default.
+ * `RecentAttemptsCard` consumes `GET /v1/attempts` live (FE-7) via
+ * `useMeAttemptsCapped(5)`.
  */
 
 import { useMemo } from "react";
