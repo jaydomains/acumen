@@ -1189,33 +1189,43 @@ type SubjectUpdateSchema = components["schemas"]["SubjectUpdate"];
 
 const ADMIN_SUBJECT_ISO = "2026-04-01T00:00:00Z";
 
-const adminSubjectId = (slug: string): string =>
-  `dddddddd-dddd-dddd-dddd-${slug.padStart(12, "0")}`;
+// Hex-only suffix so `z.string().uuid()` accepts these in form-driven
+// flows (e.g. PillModal's `subject_id` field). Earlier slug-suffixed
+// shape ("0000paint-qa") parsed as text but failed uuid validation.
+const adminSubjectId = (n: number): string =>
+  `dddddddd-dddd-dddd-dddd-${String(n).padStart(12, "0")}`;
+
+const ADMIN_SUBJECT_IDS = {
+  paintQa: adminSubjectId(1),
+  marine: adminSubjectId(2),
+  nace: adminSubjectId(3),
+  safety: adminSubjectId(4),
+} as const;
 
 const DEFAULT_ADMIN_SUBJECTS: SubjectResponseSchema[] = [
   {
-    id: adminSubjectId("paint-qa"),
+    id: ADMIN_SUBJECT_IDS.paintQa,
     name: "Paint QA",
     description: "Paint application quality assurance.",
     created_at: ADMIN_SUBJECT_ISO,
     updated_at: ADMIN_SUBJECT_ISO,
   },
   {
-    id: adminSubjectId("marine"),
+    id: ADMIN_SUBJECT_IDS.marine,
     name: "Marine coatings",
     description: "Marine and immersion-service coating systems.",
     created_at: ADMIN_SUBJECT_ISO,
     updated_at: ADMIN_SUBJECT_ISO,
   },
   {
-    id: adminSubjectId("nace"),
+    id: ADMIN_SUBJECT_IDS.nace,
     name: "NACE corrosion",
     description: null,
     created_at: ADMIN_SUBJECT_ISO,
     updated_at: ADMIN_SUBJECT_ISO,
   },
   {
-    id: adminSubjectId("safety"),
+    id: ADMIN_SUBJECT_IDS.safety,
     name: "Site safety",
     description: "Safety-tagged subject.",
     created_at: ADMIN_SUBJECT_ISO,
@@ -1262,7 +1272,7 @@ const adminSubjectCreateHandler = http.post(`${API}/v1/subjects`, async ({ reque
     );
   }
   const created: SubjectResponseSchema = {
-    id: adminSubjectId(String(nextAdminSubjectSeq).padStart(4, "0")),
+    id: adminSubjectId(nextAdminSubjectSeq),
     name: body.name,
     description: body.description ?? null,
     created_at: ADMIN_SUBJECT_ISO,
@@ -1326,7 +1336,226 @@ const adminSubjectsHandlers = [
 
 const adminEmptyPage = () => HttpResponse.json({ data: [], meta: { next_cursor: null } });
 
-export const adminPillsListHandler = http.get(`${API}/v1/pills`, adminEmptyPage);
+// FE-8 Slice 3 — stateful Pills CRUD (per §B.2). Replaces the Slice-1
+// empty-page stub. Mirrors the Subjects pattern from Slice 2.
+
+type PillCreateSchema = components["schemas"]["PillCreate"];
+type PillUpdateSchema = components["schemas"]["PillUpdate"];
+type PillSafetyOverrideSchema = components["schemas"]["PillSafetyOverride"];
+
+const ADMIN_PILL_ISO = "2026-04-05T00:00:00Z";
+
+// Hex-only suffix — same rationale as `adminSubjectId`.
+const adminPillId = (n: number): string =>
+  `eeeeeeee-eeee-eeee-eeee-${String(n).padStart(12, "0")}`;
+
+const buildAdminPill = (input: {
+  n: number;
+  name: string;
+  subject_id: string;
+  description?: string | null;
+  discoverable?: boolean;
+  safety_relevant?: boolean;
+  available_difficulty_min?: number;
+  available_difficulty_max?: number;
+  retired?: boolean;
+}): PillResponse => ({
+  id: adminPillId(input.n),
+  subject_id: input.subject_id,
+  name: input.name,
+  description: input.description ?? `Practice and learning for ${input.name}.`,
+  available_difficulty_min: input.available_difficulty_min ?? 1,
+  available_difficulty_max: input.available_difficulty_max ?? 10,
+  discoverable: input.discoverable ?? true,
+  safety_relevant: input.safety_relevant ?? false,
+  safety_relevant_overridden_at: input.safety_relevant ? ADMIN_PILL_ISO : null,
+  estimated_minutes: null,
+  retired_at: input.retired ? ADMIN_PILL_ISO : null,
+  created_at: ADMIN_PILL_ISO,
+  updated_at: ADMIN_PILL_ISO,
+});
+
+const DEFAULT_ADMIN_PILLS: PillResponse[] = [
+  buildAdminPill({
+    n: 1,
+    name: "Reference Panels",
+    subject_id: ADMIN_SUBJECT_IDS.paintQa,
+    available_difficulty_min: 2,
+    available_difficulty_max: 8,
+  }),
+  buildAdminPill({
+    n: 2,
+    name: "DFT Measurement",
+    subject_id: ADMIN_SUBJECT_IDS.paintQa,
+    available_difficulty_min: 3,
+    available_difficulty_max: 9,
+  }),
+  buildAdminPill({
+    n: 3,
+    name: "Antifouling Systems",
+    subject_id: ADMIN_SUBJECT_IDS.marine,
+  }),
+  buildAdminPill({
+    n: 4,
+    name: "Cathodic Protection",
+    subject_id: ADMIN_SUBJECT_IDS.marine,
+    discoverable: false, // draft
+  }),
+  buildAdminPill({
+    n: 5,
+    name: "Confined Space Entry",
+    subject_id: ADMIN_SUBJECT_IDS.safety,
+    safety_relevant: true,
+  }),
+];
+
+let mockAdminPills: PillResponse[] = [...DEFAULT_ADMIN_PILLS];
+let nextAdminPillSeq = DEFAULT_ADMIN_PILLS.length + 1;
+
+export const setMockAdminPills = (pills: PillResponse[]): void => {
+  mockAdminPills = [...pills];
+};
+
+export const resetMockAdminPills = (): void => {
+  mockAdminPills = [...DEFAULT_ADMIN_PILLS];
+  nextAdminPillSeq = DEFAULT_ADMIN_PILLS.length + 1;
+};
+
+export const getMockAdminPills = (): PillResponse[] => [...mockAdminPills];
+
+const adminPillsListHandler = http.get(`${API}/v1/pills`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminPills.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminPills.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminPillCreateHandler = http.post(`${API}/v1/pills`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as PillCreateSchema | null;
+  const detail: { loc: (string | number)[]; msg: string; type: string }[] = [];
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    detail.push({ loc: ["body", "name"], msg: "Title is required.", type: "missing" });
+  }
+  if (!body || typeof body.subject_id !== "string" || body.subject_id === "") {
+    detail.push({
+      loc: ["body", "subject_id"],
+      msg: "Pick a subject.",
+      type: "missing",
+    });
+  }
+  if (detail.length > 0) {
+    return HttpResponse.json({ detail }, { status: 422 });
+  }
+  const created: PillResponse = {
+    id: adminPillId(nextAdminPillSeq),
+    subject_id: body!.subject_id,
+    name: body!.name,
+    description: body!.description ?? null,
+    available_difficulty_min: body!.available_difficulty_min ?? 1,
+    available_difficulty_max: body!.available_difficulty_max ?? 10,
+    discoverable: body!.discoverable ?? true,
+    safety_relevant: false,
+    safety_relevant_overridden_at: null,
+    estimated_minutes: body!.estimated_minutes ?? null,
+    retired_at: null,
+    created_at: ADMIN_PILL_ISO,
+    updated_at: ADMIN_PILL_ISO,
+  };
+  nextAdminPillSeq += 1;
+  mockAdminPills = [created, ...mockAdminPills];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminPillUpdateHandler = http.patch(
+  `${API}/v1/pills/:pill_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminPills.findIndex((p) => p.id === String(params.pill_id));
+    const existing = idx >= 0 ? mockAdminPills[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Pill not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as PillUpdateSchema | null;
+    const next: PillResponse = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      available_difficulty_min:
+        body?.available_difficulty_min ?? existing.available_difficulty_min,
+      available_difficulty_max:
+        body?.available_difficulty_max ?? existing.available_difficulty_max,
+      discoverable: body?.discoverable ?? existing.discoverable,
+      estimated_minutes:
+        body && "estimated_minutes" in body
+          ? (body.estimated_minutes ?? null)
+          : existing.estimated_minutes,
+    };
+    mockAdminPills = [
+      ...mockAdminPills.slice(0, idx),
+      next,
+      ...mockAdminPills.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPillSafetyHandler = http.patch(
+  `${API}/v1/pills/:pill_id/safety`,
+  async ({ params, request }) => {
+    const idx = mockAdminPills.findIndex((p) => p.id === String(params.pill_id));
+    const existing = idx >= 0 ? mockAdminPills[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Pill not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as PillSafetyOverrideSchema | null;
+    if (!body || typeof body.safety_relevant !== "boolean") {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ["body", "safety_relevant"],
+              msg: "field required",
+              type: "missing",
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const next: PillResponse = {
+      ...existing,
+      safety_relevant: body.safety_relevant,
+      safety_relevant_overridden_at: ADMIN_PILL_ISO,
+    };
+    mockAdminPills = [
+      ...mockAdminPills.slice(0, idx),
+      next,
+      ...mockAdminPills.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPillsHandlers = [
+  adminPillsListHandler,
+  adminPillCreateHandler,
+  adminPillUpdateHandler,
+  adminPillSafetyHandler,
+];
+
 export const adminPillProposalsListHandler = http.get(
   `${API}/v1/pill-proposals`,
   adminEmptyPage,
@@ -1392,7 +1621,7 @@ export const handlers = [
   // `/v1/catalogue/pills`, etc.). `adminTestsListHandler` (`/v1/tests`)
   // sits AFTER `resolveTestHandler` + `getTestHandler` for the same
   // resolve-before-list discipline.
-  adminPillsListHandler,
+  ...adminPillsHandlers,
   ...adminSubjectsHandlers,
   adminPillProposalsListHandler,
   adminLearningPathsListHandler,

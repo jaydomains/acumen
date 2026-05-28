@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "@/mocks/node";
-import { resetMockAdminSubjects } from "@/mocks/handlers";
+import { resetMockAdminPills, resetMockAdminSubjects } from "@/mocks/handlers";
 import AdminCataloguePage from "@/app/(authed)/(admin)/admin/catalogue/page";
 
 const mockReplace = vi.fn();
@@ -48,6 +48,7 @@ beforeEach(() => {
   mockSearch = new URLSearchParams();
   server.resetHandlers();
   resetMockAdminSubjects();
+  resetMockAdminPills();
 });
 
 afterEach(() => {
@@ -58,7 +59,7 @@ describe("admin catalogue shell", () => {
   it("mounts the Pills tab by default when no ?tab param is present", async () => {
     render(mountTree(<AdminCataloguePage />));
     await waitFor(() => expect(screen.getByTestId("tab-pane-pills")).toBeInTheDocument());
-    expect(screen.getByTestId("pills-tab-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("pills-tab")).toBeInTheDocument();
     expect(screen.queryByTestId("subjects-tab")).not.toBeInTheDocument();
   });
 
@@ -69,7 +70,7 @@ describe("admin catalogue shell", () => {
       expect(screen.getByTestId("tab-pane-subjects")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("subjects-tab")).toBeInTheDocument();
-    expect(screen.queryByTestId("pills-tab-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pills-tab")).not.toBeInTheDocument();
   });
 
   it("switches tabs via router.replace() when a tab is clicked", async () => {

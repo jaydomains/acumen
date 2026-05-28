@@ -13,6 +13,25 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
+
+// Radix Select uses Pointer Events APIs that jsdom doesn't implement
+// (`hasPointerCapture` / `releasePointerCapture` / `scrollIntoView`).
+// Patch them as no-ops so Radix-driven dropdowns work under user-event
+// in Slice 3+ tests. See radix-ui/primitives#2034.
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+}
 import { server } from "@/mocks/node";
 import {
   resetMockAttemptState,
