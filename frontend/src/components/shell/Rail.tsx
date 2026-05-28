@@ -37,6 +37,12 @@ export const TESTEE_NAV: NavItem[] = [
   { id: "history", label: "History", icon: "history", href: "/history" },
 ];
 
+// 11-item ADMIN_NAV per FE-8 catalogue spec §C.2 lock (`:1162–1170`).
+// FE-8 unbundles the historic "Users & Groups" row into `users` +
+// `groups`, and adds `paths`, `tests`, `assignments` as top-level rail
+// entries. Build session performs the update-in-place per the
+// SESSION_START.md AC-CD-structural-additions carve-out; this is the
+// final shape that FE-8 + FE-9 build against.
 export const ADMIN_NAV: NavItem[] = [
   { id: "ops", label: "Operations", icon: "dashboard", href: "/ops" },
   { id: "review", label: "Grade Review", icon: "review", href: "/review", count: 0 },
@@ -47,7 +53,16 @@ export const ADMIN_NAV: NavItem[] = [
     icon: "catalogue",
     href: "/admin/catalogue",
   },
-  { id: "users", label: "Users & Groups", icon: "users", href: "/admin/users" },
+  { id: "paths", label: "Paths", icon: "paths", href: "/admin/paths" },
+  { id: "tests", label: "Tests", icon: "tests", href: "/admin/tests" },
+  { id: "users", label: "Users", icon: "users", href: "/admin/users" },
+  { id: "groups", label: "Groups", icon: "groups", href: "/admin/groups" },
+  {
+    id: "assignments",
+    label: "Assignments",
+    icon: "clipboard",
+    href: "/admin/assignments",
+  },
   { id: "cost", label: "AI Cost", icon: "cost", href: "/cost" },
   { id: "loop", label: "Loops", icon: "loop", href: "/loop" },
 ];

@@ -19,6 +19,7 @@ export type {
 } from "./pills";
 export { meQueryKeys } from "./me";
 export { attemptQueryKeys, invalidateAttempt } from "./attempts";
+export { adminKeys } from "./admin-keys";
 export type {
   AttemptView,
   AttemptResultResponse,

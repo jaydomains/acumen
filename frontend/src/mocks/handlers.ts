@@ -1169,6 +1169,44 @@ export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }
   return HttpResponse.json(page);
 });
 
+// =====================================================================
+// FE-8 admin stub handlers (Slice 1) — empty `Page<T>` for every
+// admin-facing GET-list endpoint so admin pages don't 404 in tests /
+// dev before each domain slice ships its full CRUD. Each later FE-8
+// slice replaces the corresponding stub with a stateful handler.
+//
+// Append-only per the existing handler-array convention (FE-1 §D).
+// =====================================================================
+
+const adminEmptyPage = () =>
+  HttpResponse.json({ data: [], meta: { next_cursor: null } });
+
+export const adminPillsListHandler = http.get(`${API}/v1/pills`, adminEmptyPage);
+export const adminSubjectsListHandler = http.get(`${API}/v1/subjects`, adminEmptyPage);
+export const adminPillProposalsListHandler = http.get(
+  `${API}/v1/pill-proposals`,
+  adminEmptyPage,
+);
+export const adminLearningPathsListHandler = http.get(
+  `${API}/v1/learning-paths`,
+  adminEmptyPage,
+);
+export const adminUsersListHandler = http.get(`${API}/v1/users`, adminEmptyPage);
+export const adminGroupsListHandler = http.get(`${API}/v1/groups`, adminEmptyPage);
+export const adminGroupMembersListHandler = http.get(
+  `${API}/v1/groups/:group_id/members`,
+  adminEmptyPage,
+);
+export const adminAssignmentsListHandler = http.get(
+  `${API}/v1/assignments`,
+  adminEmptyPage,
+);
+export const adminTestsListHandler = http.get(`${API}/v1/tests`, adminEmptyPage);
+export const adminTestQuestionsListHandler = http.get(
+  `${API}/v1/tests/:test_id/questions`,
+  adminEmptyPage,
+);
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -1205,4 +1243,19 @@ export const handlers = [
   startAttemptHandler,
   streamAttemptHandler,
   meCompetenceHandler,
+  // FE-8 admin stubs — order doesn't matter (no path collisions with
+  // the testee surfaces above; `/v1/pills` differs from
+  // `/v1/catalogue/pills`, etc.). `adminTestsListHandler` (`/v1/tests`)
+  // sits AFTER `resolveTestHandler` + `getTestHandler` for the same
+  // resolve-before-list discipline.
+  adminPillsListHandler,
+  adminSubjectsListHandler,
+  adminPillProposalsListHandler,
+  adminLearningPathsListHandler,
+  adminUsersListHandler,
+  adminGroupsListHandler,
+  adminGroupMembersListHandler,
+  adminAssignmentsListHandler,
+  adminTestsListHandler,
+  adminTestQuestionsListHandler,
 ];
