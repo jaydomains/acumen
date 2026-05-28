@@ -1178,10 +1178,155 @@ export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }
 // Append-only per the existing handler-array convention (FE-1 §D).
 // =====================================================================
 
+// FE-8 Slice 2 — stateful Subjects CRUD (per §B.3). Replaces the
+// Slice-1 empty stub. Module-scope state so tests can `setMockSubjects`
+// / `resetMockSubjects` between scenarios. Stub pattern from
+// `mockAttempts` above.
+
+type SubjectResponseSchema = components["schemas"]["SubjectResponse"];
+type SubjectCreateSchema = components["schemas"]["SubjectCreate"];
+type SubjectUpdateSchema = components["schemas"]["SubjectUpdate"];
+
+const ADMIN_SUBJECT_ISO = "2026-04-01T00:00:00Z";
+
+const adminSubjectId = (slug: string): string =>
+  `dddddddd-dddd-dddd-dddd-${slug.padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_SUBJECTS: SubjectResponseSchema[] = [
+  {
+    id: adminSubjectId("paint-qa"),
+    name: "Paint QA",
+    description: "Paint application quality assurance.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: adminSubjectId("marine"),
+    name: "Marine coatings",
+    description: "Marine and immersion-service coating systems.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: adminSubjectId("nace"),
+    name: "NACE corrosion",
+    description: null,
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: adminSubjectId("safety"),
+    name: "Site safety",
+    description: "Safety-tagged subject.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+];
+
+let mockAdminSubjects: SubjectResponseSchema[] = [...DEFAULT_ADMIN_SUBJECTS];
+let nextAdminSubjectSeq = DEFAULT_ADMIN_SUBJECTS.length + 1;
+
+export const setMockAdminSubjects = (subjects: SubjectResponseSchema[]): void => {
+  mockAdminSubjects = [...subjects];
+};
+
+export const resetMockAdminSubjects = (): void => {
+  mockAdminSubjects = [...DEFAULT_ADMIN_SUBJECTS];
+  nextAdminSubjectSeq = DEFAULT_ADMIN_SUBJECTS.length + 1;
+};
+
+export const getMockAdminSubjects = (): SubjectResponseSchema[] => [...mockAdminSubjects];
+
+const adminSubjectsListHandler = http.get(`${API}/v1/subjects`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminSubjects.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminSubjects.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminSubjectCreateHandler = http.post(`${API}/v1/subjects`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as SubjectCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Subject name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: SubjectResponseSchema = {
+    id: adminSubjectId(String(nextAdminSubjectSeq).padStart(4, "0")),
+    name: body.name,
+    description: body.description ?? null,
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  };
+  nextAdminSubjectSeq += 1;
+  mockAdminSubjects = [created, ...mockAdminSubjects];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminSubjectUpdateHandler = http.patch(
+  `${API}/v1/subjects/:subject_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminSubjects.findIndex((s) => s.id === String(params.subject_id));
+    const existing = idx >= 0 ? mockAdminSubjects[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Subject not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as SubjectUpdateSchema | null;
+    const next: SubjectResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+    };
+    mockAdminSubjects = [
+      ...mockAdminSubjects.slice(0, idx),
+      next,
+      ...mockAdminSubjects.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminSubjectDeleteHandler = http.delete(
+  `${API}/v1/subjects/:subject_id`,
+  ({ params }) => {
+    const before = mockAdminSubjects.length;
+    mockAdminSubjects = mockAdminSubjects.filter(
+      (s) => s.id !== String(params.subject_id),
+    );
+    if (mockAdminSubjects.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Subject not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminSubjectsHandlers = [
+  adminSubjectsListHandler,
+  adminSubjectCreateHandler,
+  adminSubjectUpdateHandler,
+  adminSubjectDeleteHandler,
+];
+
 const adminEmptyPage = () => HttpResponse.json({ data: [], meta: { next_cursor: null } });
 
 export const adminPillsListHandler = http.get(`${API}/v1/pills`, adminEmptyPage);
-export const adminSubjectsListHandler = http.get(`${API}/v1/subjects`, adminEmptyPage);
 export const adminPillProposalsListHandler = http.get(
   `${API}/v1/pill-proposals`,
   adminEmptyPage,
@@ -1248,7 +1393,7 @@ export const handlers = [
   // sits AFTER `resolveTestHandler` + `getTestHandler` for the same
   // resolve-before-list discipline.
   adminPillsListHandler,
-  adminSubjectsListHandler,
+  ...adminSubjectsHandlers,
   adminPillProposalsListHandler,
   adminLearningPathsListHandler,
   adminUsersListHandler,
