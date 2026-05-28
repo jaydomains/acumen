@@ -2463,11 +2463,239 @@ const adminGroupsHandlers = [
   adminGroupAddMemberHandler,
   adminGroupRemoveMemberHandler,
 ];
-export const adminAssignmentsListHandler = http.get(
+// FE-8 Slice 10 — stateful Assignments CRUD (per admin-identity §B.4).
+// Replaces the Slice-1 empty-page stub. v1 LOCKED: create + delete
+// only (no PATCH on the wire; §E item 9 drops edit-flow from v1).
+// Also: thin stateful Tests list seed (Slice 11 extends with full CRUD).
+
+type AssignmentResponseSchema = components["schemas"]["AssignmentResponse"];
+type AssignmentCreateSchema = components["schemas"]["AssignmentCreate"];
+
+const ADMIN_ASSIGNMENT_ISO = "2026-04-20T00:00:00Z";
+const adminAssignmentId = (n: number): string =>
+  `eeee4444-eeee-eeee-eeee-${String(n).padStart(12, "0")}`;
+
+// Thin tests seed for the AssignmentEditor picker (Slice 10 ships
+// list-only `useAdminTests`; Slice 11 will swap in full state).
+const adminTestId = (n: number): string =>
+  `ffff5555-ffff-ffff-ffff-${String(n).padStart(12, "0")}`;
+const DEFAULT_ADMIN_TESTS: TestResponseSchema[] = [
+  {
+    id: adminTestId(1),
+    name: "Antifouling — focus",
+    mode: "per_testee",
+    status: "published",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 30,
+    pause_allowance: 2,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.7,
+    target_difficulty: 6,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: adminPillId(3),
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminTestId(2),
+    name: "Reference Panels D5",
+    mode: "per_testee",
+    status: "published",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 30,
+    pause_allowance: 2,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.7,
+    target_difficulty: 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: adminPillId(1),
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+
+let mockAdminTests: TestResponseSchema[] = [...DEFAULT_ADMIN_TESTS];
+export const setMockAdminTests = (tests: TestResponseSchema[]): void => {
+  mockAdminTests = [...tests];
+};
+export const resetMockAdminTests = (): void => {
+  mockAdminTests = [...DEFAULT_ADMIN_TESTS];
+};
+export const getMockAdminTests = (): TestResponseSchema[] => [...mockAdminTests];
+
+const DEFAULT_ADMIN_ASSIGNMENTS: AssignmentResponseSchema[] = [
+  {
+    id: adminAssignmentId(1),
+    assigner_id: adminUserId(1),
+    pill_id: adminPillId(3),
+    learning_path_id: null,
+    difficulty: 6,
+    deadline: "2026-06-12T17:00:00Z",
+    is_mandatory: false,
+    loop_mode: "autonomous",
+    assignee_ids: [adminUserId(2)],
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminAssignmentId(2),
+    assigner_id: adminUserId(1),
+    pill_id: null,
+    learning_path_id: adminPathId(1),
+    difficulty: 5,
+    deadline: null,
+    is_mandatory: true,
+    loop_mode: "admin_reviewed",
+    assignee_ids: [adminUserId(2), adminUserId(3)],
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+
+let mockAdminAssignments: AssignmentResponseSchema[] = [...DEFAULT_ADMIN_ASSIGNMENTS];
+let nextAdminAssignmentSeq = DEFAULT_ADMIN_ASSIGNMENTS.length + 1;
+
+export const setMockAdminAssignments = (
+  assignments: AssignmentResponseSchema[],
+): void => {
+  mockAdminAssignments = [...assignments];
+};
+
+export const resetMockAdminAssignments = (): void => {
+  mockAdminAssignments = [...DEFAULT_ADMIN_ASSIGNMENTS];
+  nextAdminAssignmentSeq = DEFAULT_ADMIN_ASSIGNMENTS.length + 1;
+};
+
+export const getMockAdminAssignments = (): AssignmentResponseSchema[] => [
+  ...mockAdminAssignments,
+];
+
+const adminAssignmentsListHandler = http.get(`${API}/v1/assignments`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const assignerId = url.searchParams.get("assigner_id");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const filtered = mockAdminAssignments.filter((a) => {
+    if (assignerId && a.assigner_id !== assignerId) return false;
+    return true;
+  });
+  const start = cursor ? Number(cursor) : 0;
+  const slice = filtered.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < filtered.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminAssignmentCreateHandler = http.post(
   `${API}/v1/assignments`,
-  adminEmptyPage,
+  async ({ request }) => {
+    const body = (await request
+      .json()
+      .catch(() => null)) as AssignmentCreateSchema | null;
+    if (!body || typeof body.difficulty !== "number") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "difficulty"], msg: "difficulty required", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    // Server-side dedup of testee+group expansion (matches the FE-side
+    // dedup contract; spec §H(b) item 16 LOCKED v1 behaviour).
+    const assigneeSet = new Set<string>(body.testee_ids ?? []);
+    for (const gid of body.group_ids ?? []) {
+      const g = mockAdminGroups.find((x) => x.id === gid);
+      if (g) for (const m of g.member_ids) assigneeSet.add(m);
+    }
+    const created: AssignmentResponseSchema = {
+      id: adminAssignmentId(nextAdminAssignmentSeq),
+      assigner_id: adminUserId(1),
+      pill_id: body.pill_id ?? null,
+      learning_path_id: body.learning_path_id ?? null,
+      difficulty: body.difficulty,
+      deadline: body.deadline ?? null,
+      is_mandatory: body.is_mandatory ?? false,
+      loop_mode: body.loop_mode ?? "autonomous",
+      assignee_ids: Array.from(assigneeSet),
+      created_at: ADMIN_ASSIGNMENT_ISO,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    nextAdminAssignmentSeq += 1;
+    mockAdminAssignments = [created, ...mockAdminAssignments];
+    return HttpResponse.json(created, { status: 201 });
+  },
 );
-export const adminTestsListHandler = http.get(`${API}/v1/tests`, adminEmptyPage);
+
+const adminAssignmentGetHandler = http.get(
+  `${API}/v1/assignments/:assignment_id`,
+  ({ params }) => {
+    const a = mockAdminAssignments.find((x) => x.id === String(params.assignment_id));
+    if (!a) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Assignment not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(a);
+  },
+);
+
+const adminAssignmentDeleteHandler = http.delete(
+  `${API}/v1/assignments/:assignment_id`,
+  ({ params }) => {
+    const before = mockAdminAssignments.length;
+    mockAdminAssignments = mockAdminAssignments.filter(
+      (a) => a.id !== String(params.assignment_id),
+    );
+    if (mockAdminAssignments.length === before) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Assignment not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminAssignmentsHandlers = [
+  adminAssignmentsListHandler,
+  adminAssignmentCreateHandler,
+  adminAssignmentGetHandler,
+  adminAssignmentDeleteHandler,
+];
+
+const adminTestsListHandler = http.get(`${API}/v1/tests`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminTests.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminTests.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
 export const adminTestQuestionsListHandler = http.get(
   `${API}/v1/tests/:test_id/questions`,
   adminEmptyPage,
@@ -2520,7 +2748,7 @@ export const handlers = [
   ...adminPathsHandlers,
   ...adminUsersHandlers,
   ...adminGroupsHandlers,
-  adminAssignmentsListHandler,
+  ...adminAssignmentsHandlers,
   adminTestsListHandler,
   adminTestQuestionsListHandler,
 ];
