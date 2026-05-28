@@ -1791,10 +1791,180 @@ const adminProposalsHandlers = [
   adminPillProposalRejectHandler,
 ];
 
-export const adminLearningPathsListHandler = http.get(
+// FE-8 Slice 6 — stateful Learning Paths CRUD (per §B.6). Replaces the
+// Slice-1 empty-page stub. Full CRUD shipped now even though the list
+// page only consumes list + delete + (CTA-navigates) so Slice 7 doesn't
+// need to revisit this file.
+
+type LearningPathResponseSchema = components["schemas"]["LearningPathResponse"];
+type LearningPathCreateSchema = components["schemas"]["LearningPathCreate"];
+type LearningPathUpdateSchema = components["schemas"]["LearningPathUpdate"];
+
+const ADMIN_PATH_ISO_CREATED = "2026-03-01T00:00:00Z";
+const ADMIN_PATH_ISO_UPDATED = "2026-04-15T00:00:00Z";
+
+const adminPathId = (n: number): string =>
+  `cccc1111-cccc-cccc-cccc-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_PATHS: LearningPathResponseSchema[] = [
+  {
+    id: adminPathId(1),
+    name: "Paint QA induction",
+    description: "Reference panels, batch tracking, DFT — the QA starter set.",
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(1), adminPillId(2)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+  {
+    id: adminPathId(2),
+    name: "Marine coatings refresher",
+    description: "Antifouling + cathodic protection deep dive.",
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(3), adminPillId(4)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+  {
+    id: adminPathId(3),
+    name: "Site safety primer",
+    description: null,
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(5)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+];
+
+let mockAdminPaths: LearningPathResponseSchema[] = [...DEFAULT_ADMIN_PATHS];
+let nextAdminPathSeq = DEFAULT_ADMIN_PATHS.length + 1;
+
+export const setMockAdminPaths = (paths: LearningPathResponseSchema[]): void => {
+  mockAdminPaths = [...paths];
+};
+
+export const resetMockAdminPaths = (): void => {
+  mockAdminPaths = [...DEFAULT_ADMIN_PATHS];
+  nextAdminPathSeq = DEFAULT_ADMIN_PATHS.length + 1;
+};
+
+export const getMockAdminPaths = (): LearningPathResponseSchema[] => [...mockAdminPaths];
+
+const adminPathsListHandler = http.get(`${API}/v1/learning-paths`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminPaths.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminPaths.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminPathCreateHandler = http.post(
   `${API}/v1/learning-paths`,
-  adminEmptyPage,
+  async ({ request }) => {
+    const body = (await request
+      .json()
+      .catch(() => null)) as LearningPathCreateSchema | null;
+    if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "name"], msg: "Path name is required.", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const created: LearningPathResponseSchema = {
+      id: adminPathId(nextAdminPathSeq),
+      name: body.name,
+      description: body.description ?? null,
+      is_private: false,
+      owner_user_id: null,
+      pill_ids: Array.isArray(body.pill_ids) ? body.pill_ids : [],
+      created_at: ADMIN_PATH_ISO_CREATED,
+      updated_at: ADMIN_PATH_ISO_CREATED,
+    };
+    nextAdminPathSeq += 1;
+    mockAdminPaths = [created, ...mockAdminPaths];
+    return HttpResponse.json(created, { status: 201 });
+  },
 );
+
+const adminPathGetHandler = http.get(
+  `${API}/v1/learning-paths/:path_id`,
+  ({ params }) => {
+    const path = mockAdminPaths.find((p) => p.id === String(params.path_id));
+    if (!path) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(path);
+  },
+);
+
+const adminPathUpdateHandler = http.patch(
+  `${API}/v1/learning-paths/:path_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminPaths.findIndex((p) => p.id === String(params.path_id));
+    const existing = idx >= 0 ? mockAdminPaths[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as LearningPathUpdateSchema | null;
+    const next: LearningPathResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      pill_ids: Array.isArray(body?.pill_ids) ? body.pill_ids : existing.pill_ids,
+      updated_at: ADMIN_PATH_ISO_UPDATED,
+    };
+    mockAdminPaths = [
+      ...mockAdminPaths.slice(0, idx),
+      next,
+      ...mockAdminPaths.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPathDeleteHandler = http.delete(
+  `${API}/v1/learning-paths/:path_id`,
+  ({ params }) => {
+    const before = mockAdminPaths.length;
+    mockAdminPaths = mockAdminPaths.filter((p) => p.id !== String(params.path_id));
+    if (mockAdminPaths.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminPathsHandlers = [
+  adminPathsListHandler,
+  adminPathCreateHandler,
+  adminPathGetHandler,
+  adminPathUpdateHandler,
+  adminPathDeleteHandler,
+];
+
 export const adminUsersListHandler = http.get(`${API}/v1/users`, adminEmptyPage);
 export const adminGroupsListHandler = http.get(`${API}/v1/groups`, adminEmptyPage);
 export const adminGroupMembersListHandler = http.get(
@@ -1855,7 +2025,7 @@ export const handlers = [
   ...adminPillsHandlers,
   ...adminSubjectsHandlers,
   ...adminProposalsHandlers,
-  adminLearningPathsListHandler,
+  ...adminPathsHandlers,
   adminUsersListHandler,
   adminGroupsListHandler,
   adminGroupMembersListHandler,
