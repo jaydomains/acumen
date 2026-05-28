@@ -1,6 +1,6 @@
 # FE-8 — Admin test authoring (4 modes + question editor) (detail spec)
 
-> **Status:** plan-mode authored, ready for build session (subject to §H (a) blockers — the cross-spec `applyApiErrorToForm` path drift from `fe-specs/FE-8-admin-catalogue.md §H (a) item 1` and the `QuestionCreate.config` untyped-object contract surfaced as item 2 below).
+> **Status:** plan-mode authored, ready for build session (Phase 0 spec-clarification PR resolved the cross-spec drift and locked the FE-owned typing contract for v1; build session may open).
 > **Owns:** the admin test authoring suite — test list (`/admin/tests`) + test editor (`/admin/tests/new` + `/admin/tests/[id]/edit`) with 4 mode-conditional sections (per_testee / frozen / hand_authored / benchmark) + publish/lock/unlock controls + question editor modal (5-type discriminated union pattern).
 > **PR target:** shared with `fe-specs/FE-8-admin-catalogue.md` + `fe-specs/FE-8-admin-identity.md` in a single PR — `PR-NNN-fe8-admin-authoring`.
 > **Anchors:** AC-D3 (sequence_number scope per Testee per Test), AC-D5 (AI-driven test generation — per_testee dynamic default + frozen + hand_authored + benchmark four creation paths), AC-D13 (benchmark mode — adaptive diagnostic, sequential walk, cohort comparison), AC-D17 (frozen-test snapshot at attempt start — edits apply forward only), AC-D24 (campaign lock + per-attempt presentation shuffle for frozen/hand_authored modes), AC-CD11 (admin-only surfaces), AC-CD19 (FE stack lock), AC-CD20 (`(admin)` route group + role guard → `/403`), AC-CD21 (centralised query keys + form helper + error envelope), AC-CD24 (image-field typed stubs — question editor surfaces text-only in v1).
@@ -41,9 +41,9 @@ This file is sibling 3 of 3 for FE-8 admin authoring. Read `fe-specs/FE-8-admin-
 
 | # | Capability | Route / file | Design source | Screenshot |
 |---|---|---|---|---|
-| 1 | Test list — `/admin/tests` table with mode + status filters, 4-stat aggregate strip, new-test CTA | `(admin)/tests/page.tsx` + `_components/tests-table.tsx` | `admin-test-authoring.jsx:75–143` (`TestListPage`) | `v6-fe8-20-test-authoring.jpg` |
-| 2 | Test editor — `/admin/tests/new` + `/admin/tests/[testId]/edit` single route handling create + edit + 4 mode-conditional middle sections + publish/lock/unlock controls | `(admin)/tests/[testId]/edit/page.tsx` + `_components/test-editor.tsx` + `_components/{mode-picker,per-testee-section,frozen-section,hand-authored-section,benchmark-section,publish-controls,status-bar}.tsx` | `admin-test-authoring.jsx:156–603` (`TestEditor`, `ModePicker`, `PerTesteeSection`, `FrozenSection`, `HandAuthoredSection`, `BenchmarkSection`, `DifficultyPicker`, `DifficultyCurve`, `PublishControls`, `StatusBar`) | `v6-fe8-20-test-authoring.jpg` |
-| 3 | Question editor modal — 5-type discriminated union (multiple_choice / true_false / matching / short_answer / scenario) overlay on top of the test editor | `(admin)/tests/[testId]/edit/_components/question-editor-modal.tsx` + `_components/question-editor-inner.tsx` + per-type subcomponents (`mcq-choices.tsx`, `tf-choices.tsx`, `match-pairs.tsx`, `sa-grading-rubric.tsx`) | `admin-test-authoring.jsx:606–800` (`QuestionEditorModal`, `QuestionEditorInner`, `MCQChoices`, `TFChoices`, `SAGradingRubric`, `MatchPairs`) | `v6-fe8-20-test-authoring.jpg` (composite — question editor inset) |
+| 1 | Test list — `/admin/tests` table with mode + status filters, 4-stat aggregate strip, new-test CTA | `(authed)/(admin)/tests/page.tsx` + `_components/tests-table.tsx` | `admin-test-authoring.jsx:75–143` (`TestListPage`) | `v6-fe8-20-test-authoring.jpg` |
+| 2 | Test editor — `/admin/tests/new` + `/admin/tests/[testId]/edit` single route handling create + edit + 4 mode-conditional middle sections + publish/lock/unlock controls | `(authed)/(admin)/tests/[testId]/edit/page.tsx` + `_components/test-editor.tsx` + `_components/{mode-picker,per-testee-section,frozen-section,hand-authored-section,benchmark-section,publish-controls,status-bar}.tsx` | `admin-test-authoring.jsx:156–603` (`TestEditor`, `ModePicker`, `PerTesteeSection`, `FrozenSection`, `HandAuthoredSection`, `BenchmarkSection`, `DifficultyPicker`, `DifficultyCurve`, `PublishControls`, `StatusBar`) | `v6-fe8-20-test-authoring.jpg` |
+| 3 | Question editor modal — 5-type discriminated union (multiple_choice / true_false / matching / short_answer / scenario) overlay on top of the test editor | `(authed)/(admin)/tests/[testId]/edit/_components/question-editor-modal.tsx` + `_components/question-editor-inner.tsx` + per-type subcomponents (`mcq-choices.tsx`, `tf-choices.tsx`, `match-pairs.tsx`, `sa-grading-rubric.tsx`) | `admin-test-authoring.jsx:606–800` (`QuestionEditorModal`, `QuestionEditorInner`, `MCQChoices`, `TFChoices`, `SAGradingRubric`, `MatchPairs`) | `v6-fe8-20-test-authoring.jpg` (composite — question editor inset) |
 
 Three rows. Capability #1 is the list-page route shell; #2 is the editor route shell with the 4 mode-conditional sections nested in §B.2 §2 (Components) per the §G variance; #3 is the question editor modal opened from inside the frozen/hand_authored sections of #2.
 
@@ -70,11 +70,11 @@ URL state per row:
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/tests/page.tsx`. The `(admin)` route group exists per FE-2; the `tests/` segment + its `error.tsx` boundary file are FE-8-introduced.
-- URL state: `?mode={per_testee|frozen|hand_authored|benchmark|all}&status={draft|published|locked|all}` (defaults `mode=all`, `status=all`). Filter changes call `router.replace()` per FE-3 §C.7.
+- File: `frontend/src/app/(authed)/(admin)/tests/page.tsx`. The `(admin)` route group exists per FE-2; the `tests/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- URL state: `?mode={per_testee|frozen|hand_authored|all}&status={draft|published|locked|all}` (defaults `mode=all`, `status=all`). Filter changes call `router.replace()` per FE-3 §C.7. **Benchmark mode filter segment renders disabled** per §E item 8 LOCKED deferral (v1 ships no benchmark mode authoring; existing benchmark rows still render in the list under `mode=all`).
 - Modal state: none on this page (clicking Edit on a row navigates to the editor; clicking "+ New test" navigates to `/admin/tests/new/edit`).
 - Static `<title>Tests · Acumen</title>`.
-- Nav-rail anchor: `shell.jsx` admin nav `tests` id — **NOT in current 7-id list** per `shell.jsx:15` (which has ops/review/engagement/catalogue-admin/users/cost/loop). Same gap as `groups` + `assignments` from `fe-specs/FE-8-admin-identity.md §B.2 + §B.4`. **§H (b) item 1** — build session decides: add as top-level nav id OR nest under Catalogue.
+- Nav-rail anchor: `tests` rail id per the LOCKED ADMIN_NAV addition (`fe-specs/FE-8-admin-catalogue.md §C.2`). Top-level item (position 6 of 11); not nested under Catalogue.
 
 **2. Components**
 
@@ -140,7 +140,7 @@ export function deriveDisplayStatus(test: TestResponse): DisplayStatus {
 | `row_status_locked` | Per row: `deriveDisplayStatus(t) === 'locked'` | Lock icon prefix + `<Pill tone="soft" mono>Locked</Pill>` per `admin-test-authoring.jsx:124–129`. |
 | `row_click_edit` | User clicks Edit row action OR the row body | `router.push('/admin/tests/{testId}/edit')`. |
 | `new_test_clicked` | "+ New test" clicked | `router.push('/admin/tests/new/edit')`. |
-| `error` | Query throws (non-404) | Pattern C boundary via `(admin)/tests/error.tsx`. |
+| `error` | Query throws (non-404) | Pattern C boundary via `(authed)/(admin)/tests/error.tsx`. |
 | `role_mismatch` | Testee role hits `/admin/tests` | AC-CD20 layout guard redirects to `/403`. |
 
 **6. Acceptance criteria (Gherkin)**
@@ -226,7 +226,7 @@ Scenario: Pagination sentinel loads next page
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/tests/[testId]/edit/page.tsx`. Dynamic param `testId`. Value `"new"` triggers create-mode (no fetch); any UUID triggers edit-mode (fetch the test on mount).
+- File: `frontend/src/app/(authed)/(admin)/tests/[testId]/edit/page.tsx`. Dynamic param `testId`. Value `"new"` triggers create-mode (no fetch); any UUID triggers edit-mode (fetch the test on mount).
 - URL state: none. All editor state is rhf form state + ephemeral modal state for the question editor.
 - Modal state: `useState<{open: boolean, questionId?: string}>(closed)` for the question editor.
 - Static `<title>` is dynamic via `generateMetadata`: "Author a test · Acumen" (create) or "Edit test · {title} · Acumen" (edit).
@@ -237,11 +237,11 @@ Scenario: Pagination sentinel loads next page
 - **Shared admin primitives consumed from `fe-specs/FE-8-admin-catalogue.md §C`:** `adminKeys.{tests,questions,pills}` (§C.1); `Modal` (§C.5); `Field` + `FieldRow` + `FieldError` (§C.6); `(admin)` route guard (§C.2); toast (§C.7); Pattern C (§C.8); `applyApiErrorToForm` (§C.3 — path: `frontend/src/lib/api/form-errors.ts`).
 - **New in this PR (tests scope):**
   - `TestEditorPage` — top-level page. `PageHeader` (eyebrow flips per mode + status; serif title) + status bar (`StatusBar`) + locked-state warn banner + identity card (title + mode picker + description) + mode-conditional middle section + publish controls + (conditional) `QuestionEditorModal`. Two layout columns NOT used here — single-column flow.
-  - `ModePicker` — 4-card grid chooser per `admin-test-authoring.jsx:297–328`. Each card: title + 1-2 line body + "USE · {use case}" line. Active card flips to ink-bg per FE-2 pattern. Disabled when `!isCreate` (mode locks after first save per AC-D17). Cards correspond to `MODES` constant at `:270–295`.
+  - `ModePicker` — 4-card grid chooser per `admin-test-authoring.jsx:297–328`. Each card: title + 1-2 line body + "USE · {use case}" line. Active card flips to ink-bg per FE-2 pattern. Disabled when `!isCreate` (mode locks after first save per AC-D17). Cards correspond to `MODES` constant at `:270–295`. **Benchmark card renders disabled with `coming-soon` badge per §E item 8 LOCKED deferral.**
   - `PerTesteeSection` — section component per `admin-test-authoring.jsx:333–368`. Fields: pill (single-select), difficulty target (1-10 picker), question count target (4-12 numeric input), time ceiling (optional minutes). Locked when test is published+ or locked.
   - `FrozenSection` — section component per `admin-test-authoring.jsx:370–414`. Renders the question pool list table (questions with id, type pill, pill name, difficulty, body preview, Edit action) + "Add question" CTA. Reads questions from `useQuery(adminKeys.questions.list(testId))`. Empty pool with "Add at least 2 more questions to reach recommended pool size of 8" hint. Edit on a row opens `QuestionEditorModal` (B.3).
   - `HandAuthoredSection` — per `admin-test-authoring.jsx:417–434`. Identical UI to `FrozenSection` + a top info-card explaining hand-authored differs from frozen by author posture only (no AI generation invoked). Composes `FrozenSection` inside.
-  - `BenchmarkSection` — per `admin-test-authoring.jsx:437–481`. Fields: pills multi-select (chip array), difficulty curve (bar chart of N questions per band), time ceiling, cohort window date range.
+  - `BenchmarkSection` — **v1 stub** per §E item 8 — renders a "Benchmark authoring coming in v1.x" notice card; full authoring (pills multi-select, difficulty curve, cohort window) deferred to v1.x. Original design ref `admin-test-authoring.jsx:437–481` preserved for v1.x revival.
   - `DifficultyPicker` — single-select 1-10 segmented picker per `admin-test-authoring.jsx:483–502`. Controlled `{value, onChange, disabled}`. Reused by `PerTesteeSection` + `QuestionEditorInner` (B.3).
   - `DifficultyCurve` — vertical bar chart per `admin-test-authoring.jsx:504–544` rendering N questions per band as height-scaled bars. v1 read-only display (the "edit distribution" link is deferred); admin enters distribution as a single field somewhere else (TBD — design ambiguity, surfaced as §H (b) item 6).
   - `StatusBar` — status display per `admin-test-authoring.jsx:253–265`. Renders status pill + mode pill + last-edited-by meta line.
@@ -278,15 +278,18 @@ const testEditorSchema = z.object({
     duration_minutes: z.number().int().positive().nullable().optional(),
   }).optional(),
 
-  // Benchmark specific (optional/conditional)
-  benchmark: z.object({
-    pill_ids: z.array(z.string().uuid()).min(1, "Pick at least one pill."),
-    difficulty_curve: z.record(z.string(), z.number().int().min(0)),  // {"D3": 2, "D4": 3, ...}
-    duration_minutes: z.number().int().positive().nullable().optional(),
-    cohort_window_start: z.string().nullable().optional(),  // ISO date
-    cohort_window_end: z.string().nullable().optional(),    // ISO date
-    benchmark_scope: z.enum(["subject", "pill", "learning_path"]).optional(),  // per AC-D13
-  }).optional(),
+  // Benchmark specific — DEFERRED to v1.x per §E item 8.
+  // The sub-object below is preserved here as a reference for the v1.x revival,
+  // with `benchmark_scope` values locked to the canonical OpenAPI `BenchmarkScope`
+  // enum (`subject|pill|path` — `frontend/openapi/schema.json:6847–6855`).
+  // benchmark: z.object({
+  //   pill_ids: z.array(z.string().uuid()).min(1, "Pick at least one pill."),
+  //   difficulty_curve: z.record(z.string(), z.number().int().min(0)),
+  //   duration_minutes: z.number().int().positive().nullable().optional(),
+  //   cohort_window_start: z.string().nullable().optional(),
+  //   cohort_window_end: z.string().nullable().optional(),
+  //   benchmark_scope: z.enum(["subject", "pill", "path"]).optional(),
+  // }).optional(),
 
   // Per-attempt randomisation (frozen + hand_authored modes — AC-D24)
   randomise_question_order: z.boolean().default(true),
@@ -299,9 +302,7 @@ const testEditorSchema = z.object({
   if (data.mode === "per_testee" && !data.per_testee) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["per_testee"], message: "Per-testee config required." });
   }
-  if (data.mode === "benchmark" && !data.benchmark) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["benchmark"], message: "Benchmark config required." });
-  }
+  // benchmark superRefine deferred to v1.x per §E item 8.
 });
 
 type TestEditorInput = z.infer<typeof testEditorSchema>;
@@ -339,7 +340,7 @@ type TestEditorInput = z.infer<typeof testEditorSchema>;
 | `mode_per_testee_active` | `mode === "per_testee"` | `PerTesteeSection` renders inside the middle card. |
 | `mode_frozen_active` | `mode === "frozen"` | `FrozenSection` renders inside the middle card. Question pool list fetched + rendered. |
 | `mode_hand_authored_active` | `mode === "hand_authored"` | `HandAuthoredSection` renders with the info-card + nested `FrozenSection`. |
-| `mode_benchmark_active` | `mode === "benchmark"` | `BenchmarkSection` renders with pill chips + difficulty curve + cohort window inputs. |
+| `mode_benchmark_active` | `mode === "benchmark"` (only reachable via existing benchmark rows from before §E item 8 lock; ModePicker disabled for new) | Renders v1 stub per §E item 8 — "Benchmark authoring coming in v1.x" notice card; no editable fields. |
 | `frozen_pool_empty` | Question pool query returns 0 questions | Pool table renders empty-state copy "No questions yet — click 'Add question' to start." + Add CTA. |
 | `frozen_pool_below_recommended` | Pool count < 8 | Inline hint "Add at least N more questions to reach the recommended pool size of 8." per `admin-test-authoring.jsx:410–412`. |
 | `add_question_clicked` | Admin clicks "+ Add question" in `FrozenSection` / `HandAuthoredSection` | `QuestionEditorModal` (B.3) mounts in create mode. |
@@ -355,7 +356,7 @@ type TestEditorInput = z.infer<typeof testEditorSchema>;
 | `unlock_blocked_inflight` | Unlock returns 422 with code suggesting in-flight attempts exist | Pattern B error toast with backend message ("Can't unlock — N attempts in flight"). UI stays in locked state. |
 | `unlock_success` | Unlock 2xx | toast.info("Test unlocked"); UI flips to published. |
 | `cancel_dirty` | User clicks Cancel with dirty form (only on the publish footer? — design doesn't surface a top-level Cancel; navigation away is implicit) | If admin navigates away via the Rail with dirty form, browser `beforeunload` prompt fires. v1 standard. |
-| `error` | Initial query throws | Pattern C boundary via `(admin)/tests/[testId]/edit/error.tsx`. |
+| `error` | Initial query throws | Pattern C boundary via `(authed)/(admin)/tests/[testId]/edit/error.tsx`. |
 | `not_found` | `GET /v1/tests/{id}` returns 404 | Empty-state "Test not found" + "Back to tests" CTA. |
 | `role_mismatch` | Testee role hits the editor | `/403`. |
 
@@ -431,10 +432,12 @@ Scenario: Per-testee mode form validation
 ```
 
 ```gherkin
-Scenario: Benchmark mode form validation
-  Given the admin picks benchmark mode
-  When submit fires with zero pills picked
-  Then zod surfaces "Pick at least one pill." under the pill picker
+Scenario: Benchmark mode card is disabled in v1 ModePicker
+  Given the admin opens /admin/tests/new/edit
+  When the ModePicker mounts
+  Then the benchmark card renders with a "coming-soon" badge and disabled state
+  And clicking it does not change the form's mode field
+  And the tooltip "Benchmark authoring coming in v1.x" renders on hover
 ```
 
 ```gherkin
@@ -474,13 +477,11 @@ Scenario: Hand-authored mode shows info card + frozen-style pool
 ```
 
 ```gherkin
-Scenario: Benchmark mode renders difficulty curve display
-  Given the admin picks benchmark mode with a configured difficulty curve
-  Then the DifficultyCurve bar chart renders the N-per-band distribution
-  And the total + centred-at meta lines render below
+# DEFERRED v1.x — Benchmark mode renders difficulty curve display
+# (See §E item 8 — benchmark authoring deferred from v1.)
 ```
 
-(Fourteen total scenarios mapped to §D.2 test-editor integration tests — at least one trio per mode plus publish/lock/unlock/edit flow scenarios.)
+(Thirteen active scenarios mapped to §D.2 test-editor integration tests — at least one trio per non-benchmark mode plus publish/lock/unlock/edit flow scenarios; the prior benchmark-display Gherkin is deferred per §E item 8.)
 
 **7. Edge cases / gotchas**
 
@@ -493,7 +494,7 @@ Scenario: Benchmark mode renders difficulty curve display
 - **Question pool query is separate from the test query.** `useQuery(adminKeys.tests.detail(id))` for test fields; `useInfiniteQuery(adminKeys.questions.list(id))` for the pool. Two parallel fetches; both must resolve before the editor is fully rendered.
 - **Cross-mode form state preservation.** If admin picks frozen, fills some fields, then switches to per_testee, then back to frozen — the frozen-specific config is lost (form state for per_testee replaces it). v1 acceptable; admin can re-enter. (Doesn't matter post-first-save because mode locks.)
 - **`difficulty_curve` editor UX.** Design `admin-test-authoring.jsx:504–544` shows a bar chart display with an "edit distribution" link that's deferred ("not yet shipped"). v1 ships read-only display of an admin-entered distribution; the entry UX is TBD — likely a per-band numeric input grid OR a JSON textarea (admin-tier UX acceptable). §H (b) item 6.
-- **`benchmark_scope` field.** Backend `TestCreate.benchmark_scope` is an enum (`BenchmarkScope` at `:742` — values per AC-D13: "subject" / "pill" / "learning_path"). Design doesn't surface a scope picker. Likely derived from the pills array structure OR admin-set on benchmark mode. §H (b) item 8.
+- **`benchmark_scope` field.** Backend `TestCreate.benchmark_scope` is the OpenAPI `BenchmarkScope` enum with values `"subject" / "pill" / "path"` (verified against `frontend/openapi/schema.json:6847–6855`). v1 ships no benchmark authoring per §E item 8; v1.x revival must use these canonical values (NOT the prior `learning_path` paraphrase).
 - **`cohort_window` locks the test once any testee starts.** AC-D13 + design `admin-test-authoring.jsx:473–474`: "Locked once any testee starts." Same loop_mode-lock pattern as assignments (§B.4 from identity file). Verify via §H (b) item 9.
 - **Optimistic updates not used.** All mutations wait for backend response.
 - **No save-button-in-fields-card.** Save is in the bottom PublishControls only. Design pattern.
@@ -550,10 +551,12 @@ Scenario: Benchmark mode renders difficulty curve display
 
 **4. Form fields + zod + rhf (pattern + reference)**
 
+**LOCKED v1 contract:** FE owns the per-type `config` shape via the `compose-question-config.ts` helper. Backend `QuestionCreate.config` stays `object` for v1; per-type backend typing is deferred to v1.x.
+
 ```ts
 // Discriminated union by question type.
 // Per-type config schemas resolved at build time against admin-test-authoring.jsx:650+
-// and the backend's QuestionCreate.config: object (currently untyped — §H (a) item 2).
+// and the backend's QuestionCreate.config: object (LOCKED FE-owned for v1 per §H (a) item 2).
 
 const questionBaseSchema = z.object({
   type: z.enum(["multiple_choice", "true_false", "matching", "short_answer", "scenario"]),
@@ -732,10 +735,9 @@ Scenario: Save & previous on first question disables previous
 
 **7. Edge cases / gotchas**
 
-- **`config` is `object` (untyped) on the backend.** Per `QuestionCreate.config: object` (`frontend/openapi/schema.json:2488–2491`), FE owns the per-type shape until backend types it via discriminated union. **§H (a) item 2 — request backend type the config per type before build session opens, OR confirm "FE-owned contract is acceptable for v1".** If FE-owned: tests need to be careful about future backend schema evolution.
-- **`pill_id` is NOT on `QuestionResponse`.** Design shows pill per question (table column). Backend `QuestionResponse` has no `pill_id` field — only `question_group_id`. **§H (b) item 10** — verify: is `pill_id` packed inside `config` (per FE convention), OR is `question_group_id` how pills are linked (questions grouped by pill), OR does backend need to add `pill_id` to `QuestionResponse`? Spec body packs into `config` as the conservative v1 path.
-- **`body` is NOT on `QuestionResponse`.** Same as `pill_id` — design shows question body text on the pool table preview; backend doesn't surface it directly. Spec body packs into `config`. §H (b) item 10.
-- **`is_anchor` is NOT on `QuestionResponse`.** Spec body packs into `config`. §H (b) item 10.
+- **`config` is `object` (untyped) on the backend — LOCKED FE-owned v1 contract** per §H (a) item 2. Per `QuestionCreate.config: object` (`frontend/openapi/schema.json:2488–2491`), `compose-question-config.ts` is the source of truth; backend typing deferred to v1.x.
+- **`pill_id`/`body`/`is_anchor` are NOT on `QuestionResponse` — LOCKED packed inside `config`** per the §H (a) item 2 v1 contract via `compose-question-config.ts`. Backend typing of these as first-class fields is deferred to v1.x. Design shows pill / body / anchor per question (table column); FE renders by unpacking `config` via `unpack-question-config.ts`.
+- **Edit-mode pre-fill via cached list (LOCKED v1).** Per §E item 7, edit modal pre-fills from `adminKeys.questions.list(testId)` cached pages; no per-question detail `GET /v1/tests/{id}/questions/{qid}` is fired unless the cache misses (deep-link reload). Saves still PATCH the per-question endpoint.
 - **Question type is immutable post-create.** Spec body assumes; verify backend 422s on type change in PATCH. Reason: changing type changes the entire `config` shape — destructive without explicit migration.
 - **Image / figure attachments not in v1.** `QuestionResponse.reference_image_url` + `reference_image_caption` exist (`frontend/openapi/schema.json:2549–2569`), but design's editor doesn't surface upload UX. v1 ships text-only per AC-CD24 typed-stub pattern (FE-2 spec). Future v1.x adds image upload. §E.1.
 - **`Save & next` requires pool context.** The modal needs to know the full ordered pool to advance. Pass it via parent prop OR re-read from `useQuery(adminKeys.questions.list(testId))` cache.
@@ -790,7 +792,7 @@ All three converge on the same `adminKeys.pills.list({})` cache — single fetch
 
 ### C.10 Display-status helper (tests-specific)
 
-`frontend/src/lib/tests/derive-display-status.ts` (declared in §B.1 §4) is a tests-domain helper for the 3-status display (`draft|published|locked`) from the 2-status backend enum + `lock_mode` field. **Single source for the derivation**; consumed by `TestsTable` (B.1), `StatusBar` (B.2), `PublishControls` (B.2), `WarnBanner` (B.2). Unit tested in §D.1.
+`frontend/src/lib/tests/derive-display-status.ts` (declared in §B.1 §4) is a tests-domain helper for the 3-status display (`draft|published|locked`) from the 2-status backend enum + `lock_mode` field. **Single source for the derivation**; consumed by `TestsTable` (B.1), `StatusBar` (B.2), `PublishControls` (B.2), `WarnBanner` (B.2). Unit-tested per §D.1; helper is the LOCKED v1 source of truth for the 3-status display derivation from the 2-status backend enum + `lock_mode` (no separate `is_locked` field — verified against `frontend/openapi/schema.json:3273–3279`).
 
 ---
 
@@ -799,16 +801,16 @@ All three converge on the same `adminKeys.pills.list({})` cache — single fetch
 ### D.1 Unit tests (lib + helpers)
 
 - `frontend/src/lib/tests/derive-display-status.test.ts` — exhaustive table of (`status`, `lock_mode`) → display status combinations.
-- `frontend/src/lib/tests/compose-question-config.test.ts` — pure helper that packs per-type form data into the `config` object (per §B.3 §4 step 2). Tests each of 5 types.
+- `frontend/src/lib/tests/compose-question-config.test.ts` — pure helper that packs per-type form data into the `config` object (per §B.3 §4 step 2). Tests each of 5 types. **This helper is the LOCKED v1 contract per §H (a) item 2** — backend per-type typing deferred to v1.x.
 - `frontend/src/lib/tests/unpack-question-config.test.ts` — pure helper that unpacks `config` from `QuestionResponse` into form-friendly per-type subobjects.
 
 ### D.2 Page integration tests
 
 One test file per §B entry:
 
-- `frontend/src/app/(admin)/tests/page.test.tsx` — §B.1 trios (7 scenarios).
-- `frontend/src/app/(admin)/tests/[testId]/edit/page.test.tsx` — §B.2 trios (14 scenarios).
-- `frontend/src/app/(admin)/tests/[testId]/edit/_components/question-editor-modal.test.tsx` — §B.3 trios (11 scenarios).
+- `frontend/src/app/(authed)/(admin)/tests/page.test.tsx` — §B.1 trios (7 scenarios).
+- `frontend/src/app/(authed)/(admin)/tests/[testId]/edit/page.test.tsx` — §B.2 trios (14 scenarios).
+- `frontend/src/app/(authed)/(admin)/tests/[testId]/edit/_components/question-editor-modal.test.tsx` — §B.3 trios (11 scenarios).
 
 Total: 32 tests-side integration scenarios.
 
@@ -832,12 +834,14 @@ Single test, exercises every page in the tests file + cross-file integration wit
 
 | # | Placeholder | Location | Action before production |
 |---|---|---|---|
-| 1 | Question editor image / figure attachment | `(admin)/tests/[testId]/edit/_components/question-editor-inner.tsx` | v1 ships text-only per AC-CD24 typed-stub pattern. `QuestionResponse.reference_image_url` field exists backend-side; v1.x adds upload UX. |
-| 2 | `pills` count column on test list (derived) + 4-stat aggregate counts | `(admin)/tests/_components/tests-table.tsx` + `_components/test-stats-row.tsx` | Backend adds `pill_count` to `TestResponse` + a `/v1/tests?summary_only=true` aggregate endpoint OR a `/v1/tests/stats` endpoint. Until landed: render "—" / compute from cached pages. §H (b) items 2 + 3. |
+| 1 | Question editor image / figure attachment | `(authed)/(admin)/tests/[testId]/edit/_components/question-editor-inner.tsx` | v1 ships text-only per AC-CD24 typed-stub pattern. `QuestionResponse.reference_image_url` field exists backend-side; v1.x adds upload UX. |
+| 2 | `pills` count column on test list (derived) + 4-stat aggregate counts | `(authed)/(admin)/tests/_components/tests-table.tsx` + `_components/test-stats-row.tsx` | Backend adds `pill_count` to `TestResponse` + a `/v1/tests?summary_only=true` aggregate endpoint OR a `/v1/tests/stats` endpoint. Until landed: render "—" / compute from cached pages. §H (b) items 2 + 3. |
 | 3 | Question pool reorder | (no v1 surface) | v1 question order = creation order (`created_at` ASC server-side). v1.x adds drag-handle reorder (`@dnd-kit` already added in catalogue B.7). |
-| 4 | `difficulty_curve` editor UX | `(admin)/tests/[testId]/edit/_components/benchmark-section.tsx` | v1 display-only bar chart; entry UX TBD. v1.x adds per-band numeric input grid OR sliders. §H (b) item 6. |
-| 5 | AI generation invocation ("Suggest with AI" button in question editor) | `(admin)/tests/[testId]/edit/_components/question-editor-inner.tsx` | v1 manual-only authoring. v1.x adds AI-suggest affordance for frozen-mode pool authoring. |
+| 4 | `difficulty_curve` editor UX | `(authed)/(admin)/tests/[testId]/edit/_components/benchmark-section.tsx` | v1 display-only bar chart; entry UX TBD. v1.x adds per-band numeric input grid OR sliders. §H (b) item 6. |
+| 5 | AI generation invocation ("Suggest with AI" button in question editor) | `(authed)/(admin)/tests/[testId]/edit/_components/question-editor-inner.tsx` | v1 manual-only authoring. v1.x adds AI-suggest affordance for frozen-mode pool authoring. |
 | 6 | Per-test analytics drill-down | (no v1 surface) | Published-state banner shows "8 attempts started" as text; v1.x adds click-through to per-attempt list (FE-9 territory). |
+| 7 | Question editor pre-fill reads from cached pool list, not per-question GET | `(authed)/(admin)/tests/[testId]/edit/_components/question-editor-modal.tsx` | LOCKED v1: edit-mode modal pre-fills from the already-cached `useInfiniteQuery(adminKeys.questions.list(testId))` flattened pages. Skip the per-question `GET /v1/tests/{id}/questions/{qid}` round-trip. Defensive: re-fetch only on cache miss (e.g. deep-link reload). |
+| 8 | Benchmark mode authoring dropped from v1 | `(authed)/(admin)/tests/[testId]/edit/_components/benchmark-section.tsx` | LOCKED v1: `BenchmarkSection` ships **as a stub** that renders a "Benchmark authoring coming in v1.x — pre-calibrated benchmark tests are administrator-config-only for v1" notice. The four-card `ModePicker` renders the benchmark card with a `coming-soon` badge and `disabled aria-disabled` state. Per-testee, frozen, and hand-authored modes ship full editor surfaces. |
 
 ---
 
@@ -891,24 +895,25 @@ The cross-walk surfaced 12 candidate items. After review, they're classified int
 
 ### (a) BLOCKERS for the FE-8 tests build session — must land before the build session opens
 
+**Phase 0 spec-clarification PR (this PR) cleared the cross-spec drift on `applyApiErrorToForm` path (FE-1 already canonically cites `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` — no FE-1 amendment required) and LOCKED the `QuestionCreate.config` FE-owned typing contract for v1.**
+
 1. **`TestStatus` enum + `lock_mode` mapping drift.** Backend `TestStatus` enum is `draft|published` only (`frontend/openapi/schema.json:3273–3279`). Design's "Locked" state (`admin-test-authoring.jsx:124–129` + `:259` + `:585–600`) implies a 3rd status. **Resolution chosen:** spec body locks the derivation `displayStatus = lock_mode === "campaign-locked" ? 'locked' : status` via the helper at `frontend/src/lib/tests/derive-display-status.ts`. **Verification needed before build session opens:** confirm with backend that `lock_mode === "campaign-locked"` is the canonical signal (not e.g. a separate `is_locked` field). If the backend uses a different signal, spec body must update before code lands. Surfaced for user decision.
-2. **Inherits `fe-specs/FE-8-admin-catalogue.md §H (a) item 1`** — `applyApiErrorToForm` path drift in FE-1 spec. Tests file has 3+ forms (test editor + question editor + each mode section's inline edits) relying on the canonical path.
-3. **`QuestionCreate.config` is untyped (`object`).** `frontend/openapi/schema.json:2488–2491` declares `config: object`. The 5-type discriminated union form (B.3 §4) needs to pack/unpack per-type fields without backend schema enforcement. **Resolution path A** (preferred): user authors a backend spec-clarification PR typing the config per type (e.g. `MCQConfig`, `TFConfig`, `MatchConfig`, `SAConfig`, `ScenarioConfig`). **Resolution path B**: confirm "FE-owned contract is acceptable for v1" — frontend tests need to be defensive about future backend schema evolution. Surfaced for user decision.
+2. **`QuestionCreate.config` FE-owned typing contract — LOCKED for v1.** Backend `QuestionCreate.config` is `object` per `frontend/openapi/schema.json:2488–2491`. v1 packs per-type config + `body` + `pill_id` + `is_anchor` into `config` via `frontend/src/lib/tests/compose-question-config.ts` (per §D.1 helper + §B.3 §4 step 2 schema). Backend typing of the per-type discriminated union is **deferred to v1.x**. Tests assert against the helper, not against backend schema.
 
 ### (b) BUILD-SESSION VERIFICATION TASKS — front-loaded at the start of the FE-8 tests build session
 
 The build session opens with a verification step before any code lands: read the FastAPI handlers for `/v1/tests`, `/v1/tests/{id}/{publish,lock,unlock}`, `/v1/tests/{id}/questions` + the relevant Pydantic schemas, confirm the assumptions below match reality. If any diverge, halt and surface for spec-clarification PR.
 
-1. **`shell.jsx` admin nav `tests` id.** Not in current 7-id list. Build session adds top-level nav id OR nests under Catalogue. Same pattern as `groups`/`assignments` in identity file.
+1. **`shell.jsx` admin nav `tests` id.** RESOLVED by `fe-specs/FE-8-admin-catalogue.md §C.2` LOCKED ADMIN_NAV addition — `tests` is a top-level rail id (position 6 of 11); not nested under Catalogue.
 2. **`pill_count` field on `TestResponse`.** Design shows "Pills" column on test list. Not in OpenAPI. v1 placeholder "—" if absent.
 3. **`/v1/tests?summary_only=true` or `/v1/tests/stats` aggregate endpoint.** v1 fallback: compute from first cached page.
 4. **`mode` + `status` query params on `/v1/tests`.** Verify wiring; client-side fallback if missing. Note: backend `status` enum is `draft|published` — `locked` filter value is FE-derived (won't be accepted server-side).
 5. **`TestResponse.lock_mode` enum values.** OpenAPI declares as `string` (no enum constraint). Spec body assumes `"open" | "campaign-locked"` per SPEC §5 + AC-D24. Verify; if different, update display-status helper.
-6. **`difficulty_curve` entry UX shape.** Design shows display-only bar chart with deferred "edit distribution" link. v1 entry UX TBD — likely per-band numeric input grid (`{D3: 2, D4: 3, ...}`) or JSON textarea. Build session decides; spec body assumes per-band grid for v1.
+6. **`difficulty_curve` entry UX shape.** RESOLVED by §E item 8 — benchmark mode authoring deferred from v1; difficulty_curve entry UX deferred along with the rest of the BenchmarkSection.
 7. **Frozen vs hand_authored backend distinction.** Backend may treat them identically (both have admin-managed pools) or distinguish via `authoring_mode` field. Verify; if identical, the editor still surfaces them as 2 separate mode cards but PATCH submits the same payload.
-8. **`benchmark_scope` derivation.** Design doesn't surface a scope picker. Likely derived from the pills array structure OR admin-set. Verify; if admin-set, add to `BenchmarkSection` form schema.
+8. **`benchmark_scope` derivation.** RESOLVED by §E item 8 — benchmark mode authoring deferred from v1. Enum values locked to OpenAPI `BenchmarkScope` = `subject|pill|path` for the v1.x revival; spec text references the canonical OpenAPI value, not the prior `learning_path` paraphrase.
 9. **Cohort window lock signal.** Per design `:473–474` cohort window locks once any testee starts. Verify backend signal — likely `started_at` or equivalent on `TestResponse`, OR backend 422s on PATCH-after-start. Same pattern as assignment loop_mode (identity §B.4 §H (b) item 17).
-10. **`pill_id`, `body`, `is_anchor` storage on questions.** Backend `QuestionResponse` has none of these top-level. Verify: are they packed in `config` (per FE convention) OR should backend add them as first-class fields? If backend adds, the `QuestionResponse` schema needs extension; if FE convention, the `compose-question-config.ts` helper (§D.1) is the source of truth.
+10. **`pill_id`, `body`, `is_anchor` storage on questions.** RESOLVED by §H (a) item 2 LOCKED FE-owned typing — packed inside `config` via `compose-question-config.ts`; backend typing deferred to v1.x.
 11. **Mode-locks-after-first-save.** Spec body assumes mode is immutable after first PATCH. Verify backend behaviour: does backend 422 on PATCH-mode-change, OR allow it for drafts? If allowed for drafts, FE can unlock the ModePicker until publish.
 12. **`question_group_id` purpose.** Backend supports it; design doesn't surface. Verify: is it for grouping by pill (replacing pill_id as the linker)? For grouping by topic-within-pill? Spec body treats as optional. If `pill_id` resolution path (§H (b) item 10) lands as "question_group_id IS the pill linker", the spec body changes.
 
