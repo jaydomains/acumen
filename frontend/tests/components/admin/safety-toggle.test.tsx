@@ -13,12 +13,8 @@ describe("SafetyToggle", () => {
 
     const sw = screen.getByRole("switch", { name: "Safety-relevant" });
     expect(sw).toHaveAttribute("aria-checked", "false");
-    expect(
-      screen.getByText("Standard — AI explainer enabled"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Acumen generates a learning material/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Standard — AI explainer enabled")).toBeInTheDocument();
+    expect(screen.getByText(/Acumen generates a learning material/)).toBeInTheDocument();
   });
 
   it("on state: safety copy + aria-checked=true", () => {

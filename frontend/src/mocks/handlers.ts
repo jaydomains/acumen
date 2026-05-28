@@ -1178,8 +1178,7 @@ export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }
 // Append-only per the existing handler-array convention (FE-1 §D).
 // =====================================================================
 
-const adminEmptyPage = () =>
-  HttpResponse.json({ data: [], meta: { next_cursor: null } });
+const adminEmptyPage = () => HttpResponse.json({ data: [], meta: { next_cursor: null } });
 
 export const adminPillsListHandler = http.get(`${API}/v1/pills`, adminEmptyPage);
 export const adminSubjectsListHandler = http.get(`${API}/v1/subjects`, adminEmptyPage);

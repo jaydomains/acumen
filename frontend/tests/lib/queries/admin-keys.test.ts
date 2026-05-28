@@ -73,23 +73,13 @@ describe("adminKeys — shape stability", () => {
   it("locks users domain shape", () => {
     expect(adminKeys.users.all()).toEqual(["admin", "users"]);
     expect(adminKeys.users.list({})).toEqual(["admin", "users", "list", {}]);
-    expect(adminKeys.users.detail("u-1")).toEqual([
-      "admin",
-      "users",
-      "detail",
-      "u-1",
-    ]);
+    expect(adminKeys.users.detail("u-1")).toEqual(["admin", "users", "detail", "u-1"]);
   });
 
   it("locks groups domain shape (with members nested under detail)", () => {
     expect(adminKeys.groups.all()).toEqual(["admin", "groups"]);
     expect(adminKeys.groups.list({})).toEqual(["admin", "groups", "list", {}]);
-    expect(adminKeys.groups.detail("g-1")).toEqual([
-      "admin",
-      "groups",
-      "detail",
-      "g-1",
-    ]);
+    expect(adminKeys.groups.detail("g-1")).toEqual(["admin", "groups", "detail", "g-1"]);
     expect(adminKeys.groups.members("g-1")).toEqual([
       "admin",
       "groups",
@@ -101,12 +91,7 @@ describe("adminKeys — shape stability", () => {
 
   it("locks assignments domain shape", () => {
     expect(adminKeys.assignments.all()).toEqual(["admin", "assignments"]);
-    expect(adminKeys.assignments.list({})).toEqual([
-      "admin",
-      "assignments",
-      "list",
-      {},
-    ]);
+    expect(adminKeys.assignments.list({})).toEqual(["admin", "assignments", "list", {}]);
     expect(adminKeys.assignments.detail("a-1")).toEqual([
       "admin",
       "assignments",
@@ -123,12 +108,7 @@ describe("adminKeys — shape stability", () => {
       "list",
       { mode: "frozen" },
     ]);
-    expect(adminKeys.tests.detail("t-1")).toEqual([
-      "admin",
-      "tests",
-      "detail",
-      "t-1",
-    ]);
+    expect(adminKeys.tests.detail("t-1")).toEqual(["admin", "tests", "detail", "t-1"]);
   });
 
   it("locks questions domain nested under tests.detail (per spec :1142–1146)", () => {
@@ -167,7 +147,10 @@ describe("adminKeys — prefix-match invariant", () => {
    * single `.all()` invalidation cascades correctly.
    */
   const isPrefix = <T extends readonly unknown[]>(prefix: T, full: readonly unknown[]) =>
-    prefix.every((seg, i) => Object.is(seg, full[i]) || JSON.stringify(seg) === JSON.stringify(full[i]));
+    prefix.every(
+      (seg, i) =>
+        Object.is(seg, full[i]) || JSON.stringify(seg) === JSON.stringify(full[i]),
+    );
 
   it("pills.all() is a prefix of pills.list(...) and pills.detail(...)", () => {
     const prefix = adminKeys.pills.all();

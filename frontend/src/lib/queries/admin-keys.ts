@@ -71,8 +71,7 @@ export const adminKeys = {
     all: () => [...adminKeys.all, "groups"] as const,
     list: (filters: { q?: string }) =>
       [...adminKeys.groups.all(), "list", filters] as const,
-    detail: (groupId: string) =>
-      [...adminKeys.groups.all(), "detail", groupId] as const,
+    detail: (groupId: string) => [...adminKeys.groups.all(), "detail", groupId] as const,
     members: (groupId: string) =>
       [...adminKeys.groups.detail(groupId), "members"] as const,
   },
@@ -96,10 +95,8 @@ export const adminKeys = {
 
   // Questions per test (consumed by FE-8-admin-tests.md §B.2 + §B.3)
   questions: {
-    all: (testId: string) =>
-      [...adminKeys.tests.detail(testId), "questions"] as const,
-    list: (testId: string) =>
-      [...adminKeys.questions.all(testId), "list"] as const,
+    all: (testId: string) => [...adminKeys.tests.detail(testId), "questions"] as const,
+    list: (testId: string) => [...adminKeys.questions.all(testId), "list"] as const,
     detail: (testId: string, questionId: string) =>
       [...adminKeys.questions.all(testId), "detail", questionId] as const,
   },

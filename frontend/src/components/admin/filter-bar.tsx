@@ -60,10 +60,7 @@ export function FilterBar({
 
   return (
     <div
-      className={cn(
-        "flex items-center gap-3 flex-wrap py-3 px-1",
-        className,
-      )}
+      className={cn("flex items-center gap-3 flex-wrap py-3 px-1", className)}
       data-testid="filter-bar"
     >
       {onSearchChange ? (
@@ -77,16 +74,17 @@ export function FilterBar({
           data-testid="filter-bar-search"
         />
       ) : null}
-      {segments?.map((seg) => (
-        <SegmentGroup key={seg.label} segment={seg} />
-      ))}
+      {segments?.map((seg) => <SegmentGroup key={seg.label} segment={seg} />)}
     </div>
   );
 }
 
 function SegmentGroup({ segment }: { segment: FilterSegment }) {
   return (
-    <div className="flex items-center gap-2" data-testid={`filter-bar-segment-${segment.label}`}>
+    <div
+      className="flex items-center gap-2"
+      data-testid={`filter-bar-segment-${segment.label}`}
+    >
       <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
         {segment.label}
       </span>

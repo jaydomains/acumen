@@ -48,12 +48,7 @@ export function SafetyToggle({ on, onChange, disabled, className }: SafetyToggle
         />
       </button>
       <div className="flex-1">
-        <div
-          className={cn(
-            "text-[13px] font-semibold",
-            on ? "text-danger" : "text-ink",
-          )}
-        >
+        <div className={cn("text-[13px] font-semibold", on ? "text-danger" : "text-ink")}>
           {on
             ? "Safety-relevant — no AI teaching material"
             : "Standard — AI explainer enabled"}
