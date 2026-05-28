@@ -19,7 +19,7 @@ import {
   resetMockAdminSubjects,
   setMockAdminSubjects,
 } from "@/mocks/handlers";
-import AdminCataloguePage from "@/app/(authed)/(admin)/catalogue/page";
+import AdminCataloguePage from "@/app/(authed)/(admin)/admin/catalogue/page";
 
 const API = "http://localhost:8000";
 

@@ -51,7 +51,13 @@ export function CatalogueShell() {
 
   const setTab = (next: TabId) => {
     if (next === active) return;
-    router.replace(`/admin/catalogue?tab=${next}`);
+    // Preserve sibling query params (notably `?q=` from the subjects
+    // tab) across tab switches — round-tripping subjects → pills →
+    // subjects keeps the filter alive, matching the URL contract in
+    // `subjects-tab.tsx`'s header comment.
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("tab", next);
+    router.replace(`/admin/catalogue?${params.toString()}`);
   };
 
   const headerTitle = useMemo(() => TAB_LABELS[active], [active]);

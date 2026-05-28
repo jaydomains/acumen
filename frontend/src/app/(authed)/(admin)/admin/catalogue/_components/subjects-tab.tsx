@@ -144,22 +144,27 @@ function SubjectsBody({
   onDelete,
 }: SubjectsBodyProps) {
   const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+  // Pin individual props rather than the full `list` object — every
+  // `useInfiniteQuery` render returns a fresh object reference, so
+  // `[list]` would tear down + recreate the observer on every render.
+  // Matches the precedent at `CatalogueGrid.tsx:30–44`.
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = list;
 
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !list.hasNextPage) return;
+    if (!el || !hasNextPage) return;
     if (typeof IntersectionObserver === "undefined") return;
     const obs = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && !list.isFetchingNextPage) {
-          void list.fetchNextPage();
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) {
+          void fetchNextPage();
         }
       },
       { rootMargin: "200px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [list]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (list.isPending) {
     return (

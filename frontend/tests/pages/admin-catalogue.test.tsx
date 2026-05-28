@@ -14,7 +14,7 @@ import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "@/mocks/node";
 import { resetMockAdminSubjects } from "@/mocks/handlers";
-import AdminCataloguePage from "@/app/(authed)/(admin)/catalogue/page";
+import AdminCataloguePage from "@/app/(authed)/(admin)/admin/catalogue/page";
 
 const mockReplace = vi.fn();
 let mockSearch = new URLSearchParams();
