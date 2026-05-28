@@ -194,7 +194,7 @@ are *documented, not built* in v1.
 
 Multi-slice FE-N phases inherit the PR-025 auto-continue default
 (slices auto-continue on clean Gitar review unless the phase opener
-declares binding pauses). Three conventions govern the loop:
+declares binding pauses). Five conventions govern the loop:
 
 - **(a) Spec-drift findings always pause the loop.** Even with
   auto-continue enabled, the assistant does not silently resolve
@@ -220,14 +220,49 @@ declares binding pauses). Three conventions govern the loop:
   close); the next slice does not start. Treated as a binding
   instruction with the same gravity as a session-opener flag.
 - **(d) Polling is the source of truth between slices.** After
-  every push, actively poll — `gh pr checks --watch` blocks until
-  all checks complete, then `gh pr reviews` confirms Gitar's
-  approval. Both green → next slice starts immediately, no user
-  prompt. Final slice closes with `gh pr merge --squash
-  --delete-branch`. Webhook events / passive PR subscription are
-  not sufficient: delivery is best-effort and can silently drop,
-  so the loop never relies on them. The polling commands above
-  are the contract.
+  every push, actively poll the **three-layer green gate** (CI
+  + Gitar review + GitHub mergeable, mirrored from Throughline's
+  `docs/_meta/throughline/AUTO_CONTINUE_WORKFLOW.md` "Three-
+  Layer Green Gate") every ~60s via `gh pr view --json
+  statusCheckRollup,reviews,mergeable`. CI is green when every
+  `statusCheckRollup` entry is terminal: `conclusion=success`
+  AND `conclusion=skipped` both count as terminal-success
+  (`frontend/e2e` legitimately skips on `[skip e2e]` markers
+  and on upstream-`checks` failure per
+  `.github/workflows/frontend.yml:65–75`; the retired
+  `gh pr checks --watch` returned ambiguously on `skipped` and
+  is the documented source of the auto-continue stall this
+  convention exists to eliminate). `conclusion=failure` or
+  `cancelled` is terminal-failure → fix-round.
+  `status=in_progress` or `queued` is not-yet-terminal → keep
+  polling. Gitar review is green when `reviews` contains a
+  Gitar approval and no open `CHANGES_REQUESTED`, read from
+  the same JSON return (no separate `gh pr reviews` call).
+  Mergeable is green when `mergeable=MERGEABLE`; `CONFLICTING`
+  → rebase fix-round; `UNKNOWN` → keep polling. All three
+  green at the same poll → next slice starts immediately, no
+  user prompt. Final slice closes with `gh pr merge --squash
+  --delete-branch`. **No polling ceiling — long Gitar reviews
+  are normal flow, not failure.** Webhook events / passive PR
+  subscription are still insufficient (delivery is best-effort
+  and can silently drop), so the loop never relies on them.
+  **The JSON-query above is the contract; `gh pr checks
+  --watch` is retired.**
+- **(e) Chain state is committed to the repo.**
+  `.claude-code/auto-continue-state.json` holds the live state
+  of the current chain — `chainId`, `chainOpenedAt`, per-slice
+  `id` / `status` / `prNumber` / `fixRounds` / `mergedAt` /
+  `lastFinding`, plus top-level `currentIndex`, `lastPollAt`,
+  `haltReason`. Updated between slices (write-temp + rename
+  for atomicity) and committed alongside the slice's handover
+  commit so chain state survives session restart and any
+  ambiguous poll return. `fixRounds` is the mechanical arming
+  for the (b) circuit breaker; `haltReason` records the named
+  halt class (`spec-drift` / `circuit-breaker` / `user-pause`
+  / `null`) for the next session to read on resume. Schema
+  and rationale mirror Throughline's
+  `docs/_meta/throughline/AUTO_CONTINUE_WORKFLOW.md` §"Chain
+  State Persistence".
 
 These conventions sit next to the structural-additions carve-out
 above: both codify when the otherwise-default cadence yields to

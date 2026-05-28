@@ -1,0 +1,22 @@
+{
+  "chainId": "tooling-state-poll-and-chain-state-file",
+  "chainOpenedAt": "2026-05-27T20:37:00Z",
+  "slices": [
+    {
+      "id": "slice-1-replace-gh-pr-checks-watch-and-add-state-file",
+      "status": "open",
+      "prNumber": 62,
+      "fixRounds": 1,
+      "lastFinding": "Gitar PR #62: chain-state bootstrap committed with `slices[0].prNumber: null` (the file was authored before the PR existed). Set to 62 in this fold-in so a resuming session can poll the correct PR via convention (d). fixRounds incremented to 1 — the (b) circuit-breaker arms at 3."
+    }
+  ],
+  "currentIndex": 0,
+  "lastPollAt": null,
+  "haltReason": null,
+  "notes": {
+    "schemaBootstrap": "First write of .claude-code/auto-continue-state.json in this repo. Codifies the schema introduced by SESSION_START.md §193-230 convention (e), paired with the rewritten convention (d) that replaces `gh pr checks --watch` with a three-layer state-poll loop (CI + Gitar review + GitHub mergeable). Schema mirrors Throughline's docs/_meta/throughline/AUTO_CONTINUE_WORKFLOW.md §Chain State Persistence and the on-disk example at throughline's .claude-code/auto-continue-state.json.",
+    "nextChain": "FE-7 per FE_ROADMAP.md is the next phase chain; opening FE-7 will overwrite this file with the FE-7 chain's initial state (chainId=`fe-7-<slug>`, slices[] populated from the FE-7 plan, currentIndex=0).",
+    "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt). Matches the three named halt classes in §193-230 (a), (b), (c) respectively.",
+    "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart and is visible in `git status` / PR diffs. Per-slice `fixRounds` is the mechanical arming for the (b) circuit breaker — a fourth increment is the halt signal, not a fourth fix-round commit."
+  }
+}
