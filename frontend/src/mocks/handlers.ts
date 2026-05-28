@@ -1556,10 +1556,220 @@ const adminPillsHandlers = [
   adminPillSafetyHandler,
 ];
 
-export const adminPillProposalsListHandler = http.get(
+// FE-8 Slice 4 — stateful pill-proposals (per §B.4). Replaces the
+// Slice-1 empty-page stub. Wire shape: `ProcessingTaskStatus`
+// (pending|running|done|failed) on `status`; admin decision stashed
+// in `payload.decision` ("approved" | "rejected") per backend at
+// `app/domain/catalogue.py:594,620`. Approve also mutates
+// `mockAdminPills` so the §D.3 round-trip (approve → pill visible
+// in Pills tab) works end-to-end.
+
+type PillProposalResponseSchema = components["schemas"]["PillProposalResponse"];
+// OpenAPI typings narrow `payload` to `Record<string, never> | null` which
+// rejects arbitrary keys. The real wire shape is "arbitrary JSON object"
+// (`app/schemas.py:292`), so we widen on the way in via this cast helper.
+const asProposalPayload = (
+  p: Record<string, unknown>,
+): PillProposalResponseSchema["payload"] => p as PillProposalResponseSchema["payload"];
+
+const ADMIN_PROPOSAL_ISO = "2026-04-10T00:00:00Z";
+
+const adminProposalId = (n: number): string =>
+  `ffffffff-ffff-ffff-ffff-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_PROPOSALS: PillProposalResponseSchema[] = [
+  {
+    id: adminProposalId(1),
+    status: "pending",
+    payload: asProposalPayload({
+      proposal: {
+        name: "Cathodic Protection Field Inspection",
+        description:
+          "Inspect anode placement, take potential readings, and document deviations per ISO 15589-1.",
+        subject_id: ADMIN_SUBJECT_IDS.marine,
+        available_difficulty_min: 4,
+        available_difficulty_max: 8,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+  {
+    id: adminProposalId(2),
+    status: "pending",
+    payload: asProposalPayload({
+      proposal: {
+        name: "Adhesion Pull-Off Test",
+        description: "ISO 4624 pull-off adhesion test on cured coatings.",
+        subject_id: ADMIN_SUBJECT_IDS.paintQa,
+        available_difficulty_min: 2,
+        available_difficulty_max: 6,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+  {
+    id: adminProposalId(3),
+    status: "done",
+    payload: asProposalPayload({
+      decision: "approved",
+      proposal: {
+        name: "Reference Panels (historic)",
+        description: "Already-approved proposal — populates the Approved filter.",
+        subject_id: ADMIN_SUBJECT_IDS.paintQa,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+];
+
+let mockAdminProposals: PillProposalResponseSchema[] = [...DEFAULT_ADMIN_PROPOSALS];
+
+export const setMockAdminProposals = (proposals: PillProposalResponseSchema[]): void => {
+  mockAdminProposals = [...proposals];
+};
+
+export const resetMockAdminProposals = (): void => {
+  mockAdminProposals = [...DEFAULT_ADMIN_PROPOSALS];
+};
+
+export const getMockAdminProposals = (): PillProposalResponseSchema[] => [
+  ...mockAdminProposals,
+];
+
+const adminPillProposalsListHandler = http.get(
   `${API}/v1/pill-proposals`,
-  adminEmptyPage,
+  ({ request }) => {
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+    const start = cursor ? Number(cursor) : 0;
+    const slice = mockAdminProposals.slice(start, start + limit);
+    const nextStart = start + slice.length;
+    const next_cursor = nextStart < mockAdminProposals.length ? String(nextStart) : null;
+    return HttpResponse.json({ data: slice, meta: { next_cursor } });
+  },
 );
+
+const adminPillProposalApproveHandler = http.post(
+  `${API}/v1/pill-proposals/:proposal_id/approve`,
+  ({ params }) => {
+    const idx = mockAdminProposals.findIndex((p) => p.id === String(params.proposal_id));
+    const existing = idx >= 0 ? mockAdminProposals[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Proposal not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    if (existing.status !== "pending") {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "proposal_not_pending",
+            message: "This proposal is already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    // Flip the proposal to done/approved.
+    const payload = (existing.payload as Record<string, unknown>) ?? {};
+    const proposalPayload = (payload.proposal as Record<string, unknown>) ?? {};
+    const next: PillProposalResponseSchema = {
+      ...existing,
+      status: "done",
+      payload: asProposalPayload({ ...payload, decision: "approved" }),
+    };
+    mockAdminProposals = [
+      ...mockAdminProposals.slice(0, idx),
+      next,
+      ...mockAdminProposals.slice(idx + 1),
+    ];
+    // Cross-resource mutation: approved proposal becomes a real pill.
+    const subjectId =
+      typeof proposalPayload.subject_id === "string"
+        ? proposalPayload.subject_id
+        : ADMIN_SUBJECT_IDS.paintQa;
+    const newPillName =
+      typeof proposalPayload.name === "string"
+        ? proposalPayload.name
+        : "Untitled approved pill";
+    const minRaw = proposalPayload.available_difficulty_min;
+    const maxRaw = proposalPayload.available_difficulty_max;
+    const newPill: PillResponse = {
+      id: adminPillId(nextAdminPillSeq),
+      subject_id: subjectId,
+      name: newPillName,
+      description:
+        typeof proposalPayload.description === "string"
+          ? proposalPayload.description
+          : null,
+      available_difficulty_min: typeof minRaw === "number" ? minRaw : 1,
+      available_difficulty_max: typeof maxRaw === "number" ? maxRaw : 10,
+      discoverable: true,
+      safety_relevant: false,
+      safety_relevant_overridden_at: null,
+      estimated_minutes: null,
+      retired_at: null,
+      created_at: ADMIN_PROPOSAL_ISO,
+      updated_at: ADMIN_PROPOSAL_ISO,
+    };
+    nextAdminPillSeq += 1;
+    mockAdminPills = [newPill, ...mockAdminPills];
+    return HttpResponse.json(newPill, { status: 201 });
+  },
+);
+
+const adminPillProposalRejectHandler = http.post(
+  `${API}/v1/pill-proposals/:proposal_id/reject`,
+  ({ params }) => {
+    const idx = mockAdminProposals.findIndex((p) => p.id === String(params.proposal_id));
+    const existing = idx >= 0 ? mockAdminProposals[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Proposal not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    if (existing.status !== "pending") {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "proposal_not_pending",
+            message: "This proposal is already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const payload = (existing.payload as Record<string, unknown>) ?? {};
+    const next: PillProposalResponseSchema = {
+      ...existing,
+      status: "done",
+      payload: asProposalPayload({ ...payload, decision: "rejected" }),
+    };
+    mockAdminProposals = [
+      ...mockAdminProposals.slice(0, idx),
+      next,
+      ...mockAdminProposals.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminProposalsHandlers = [
+  adminPillProposalsListHandler,
+  adminPillProposalApproveHandler,
+  adminPillProposalRejectHandler,
+];
+
 export const adminLearningPathsListHandler = http.get(
   `${API}/v1/learning-paths`,
   adminEmptyPage,
@@ -1623,7 +1833,7 @@ export const handlers = [
   // resolve-before-list discipline.
   ...adminPillsHandlers,
   ...adminSubjectsHandlers,
-  adminPillProposalsListHandler,
+  ...adminProposalsHandlers,
   adminLearningPathsListHandler,
   adminUsersListHandler,
   adminGroupsListHandler,
