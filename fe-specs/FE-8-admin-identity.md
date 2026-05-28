@@ -1,6 +1,6 @@
 # FE-8 — Admin identity (users + groups + assignments) (detail spec)
 
-> **Status:** plan-mode authored, ready for build session (subject to §H (a) blockers — the cross-spec `applyApiErrorToForm` path drift from `fe-specs/FE-8-admin-catalogue.md §H (a) item 1` must resolve before this build session opens; same fix unblocks all three FE-8 files).
+> **Status:** plan-mode authored, ready for build session (Phase 0 spec-clarification PR resolved the cross-spec drift; build session may open).
 > **Owns:** the admin identity surfaces — users CRUD + deactivate/reactivate (`/admin/users`), groups CRUD + membership (`/admin/groups` + `/admin/groups/[id]`), and assignments (`/admin/assignments`).
 > **PR target:** shared with `fe-specs/FE-8-admin-catalogue.md` + `fe-specs/FE-8-admin-tests.md` in a single PR — `PR-NNN-fe8-admin-authoring`.
 > **Anchors:** AC-D2 (admin-driven user creation, two-role model: Administrator + Testee), AC-D14 (user deactivation — preserves data, blocks login), AC-D15 (groups for bulk assignment + reporting; three system-defined groups immutable: All Users / All Testees / All Administrators), AC-D26 (assignment engagement tracking — `engagement_status` derived field, auto-reminders, auto-escalation; backend-owned), AC-D6 (adaptive loop_mode), AC-CD11 (admin-only surfaces), AC-CD19 (FE stack lock), AC-CD20 (`(admin)` route group + role guard → `/403`), AC-CD21 (centralised query keys + form helper + error envelope).
@@ -36,10 +36,10 @@ This file is sibling 2 of 3 for FE-8 admin authoring. Read `fe-specs/FE-8-admin-
 
 | # | Capability | Route / file | Design source | Screenshot |
 |---|---|---|---|---|
-| 1 | Users list — `/admin/users` table + 4-variant modal (add / edit / deactivate / validation errors) | `(admin)/users/page.tsx` + `_components/users-table.tsx` + `_components/user-modal.tsx` + `_components/deactivate-modal.tsx` | `admin-authoring.jsx:356–532` (`UsersCrudMock`, `UserListBehind`, `UserModal`, `DeactivateModal`, `RoleChoice`) | `v6-fe8-18-users.png` |
-| 2 | Groups list — `/admin/groups` table + create modal + system-group immutability gate | `(admin)/groups/page.tsx` + `_components/groups-table.tsx` + `_components/group-modal.tsx` | `admin-authoring.jsx:537–643` (`GroupsCrudMock`, `GroupListBehind`, `GroupModal`) | `v6-fe8-19-groups.png` |
-| 3 | Group membership view — `/admin/groups/[groupId]` two-column page (stats + members table) + member-picker modal | `(admin)/groups/[groupId]/page.tsx` + `_components/group-membership-view.tsx` + `_components/member-picker-modal.tsx` | `admin-authoring.jsx:645–751` (`GroupMembershipView`, `MemberPickerModal`) | `v6-fe8-19-groups.png` (composite — membership view inset) |
-| 4 | Assignments list — `/admin/assignments` table + assignment editor modal (create / edit) + delete confirm modal | `(admin)/assignments/page.tsx` + `_components/assignments-table.tsx` + `_components/assignment-editor.tsx` + `_components/delete-assignment-modal.tsx` | `admin-authoring.jsx:921–1147` (`AssignmentsCrudMock`, `AssignmentListBehind`, `AssignmentEditor`, `PickerTab`, `PickerChip`, `LoopChoice`, `DeleteAssignmentModal`) | `v6-fe8-22-assignments.png` |
+| 1 | Users list — `/admin/users` table + 4-variant modal (add / edit / deactivate / validation errors) | `(authed)/(admin)/users/page.tsx` + `_components/users-table.tsx` + `_components/user-modal.tsx` + `_components/deactivate-modal.tsx` | `admin-authoring.jsx:356–532` (`UsersCrudMock`, `UserListBehind`, `UserModal`, `DeactivateModal`, `RoleChoice`) | `v6-fe8-18-users.png` |
+| 2 | Groups list — `/admin/groups` table + create modal + system-group immutability gate | `(authed)/(admin)/groups/page.tsx` + `_components/groups-table.tsx` + `_components/group-modal.tsx` | `admin-authoring.jsx:537–643` (`GroupsCrudMock`, `GroupListBehind`, `GroupModal`) | `v6-fe8-19-groups.png` |
+| 3 | Group membership view — `/admin/groups/[groupId]` two-column page (stats + members table) + member-picker modal | `(authed)/(admin)/groups/[groupId]/page.tsx` + `_components/group-membership-view.tsx` + `_components/member-picker-modal.tsx` | `admin-authoring.jsx:645–751` (`GroupMembershipView`, `MemberPickerModal`) | `v6-fe8-19-groups.png` (composite — membership view inset) |
+| 4 | Assignments list — `/admin/assignments` table + assignment editor modal (create / edit) + delete confirm modal | `(authed)/(admin)/assignments/page.tsx` + `_components/assignments-table.tsx` + `_components/assignment-editor.tsx` + `_components/delete-assignment-modal.tsx` | `admin-authoring.jsx:921–1147` (`AssignmentsCrudMock`, `AssignmentListBehind`, `AssignmentEditor`, `PickerTab`, `PickerChip`, `LoopChoice`, `DeleteAssignmentModal`) | `v6-fe8-22-assignments.png` |
 
 Four rows. Each row is a route-level entry; modals nest under the row's §2 (Components) and §5 (States). The most coupled surface — `AssignmentEditor` (row 4) — depends on `Tests` (sibling `fe-specs/FE-8-admin-tests.md`), `LearningPaths` (sibling `fe-specs/FE-8-admin-catalogue.md` §B.6), `Users` (this file §B.1), and `Groups` (this file §B.2). Cross-file consumption explicitly noted in §B.4 §2.
 
@@ -67,7 +67,7 @@ URL state per row:
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/users/page.tsx`. The `(admin)` route group exists per FE-2; the `users/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- File: `frontend/src/app/(authed)/(admin)/users/page.tsx`. The `(admin)` route group exists per FE-2; the `users/` segment + its `error.tsx` boundary file are FE-8-introduced.
 - URL state: `?q={search}&role={admin|testee|all}&status={active|invited|deactivated|all}` (defaults `q=""`, `role=all`, `status=all`). All filter changes call `router.replace()` per FE-3 §C.7 pattern.
 - Modal state: ephemeral `useState<{mode: 'add' | 'edit' | 'deactivate' | null, userId?: string}>(null)`.
 - Static `<title>Users · Acumen</title>`.
@@ -75,7 +75,7 @@ URL state per row:
 
 **2. Components**
 
-- **Scaffold reused:** `useAuth()` (FE-1); `client` + `unwrap` + `ApiError` (FE-0); `useInfiniteQuery` + `useMutation` + `useQueryClient` (TanStack Query v5); `useForm` + `zodResolver` (rhf + zod per FE-1 §B.4); `applyApiErrorToForm` from `frontend/src/lib/api/form-errors.ts` per `fe-specs/FE-8-admin-catalogue.md §0` consensus path.
+- **Scaffold reused:** `useAuth()` (FE-1); `client` + `unwrap` + `ApiError` (FE-0); `useInfiniteQuery` + `useMutation` + `useQueryClient` (TanStack Query v5); `useForm` + `zodResolver` (rhf + zod per FE-1 §B.4); `applyApiErrorToForm` from `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024`.
 - **Shared admin primitives consumed from `fe-specs/FE-8-admin-catalogue.md §C`:** `adminKeys.users.{all,list,detail}` (§C.1); `FilterBar` (§C.4); `Modal` + `ModalHeader` + `ModalActions` (§C.5); `Field` + `FieldRow` + `FieldError` (§C.6); `(admin)` route guard (§C.2); toast helper (§C.7); Pattern C boundary (§C.8).
 - **New in this PR (identity scope):**
   - `UsersListPage` — top-level page. Renders `PageHeader` + "+ Add user" CTA + "Bulk invite" CTA (disabled with tooltip "Coming in v1.x" per §E.4) + `FilterBar` + `UsersTable` + (conditional) `UserModal` / `DeactivateModal`.
@@ -182,7 +182,7 @@ const deactivateMutation = useMutation({
 | `deactivate_modal_submitting` | User clicks Deactivate button | Mutation fires; modal closes on success; toast.info("User deactivated"). |
 | `reactivate_confirm` | User clicks Reactivate row action (only available when status === "deactivated") | Browser `confirm("Reactivate {name}?")`; on OK fires `POST /v1/users/{id}/reactivate`; toast on success. |
 | `resend_setup_action` | User clicks Resend row action (only on invited rows) | `POST /v1/users/{id}/resend-setup` fires (if endpoint exists — §H (b) item 5); toast.info("Setup email re-sent"). |
-| `error` | Query throws (non-404) | Pattern C boundary card via `(admin)/users/error.tsx`. |
+| `error` | Query throws (non-404) | Pattern C boundary card via `(authed)/(admin)/users/error.tsx`. |
 | `role_mismatch` | Testee role hits `/admin/users` | AC-CD20 layout guard redirects to `/403`. |
 
 **6. Acceptance criteria (Gherkin)**
@@ -314,11 +314,11 @@ Scenario: Testee hits admin users URL — 403
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/groups/page.tsx`. The `groups/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- File: `frontend/src/app/(authed)/(admin)/groups/page.tsx`. The `groups/` segment + its `error.tsx` boundary file are FE-8-introduced.
 - URL state: `?q={search}` (single text search; group volume is low and system-vs-custom is visually obvious).
 - Modal state: ephemeral `useState<{mode: 'add' | null}>(null)`. Edit modal is NOT on the list page — clicking Edit on a custom group routes to `/admin/groups/[id]` (§B.3) where the group details + members are co-located.
 - Static `<title>Groups · Acumen</title>`.
-- Nav-rail anchor: `shell.jsx` admin nav `groups` id — **NOT in current 7-id list** per `shell.jsx:15` (which has ops/review/engagement/catalogue-admin/users/cost/loop). Either (a) FE-2 adds `groups` to the nav as a structural addition, or (b) groups nests under the Users nav as a sub-tab. **§H (b) item 10** — verify and decide.
+- Nav-rail anchor: `groups` rail id per the LOCKED ADMIN_NAV addition (`fe-specs/FE-8-admin-catalogue.md §C.2`). Top-level item (position 8 of 11); not nested under Users.
 
 **2. Components**
 
@@ -454,7 +454,7 @@ Scenario: Search filters the list
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/groups/[groupId]/page.tsx`. Dynamic param `groupId`.
+- File: `frontend/src/app/(authed)/(admin)/groups/[groupId]/page.tsx`. Dynamic param `groupId`.
 - URL state: `?member_q={search}` (filter members within the group by name/email). Modal state for member picker is ephemeral.
 - Static `<title>{group.name} · Groups · Acumen</title>` (dynamic via `generateMetadata` in v1 — small cost, real value for browser tab clarity).
 
@@ -533,7 +533,7 @@ Remove member: bare `DELETE` mutation per §2 above; on success invalidate membe
 | `add_member_submit_partial_failure` | Some user_ids fail to add (e.g. already in group via race condition) | Mutation returns mixed — toast.warn detailing which users failed; refresh members list. |
 | `remove_member_confirm` | User clicks Remove on a member row | `confirm("Remove {name} from {group}?")` fires. |
 | `remove_member_submit` | Confirm OK | DELETE fires; member row disappears; toast.info("Member removed"). |
-| `error` | Either query throws | Pattern C boundary via `(admin)/groups/[groupId]/error.tsx`. |
+| `error` | Either query throws | Pattern C boundary via `(authed)/(admin)/groups/[groupId]/error.tsx`. |
 | `not_found` | `GET /v1/groups/{group_id}` returns 404 | Render "Group not found" empty-state with "Back to groups" CTA (similar to FE-6's `attempt-not-found` pattern). |
 | `role_mismatch` | Testee role hits `/admin/groups/[id]` | `/403`. |
 
@@ -652,10 +652,10 @@ Scenario: Testee hits group membership URL — 403
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/assignments/page.tsx`. The `assignments/` segment + its `error.tsx` boundary file are FE-8-introduced.
-- URL state: `?assigner={me|all}` (default `me` — admin sees their own assignments first; segmented filter to "all" shows org-wide). Modal state ephemeral: `useState<{mode: 'create' | 'edit' | 'delete' | null, assignmentId?: string}>(null)`.
+- File: `frontend/src/app/(authed)/(admin)/assignments/page.tsx`. The `assignments/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- URL state: `?assigner={me|all}` (default `me` — admin sees their own assignments first; segmented filter to "all" shows org-wide). Modal state ephemeral: `useState<{mode: 'create' | 'delete' | null, assignmentId?: string}>(null)`. **v1 LOCKED — editor mounts in `create` + `delete` modes only.** Per §E item 9, in-place edit is deferred to v1.x; existing assignments can be deleted + recreated.
 - Static `<title>Assignments · Acumen</title>`.
-- Nav-rail anchor: `shell.jsx` admin nav `assignments` id — same gap as `groups` (§B.2 §1 + §H (b) item 10). Build session decides whether to add as top-level nav id or nest under Users.
+- Nav-rail anchor: `assignments` rail id per the LOCKED ADMIN_NAV addition (`fe-specs/FE-8-admin-catalogue.md §C.2`). Top-level item (position 9 of 11); not nested under Users.
 
 **2. Components**
 
@@ -665,10 +665,10 @@ Scenario: Testee hits group membership URL — 403
 - **New in this PR (identity scope):**
   - `AssignmentsListPage` — top-level page. `PageHeader` + "+ New assignment" CTA + `FilterBar` (assigner segment) + `AssignmentsTable` + (conditional) `AssignmentEditor` / `DeleteAssignmentModal`.
   - `AssignmentsTable` — table per `admin-authoring.jsx:941–972` (`AssignmentListBehind`). Columns: Bound to (derived display — group name with member count for group-bound, individual name for testee-bound, multi-target shows "{N} testees + {M} groups" summary), Test / Path (resolved name + (test, mode) annotation OR "(path)" annotation), Mode (auto-derived from pill_id vs learning_path_id), Loop ("autonomous" soft pill / "admin-reviewed" accent pill), Deadline (formatted "12 Jun" or "—"), Progress (string — "8/14 started" — derived field from `engagement_status` aggregate; see §H (b) item 15). Cursor-paginated.
-  - `AssignmentEditor` — modal editor per `admin-authoring.jsx:975–1072`. 4 main fields: "Bound to" (the testee+group multi-target picker), Test or Learning Path (single-select dropdown grouped by Tests / Learning paths), Deadline date + Deadline time (two-column), Loop mode (2-card RoleChoice-style picker: autonomous vs admin-reviewed). Info banner at the bottom for create-mode: "{N} testees will receive a notification at the next reminder window."
+  - `AssignmentEditor` — modal editor per `admin-authoring.jsx:975–1072`. **v1 LOCKED — create mode only** (per §E item 9). 4 main fields: "Bound to" (the testee+group multi-target picker), Test or Learning Path (single-select dropdown grouped by Tests / Learning paths), Deadline date + Deadline time (two-column), Loop mode (2-card RoleChoice-style picker: autonomous vs admin-reviewed). Info banner at the bottom for create-mode: "{N} testees will receive a notification at the next reminder window."
   - `MultiTargetPicker` — the "Bound to" UX per `admin-authoring.jsx:986–1015`. 3-tab nav (Groups / Testees / Search all) above a free-form chip area where selected testees + groups render with type-coloured chips (group = accent-soft bg, testee = bg-raised). Includes inline add input. Footer: "{N} testees total · {M} unique after de-duplication" — server-side or client-side dedup decision (§H (b) item 16).
   - `PickerChip` — chip primitive per `admin-authoring.jsx:1085–1101`. Type-coloured background + Icon prefix (users for group, user for testee) + label + X dismiss button.
-  - `LoopChoice` — 2-card chooser per `admin-authoring.jsx:1102–1115`. Disabled in edit mode if assignment has started (per design line 25: "Loop mode is the only field that can't be edited once the assignment has been started by any testee"). **Verify backend enforces this** — §H (b) item 17.
+  - `LoopChoice` — 2-card chooser per `admin-authoring.jsx:1102–1115`. **Wire value is `admin_reviewed` (underscore) per OpenAPI `LoopMode`**; the hyphenated form is a display-only label rendered via `frontend/src/lib/identity/format-loop-mode.ts`. v1 always-enabled (only mounts in create mode per §E item 9; edit-mode lock pathway deferred to v1.x).
   - `DeleteAssignmentModal` — confirm modal per `admin-authoring.jsx:1117–1147`. Summary card (bound to / test / deadline / progress) + danger banner explaining what gets deleted (testees lose access immediately, completed attempts preserved in history, in-progress attempts paused and unrecoverable).
 - **shadcn primitives installed:** none beyond FE-2's set + `Sheet` (catalogue B.4).
 - **Design primitives reused:** `Pill` (FE-2) for mode + loop badges; `Icon` (lucide users / user / mail). `.tbl`, `.card`, `.eyebrow`, `.btn`, `.btn-primary`, `.muted`, `.mono`, `.t-meta`, `.row`, `.gap-2` per FE-2.
@@ -680,7 +680,7 @@ Scenario: Testee hits group membership URL — 403
 | `GET /v1/assignments?cursor={cursor}&limit=50&assigner_id={uuid}` | List assignments. Consumed by `AssignmentsTable`. Default filter `assigner_id` = current user's id (the "me" filter); "all" filter omits the param. | **Exists** at `frontend/openapi/schema.json:4613`. Returns `Page_AssignmentResponse_`. |
 | `POST /v1/assignments` | Create assignment. | **Exists** at `frontend/openapi/schema.json:4613+`. Body: `AssignmentCreate` (`{difficulty, deadline?, group_ids[], is_mandatory?, learning_path_id?, loop_mode?, pill_id?, testee_ids[]}` — `frontend/openapi/schema.json:178–257`). |
 | `GET /v1/assignments/{assignment_id}` | Fetch single assignment for edit modal pre-fill. | **Exists** at `frontend/openapi/schema.json:4764`. Returns `AssignmentResponse` (`frontend/openapi/schema.json:259–352`). |
-| `PATCH /v1/assignments/{assignment_id}` | Edit assignment. Backend behaviour for changing `loop_mode` after attempts have started: per design line 25, locked. Per OpenAPI: schema allows the field, backend may 422 on the change. §H (b) item 17. | **Exists** at `frontend/openapi/schema.json:4764+`. |
+| `PATCH /v1/assignments/{assignment_id}` | **Not wired in v1** — see §E item 9. PATCH stays in the OpenAPI for future v1.x consumers. | **Exists** at `frontend/openapi/schema.json:4764+`. |
 | `DELETE /v1/assignments/{assignment_id}` | Delete assignment. | **Exists** at `frontend/openapi/schema.json:4764+`. |
 | `GET /v1/users?limit=200` (cross-file) | Source for `MultiTargetPicker` testee tab. Uses `adminKeys.users.list({})`. | (per §B.1) |
 | `GET /v1/groups?limit=200` (cross-file) | Source for `MultiTargetPicker` groups tab. | (per §B.2) |
@@ -703,6 +703,9 @@ const assignmentFormSchema = z.object({
   deadline_date: z.string().nullable().optional(),  // YYYY-MM-DD
   deadline_time: z.string().nullable().optional(),  // HH:MM (24h, local TZ)
   // Loop + mandatory
+  // Wire enum from OpenAPI LoopMode (snake_case). Display label flips to
+  // "admin-reviewed" via format-loop-mode.ts — never send the hyphenated
+  // form to the backend.
   loop_mode: z.enum(["autonomous", "admin_reviewed"]).default("autonomous"),
   is_mandatory: z.boolean().default(false),
 })
@@ -730,10 +733,7 @@ type AssignmentFormInput = z.infer<typeof assignmentFormSchema>;
 3. Success: invalidate `adminKeys.assignments.all()`; toast.info("Assignment created — {N} testees will be notified."); close modal.
 4. `ApiError`: `applyApiErrorToForm`.
 
-**Submit handler (edit):**
-1. Build PATCH body from dirty fields only.
-2. If `loop_mode` is dirty AND the assignment has started (per backend signal — §H (b) item 17), the field is already disabled in UI; defensive backend 422 surfaces via toast.
-3. Otherwise standard PATCH.
+**Submit handler (edit):** Not wired in v1 — see §E item 9. Edit flow deferred to v1.x.
 
 **5. States**
 
@@ -743,7 +743,7 @@ type AssignmentFormInput = z.infer<typeof assignmentFormSchema>;
 | `filter_assigner_me` | `?assigner=me` (default) | List filters to current user's assignments. |
 | `filter_assigner_all` | User clicks "All" segment | URL replaces; refetch without `assigner_id` filter. |
 | `editor_modal_create_open` | "+ New assignment" clicked | `AssignmentEditor` mounts in create variant; form pristine; `MultiTargetPicker` empty. |
-| `editor_modal_edit_open` | Edit clicked on a row (row click) | `AssignmentEditor` mounts in edit variant; form pre-filled from `useQuery(adminKeys.assignments.detail(id))`; `LoopChoice` disabled if assignment has started. |
+| `editor_edit_dropped_v1` | Edit row action | **v1 LOCKED — edit dropped per §E item 9.** Row action renders as `Delete` only; existing assignments are deleted + recreated. Edit-mode editor + loop-mode-after-start lock pathway deferred to v1.x. |
 | `editor_picker_groups_tab` | User clicks Groups tab in MultiTargetPicker | Tab shows group candidates; clicking a group adds it as a chip + count footer updates. |
 | `editor_picker_testees_tab` | User clicks Testees tab | Tab shows testee candidates. |
 | `editor_picker_search_all` | User clicks Search all tab | Search across all users (regardless of role) + all groups. |
@@ -752,10 +752,9 @@ type AssignmentFormInput = z.infer<typeof assignmentFormSchema>;
 | `editor_test_path_picker_changed` | User picks an option in the test/path dropdown | Form's `pill_id` or `learning_path_id` updates per the parsing rule in §4. |
 | `editor_deadline_changed` | User picks a date | ISO `deadline` composed on submit; time defaults to 17:00 if user only picks date. |
 | `editor_loop_changed` | User clicks a LoopChoice card | `loop_mode` updates. |
-| `editor_loop_locked_post_start` | Edit modal opens for an assignment with `started_at !== null` (per backend signal §H (b) item 17) | LoopChoice cards both disabled with opacity 0.7; tooltip "Loop mode locks once any testee starts." |
-| `editor_submit_submitting` | rhf `isSubmitting` | "Create assignment" / "Save changes" button pulse-dot + label; fields disabled. |
+| `editor_submit_submitting` | rhf `isSubmitting` | "Create assignment" button pulse-dot + label; fields disabled. |
 | `editor_submit_validation_errors` | zod or 422 | Pattern A inline errors. |
-| `editor_submit_success` | 2xx | Toast.info("Assignment created — {N} testees will be notified.") (create) or toast.info("Assignment updated") (edit); modal closes; list refetches. |
+| `editor_submit_success` | 2xx | Toast.info("Assignment created — {N} testees will be notified."); modal closes; list refetches. |
 | `delete_confirm_open` | Delete row action clicked | `DeleteAssignmentModal` mounts with summary card + danger banner. |
 | `delete_submitting` | User clicks Delete in confirm | DELETE fires; on 2xx toast.info("Assignment deleted") + row disappears. |
 | `error` | List or detail query throws | Pattern C boundary. |
@@ -821,22 +820,13 @@ Scenario: Deadline date without time prompts validation
 ```
 
 ```gherkin
-Scenario: Admin edits an in-flight assignment — loop_mode is locked
-  Given an assignment with started_at !== null is in the list
-  When the admin clicks Edit on that row
-  Then AssignmentEditor mounts in edit variant
-  And the LoopChoice cards are disabled with opacity 0.7
-  And the tooltip "Loop mode locks once any testee starts." renders on hover
-  And other fields (deadline, is_mandatory) remain editable
+# DEFERRED v1.x — Admin edits an in-flight assignment — loop_mode is locked
+# (See §E item 9 — assignment edit flow dropped from v1.)
 ```
 
 ```gherkin
-Scenario: Backend 422 on loop_mode PATCH-after-start
-  Given the LoopChoice cards are disabled in edit mode
-  And the admin somehow submits a PATCH with a changed loop_mode (via raw HTTP)
-  When backend returns 422 with code "LOOP_MODE_LOCKED"
-  Then applyApiErrorToForm projects the error to root
-  And a Pattern B error toast surfaces with the backend message
+# DEFERRED v1.x — Backend 422 on loop_mode PATCH-after-start
+# (See §E item 9 — assignment edit flow dropped from v1.)
 ```
 
 ```gherkin
@@ -865,7 +855,7 @@ Scenario: Editor cancel with dirty form prompts confirm
   Then browser confirm("Discard unsaved changes?") fires
 ```
 
-(Eleven total scenarios mapped to §D.2 assignments integration tests.)
+(Nine active scenarios mapped to §D.2 assignments integration tests; two edit-mode scenarios deferred per §E item 9.)
 
 **7. Edge cases / gotchas**
 
@@ -877,6 +867,7 @@ Scenario: Editor cancel with dirty form prompts confirm
 - **Notification timing.** The success toast mentions "at the next reminder window" — backend cron handles delivery per AC-D26 + the cron schedule (`beat_schedule.py` from PR-024). Frontend just creates the assignment; no immediate-send affordance.
 - **`engagement_status` aggregate not in OpenAPI.** Progress column on the list — see §H (b) item 15.
 - **Test or path display in list.** Backend returns `pill_id` + `learning_path_id` on `AssignmentResponse`; frontend resolves them via cached `adminKeys.tests` / `adminKeys.paths` queries. N+1 risk: if list has 17 assignments referencing 17 distinct tests, frontend fires 17 detail queries unless backend embeds the names. **§H (b) item 20** — verify whether `AssignmentResponse` should be extended with `test_name` / `path_name` for list display, OR whether a single batch query suffices.
+- **LoopMode wire vs display.** Wire is `admin_reviewed` (snake) per OpenAPI `LoopMode` enum at `frontend/openapi/schema.json:7960–7967`; display copy is `admin-reviewed` (hyphen). Helper at `frontend/src/lib/identity/format-loop-mode.ts` is the single point of mapping; never assemble the hyphen form into a request body.
 
 **8. Visual reference**
 
@@ -911,7 +902,7 @@ Identity-side invalidation chains:
 
 ### C.2 `(admin)` route group + role guard
 
-Consumed from `fe-specs/FE-8-admin-catalogue.md §C.2` unchanged. Every page in this file mounts under `frontend/src/app/(admin)/{...}/page.tsx`.
+Consumed from `fe-specs/FE-8-admin-catalogue.md §C.2` unchanged. Every page in this file mounts under `frontend/src/app/(authed)/(admin)/{...}/page.tsx`.
 
 ### C.3 `applyApiErrorToForm` reuse
 
@@ -940,15 +931,16 @@ All four queries fire on AssignmentEditor mount (or hit cache from prior visits)
 - `frontend/src/lib/identity/derive-invited-status.test.ts` — heuristic test for `invited` derivation: pure function `deriveStatus(user)` → "active" | "invited" | "deactivated" per §B.1 §7 rules.
 - `frontend/src/lib/identity/dedup-assignees.test.ts` — pure function `dedupAssignees({testee_ids, group_ids, groupsMap})` → unique count. Tests overlap cases (testee in 2 groups, testee in group + direct selection).
 - `frontend/src/lib/identity/compose-deadline.test.ts` — pure function `composeDeadline(date, time, tz)` → UTC ISO. Tests for missing time, TZ conversion, future-date validation.
+- `frontend/src/lib/identity/format-loop-mode.test.ts` — round-trip test asserting `admin_reviewed` wire ↔ `admin-reviewed` display, and a regression guard that the hyphen form is never assembled into a request body.
 
 ### D.2 Page integration tests
 
 One test file per §B entry:
 
-- `frontend/src/app/(admin)/users/page.test.tsx` — §B.1 trios (11 scenarios).
-- `frontend/src/app/(admin)/groups/page.test.tsx` — §B.2 trios (7 scenarios).
-- `frontend/src/app/(admin)/groups/[groupId]/page.test.tsx` — §B.3 trios (10 scenarios).
-- `frontend/src/app/(admin)/assignments/page.test.tsx` — §B.4 trios (11 scenarios).
+- `frontend/src/app/(authed)/(admin)/users/page.test.tsx` — §B.1 trios (11 scenarios).
+- `frontend/src/app/(authed)/(admin)/groups/page.test.tsx` — §B.2 trios (7 scenarios).
+- `frontend/src/app/(authed)/(admin)/groups/[groupId]/page.test.tsx` — §B.3 trios (10 scenarios).
+- `frontend/src/app/(authed)/(admin)/assignments/page.test.tsx` — §B.4 trios (11 scenarios).
 
 Total: 39 identity-side integration scenarios.
 
@@ -972,14 +964,17 @@ Single test, exercises every page in the identity file + cross-file assignment e
 
 | # | Placeholder | Location | Action before production |
 |---|---|---|---|
-| 1 | `last_active_at` column on Users list (derived field not in `UserResponse`) | `(admin)/users/_components/users-table.tsx` | Backend adds `last_active_at` to `UserResponse` (§H (b) item 1). v1 placeholder: render "—" with `// TODO(FE-8-build)`. |
-| 2 | Group membership stats (Members count works; Assignments bound / Avg engagement / Avg competence don't) | `(admin)/groups/[groupId]/_components/group-membership-view.tsx` | Backend lands the 3 derived fields on `GroupResponse` per §H (b) item 14. v1 placeholder: render "—" for the 3 missing stats. |
-| 3 | Member picker fetches full directory (no server-side search) | `(admin)/groups/[groupId]/_components/member-picker-modal.tsx` | v1 fetches up to 200 users client-side. For tenants >200 users (deferred — SiteMesh v1 = single small tenant), v1.x adds server-side picker search. |
-| 4 | Bulk invite CTA disabled | `(admin)/users/page.tsx` | Disabled button + "Coming in v1.x" tooltip. Bulk CSV/paste invite deferred. |
+| 1 | `last_active_at` column on Users list (derived field not in `UserResponse`) | `(authed)/(admin)/users/_components/users-table.tsx` | Backend adds `last_active_at` to `UserResponse` (§H (b) item 1). v1 placeholder: render "—" with `// TODO(FE-8-build)`. |
+| 2 | Group membership stats (Members count works; Assignments bound / Avg engagement / Avg competence don't) | `(authed)/(admin)/groups/[groupId]/_components/group-membership-view.tsx` | Backend lands the 3 derived fields on `GroupResponse` per §H (b) item 14. v1 placeholder: render "—" for the 3 missing stats. |
+| 3 | Member picker fetches full directory (no server-side search) | `(authed)/(admin)/groups/[groupId]/_components/member-picker-modal.tsx` | v1 fetches up to 200 users client-side. For tenants >200 users (deferred — SiteMesh v1 = single small tenant), v1.x adds server-side picker search. |
+| 4 | Bulk invite CTA disabled | `(authed)/(admin)/users/page.tsx` | Disabled button + "Coming in v1.x" tooltip. Bulk CSV/paste invite deferred. |
 | 5 | No per-user admin profile drill-down | `/admin/users/[userId]` (not implemented) | v1 has no admin-scoped user profile page; admin can only Edit / Deactivate via the list modal. v1.x adds per-user attempt history + competence rollup (FE-7 admin variant). |
-| 6 | No group delete affordance | `(admin)/groups/page.tsx` | Backend has `DELETE /v1/groups/{id}`; design surfaces no Delete row action. v1 ships without. v1.x adds with cascade-handling UX. |
-| 7 | `engagement_status` aggregate ("Progress" column on Assignments list) — derived field not in `AssignmentResponse` | `(admin)/assignments/_components/assignments-table.tsx` | Backend adds aggregate (§H (b) item 15). v1 placeholder: render "—" or "TBD". |
-| 8 | `test_name` / `path_name` on AssignmentResponse for list display | `(admin)/assignments/_components/assignments-table.tsx` | Backend adds resolved names OR batch query (§H (b) item 20). v1 best-effort: per-row `useQuery` for the test/path detail (N+1 with caching mitigates). |
+| 6 | No group delete affordance | `(authed)/(admin)/groups/page.tsx` | Backend has `DELETE /v1/groups/{id}`; design surfaces no Delete row action. v1 ships without. v1.x adds with cascade-handling UX. |
+| 7 | `engagement_status` aggregate ("Progress" column on Assignments list) — derived field not in `AssignmentResponse` | `(authed)/(admin)/assignments/_components/assignments-table.tsx` | Backend adds aggregate (§H (b) item 15). v1 placeholder: render "—" or "TBD". |
+| 8 | `test_name` / `path_name` on AssignmentResponse for list display | `(authed)/(admin)/assignments/_components/assignments-table.tsx` | Backend adds resolved names OR batch query (§H (b) item 20). v1 best-effort: per-row `useQuery` for the test/path detail (N+1 with caching mitigates). |
+| 9 | Assignment **edit** flow dropped from v1 | `(authed)/(admin)/assignments/_components/assignment-editor.tsx` | LOCKED v1: editor mounts in `create` and `delete` modes only. Existing assignments can be deleted + recreated; in-place edit deferred to v1.x. `PATCH /v1/assignments/{id}` stays wired in the OpenAPI but no FE consumer ships in v1. |
+| 10 | Resend-setup row action disabled until backend lands `POST /v1/users/{user_id}/resend-setup` | `(authed)/(admin)/users/_components/users-table.tsx` | LOCKED v1: row action renders with `disabled aria-disabled tooltip="Resend coming with backend endpoint"`; endpoint + UI deferred to v1.x. Promotes the prior §H (b) item 5 to LOCKED placeholder. |
+| 11 | Client-side filter fallback for `/v1/users`, `/v1/groups`, `/v1/groups/{id}/members`, `/v1/assignments` when server-side `q` / `role` / `status` / `assigner_id` params are not wired | `(authed)/(admin)/{users,groups,assignments}/*` | LOCKED v1 fallback: fire the list query without server-side filter params; filter the cursor-paginated cache client-side. Server-side filtering deferred to v1.x. |
 
 ---
 
@@ -1026,7 +1021,7 @@ The cross-walk surfaced 20 candidate items. After review, they're classified int
 
 ### (a) BLOCKERS for the FE-8 identity build session — must land before the build session opens
 
-1. **Inherits `fe-specs/FE-8-admin-catalogue.md §H (a) item 1`** — `applyApiErrorToForm` path drift in FE-1 spec. Identity file has 5+ forms relying on the canonical path; the cross-spec one-line FE-1 fix unblocks this file too.
+None. Phase 0 spec-clarification PR resolved all blockers prior to build session open (FE-1's `applyApiErrorToForm` path was already canonical at `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` — no FE-1 amendment required).
 
 ### (b) BUILD-SESSION VERIFICATION TASKS — front-loaded at the start of the FE-8 identity build session
 
@@ -1035,20 +1030,20 @@ The build session opens with a verification step before any code lands: read the
 1. **`last_active_at` field on `UserResponse`.** Not in `frontend/openapi/schema.json:3459–3511`. Verify backend has the field; if not, v1 placeholder per §E.1.
 2. **`invited` status derivation.** Backend `UserStatus` enum is `active|deactivated` only. Spec heuristic: `active && privacy_ack_at === null && last_active_at === null` → `invited`. Verify with backend whether a `setup_consumed_at` / `invited_at` timestamp exists; if so, deterministic derivation; if not, the heuristic ships with `// TODO(FE-8-build)`.
 3. **Deactivate `reason` field.** Backend endpoint accepts no body. Design's Reason textarea is frontend-only in v1. Confirm before build whether to keep the field (captured-but-not-sent for future v1.x) or drop it from the modal.
-4. **Filter query params** (`q`, `role`, `status` on `/v1/users`; `q` on `/v1/groups`; `q` on `/v1/groups/{id}/members`; `assigner_id` on `/v1/assignments`). Verify which params are wired server-side; client-side fallback if missing.
-5. **`POST /v1/users/{user_id}/resend-setup` endpoint.** Not surfaced in the OpenAPI read. Verify; if absent, the Resend row action is disabled with placeholder until backend lands the endpoint.
+4. **Filter query params** (`q`, `role`, `status` on `/v1/users`; `q` on `/v1/groups`; `q` on `/v1/groups/{id}/members`; `assigner_id` on `/v1/assignments`). RESOLVED by §E item 11 — client-side filter fallback LOCKED for v1; server-side filtering deferred to v1.x.
+5. **`POST /v1/users/{user_id}/resend-setup` endpoint.** RESOLVED by §E item 10 — row action LOCKED disabled with tooltip until backend lands the endpoint; v1.x re-enables.
 6. **`name` required-or-optional on `AdminCreateUserRequest`.** OpenAPI declares `name`; verify if it's required or optional. Design treats it as optional ("First name (optional)" — `admin-authoring.jsx:451`). Spec body matches design.
 7. **`EMAIL_TAKEN` business error code.** Spec assumes 422 with field-level detail OR a top-level code. Verify backend's actual error shape on duplicate email.
 8. **`role` enum.** OpenAPI declares `role: string` (no enum constraint). Spec body assumes `"admin" | "testee"` per AC-D2. Verify backend rejects other values via 422.
 9. **Self-deactivation backend guard.** Verify backend 422s if admin tries to deactivate themselves. Frontend already hides the Deactivate action for `user.id === auth.user.id`.
-10. **`shell.jsx` admin nav id gaps.** `groups` + `assignments` not in `shell.jsx:15`'s 7-id list. Build session adds top-level nav ids OR nests under Users. Decide; if structural-addition, fold into handover.
+10. **`shell.jsx` admin nav id gaps.** RESOLVED by `fe-specs/FE-8-admin-catalogue.md §C.2` LOCKED ADMIN_NAV addition — `groups` and `assignments` are top-level rail ids in the 11-item nav.
 11. **System group membership is server-derived.** Verify `member_ids[]` on `GroupResponse` for `is_system === true` rows is computed server-side and read-only.
 12. **`AddGroupMemberRequest` schema name.** Verify the request body shape for `POST /v1/groups/{id}/members` — likely `{user_ids: string[]}` per design.
 13. **`GroupMemberResponse.joined_at` field.** Verify the response shape for `GET /v1/groups/{id}/members` includes per-membership `joined_at` timestamp.
 14. **Group-level stat derivations** (`assignment_count`, `avg_engagement`, `avg_competence` on `GroupResponse`). Not in OpenAPI. Verify backend can add OR confirm v1 ships with "—" placeholders.
 15. **Assignment `engagement_status` aggregate on `AssignmentResponse`.** Design shows "8/14 started · 3 completed" — derived field. Verify backend exposes; v1 placeholder otherwise.
 16. **Assignment dedup of testees-in-groups.** Verify whether `POST /v1/assignments` server-side dedups `testee_ids ∩ group.member_ids` OR whether FE must dedup before POST.
-17. **`AssignmentResponse.started_at` or equivalent signal for loop_mode lock.** Design line 25 locks loop_mode after start. Verify backend exposes a signal (added field on `AssignmentResponse`, OR backend 422 on PATCH-loop-mode-after-start).
+17. **`AssignmentResponse.started_at` or equivalent signal for loop_mode lock.** RESOLVED by §E item 9 — edit flow dropped from v1; loop-mode-after-start lock pathway deferred along with the rest of edit-mode UX. Re-verify with backend before v1.x edit-mode revival.
 18. **Assignment-to-test pill_id resolution.** Verify whether assignment.pill_id is set directly by FE (FE resolves test→pill) OR by backend (FE sends test_id; backend resolves). OpenAPI `AssignmentCreate` doesn't have `test_id`; spec assumes FE-resolves.
 19. **Assignment `difficulty` field source.** Verify whether admin sets difficulty per assignment OR backend auto-derives from chosen test's `target_difficulty`. Design doesn't surface the field explicitly.
 20. **Assignment list display — test/path name embedding.** Verify whether `AssignmentResponse` embeds `test_name` / `path_name` OR FE must per-row fetch. N+1 risk for the list.

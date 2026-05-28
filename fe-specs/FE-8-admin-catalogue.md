@@ -1,17 +1,17 @@
 # FE-8 — Admin catalogue + learning paths (detail spec)
 
-> **Status:** plan-mode authored, ready for build session (subject to §H (a) blockers — the cross-spec drift on `applyApiErrorToForm` path in `fe-specs/FE-1-auth.md:538` and the `PillProposalResponse.payload` untyped-object contract must resolve before the FE-8 catalogue build session opens). FE-1..FE-7 builds must also land first per FE_ROADMAP dependency order.
+> **Status:** plan-mode authored, ready for build session (Phase 0 spec-clarification PR resolved the cross-spec drift and locked the `PillProposalResponse.payload` rendering contract for v1; build session may open). FE-1..FE-7 builds must also land first per FE_ROADMAP dependency order.
 > **Owns:** the admin catalogue surface (`/admin/catalogue` — 4 tabs: pills, subjects, proposals, safety) + learning-path authoring (`/admin/paths` list, `/admin/paths/[id]/edit` editor). **Also owns the canonical `adminKeys` query-key library** (§C.1) consumed by reference from `fe-specs/FE-8-admin-identity.md` and `fe-specs/FE-8-admin-tests.md`.
 > **PR target:** `PR-NNN-fe8-admin-authoring` (one squash PR closes the phase; ships three sibling docs — this file + `fe-specs/FE-8-admin-identity.md` + `fe-specs/FE-8-admin-tests.md`).
 > **Anchors:** AC-D2 (admin-driven creation), AC-D7 (pill catalogue + discoverable + safety_relevant + difficulty range), AC-D8 (AI-proposed pills — approve/reject, no edit-then-approve in v1), AC-D17 (frozen-test snapshot — informs pill lock-on-use UX), AC-D21 (safety pills — no AI teaching material, curated external links via bootstrap cron), AC-CD11 (admin-only surfaces), AC-CD19 (FE stack lock), AC-CD20 (`(admin)` route group + role guard → `/403`), AC-CD21 (centralised query keys + form helper + error envelope).
 >
-> This is the **eighth per-page FE detail spec**, first of three siblings (catalogue / identity / tests) for the FE-8 admin authoring phase. Template inheritance: per-page §B from `fe-specs/FE-1-auth.md:50–60` (verbatim — eight-point template per page); FE-2's `(admin)` route group + AdminGate primitive consumed unchanged per `fe-specs/FE-2-shell.md`; FE-3's cursor pagination + filter-bar + URL-state-sync patterns reused (`fe-specs/FE-3-content.md:527–644`); FE-1's `applyApiErrorToForm` precedent consumed by every modal form (path: `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` + `fe-specs/FE-3-content.md:16` + `fe-specs/FE-4-runner.md:16` consensus — **NOT** FE-1:538's stale `lib/forms/` path; cross-spec drift surfaced in §H (a)). Three-file split selected per `fe-specs/FE-1-auth.md:747` escape clause; user-locked at plan time. Deviating from the template in FE-8+ is itself spec drift.
+> This is the **eighth per-page FE detail spec**, first of three siblings (catalogue / identity / tests) for the FE-8 admin authoring phase. Template inheritance: per-page §B from `fe-specs/FE-1-auth.md:50–60` (verbatim — eight-point template per page); FE-2's `(admin)` route group + AdminGate primitive consumed unchanged per `fe-specs/FE-2-shell.md`; FE-3's cursor pagination + filter-bar + URL-state-sync patterns reused (`fe-specs/FE-3-content.md:527–644`); FE-1's `applyApiErrorToForm` precedent consumed by every modal form (canonical path: `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024`). Three-file split selected per `fe-specs/FE-1-auth.md:747` escape clause; user-locked at plan time. Deviating from the template in FE-8+ is itself spec drift.
 
 ---
 
 ## 0. Context
 
-FE-0 (PR-032) shipped the Next.js 15 / App Router scaffold + typed `openapi-fetch` client. PR-033 locked AC-CD20..24. FE-1..FE-7 **spec-merged** auth, shell, content, runner, streaming, results, profile — none built yet; FE-8 presumes their builds land in roadmap order before this build session opens (§H (a) item 1).
+FE-0 (PR-032) shipped the Next.js 15 / App Router scaffold + typed `openapi-fetch` client. PR-033 locked AC-CD20..24. FE-1..FE-7 **spec-merged** auth, shell, content, runner, streaming, results, profile — none built yet; FE-8 presumes their builds land in roadmap order before this build session opens.
 
 FE-8 is the admin authoring phase — the first form-heavy phase since FE-1 auth. It owns the complete admin CRUD suite. Per FE-1 §G escape clause (`fe-specs/FE-8-admin-authoring-{...}.md` when a single file exceeds ~2500 lines), FE-8 ships as **three sibling spec files**:
 
@@ -23,7 +23,7 @@ The three files share a single PR. Three-file split chosen over the FE-1:747 exa
 
 **FE-N spec preconditions FE-8 extends, not replaces** (the contracts FE-8 builds against — quote and cite, do not re-decide):
 
-- **FE-1 `applyApiErrorToForm` helper** at `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` + `fe-specs/FE-3-content.md:16` + `fe-specs/FE-4-runner.md:16`. Every FE-8 modal form uses this helper. FE-1's body locks the signature at `fe-specs/FE-1-auth.md:558–562`:
+- **FE-1 `applyApiErrorToForm` helper** at `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024`. Every FE-8 modal form uses this helper. FE-1's body locks the signature at `fe-specs/FE-1-auth.md:558–562`:
   ```ts
   export function applyApiErrorToForm<T extends FieldValues>(
     err: unknown,
@@ -33,7 +33,7 @@ The three files share a single PR. Three-file split chosen over the FE-1:747 exa
   ```
 - **FE-1 error patterns A/B/C** at `fe-specs/FE-1-auth.md:567–658`: Pattern A (inline + root via `setError`), Pattern B (sonner toast with severity-coded auto-dismiss 3s/5s/7s), Pattern C (full-page boundary card with wave icon + "Try again" + "Go to dashboard"). FE-8 uses A for modal forms, B for save-success / non-field error surfacing, C for `(admin)` route-group error boundary.
 - **FE-1 five-posture route-guard matrix** at `fe-specs/FE-1-auth.md:603–611`. Posture 4 (authed, role mismatch — e.g. testee hits `/admin/catalogue`) redirects to `/403`. FE-8's `(admin)` route group consumes the matrix unchanged.
-- **FE-2 `(admin)` route group + AdminGate** at `fe-specs/FE-2-shell.md` (B.14 — admin shell composition; admin role guard at layout level). FE-8 mounts pages under `frontend/src/app/(admin)/` without adding new guard plumbing.
+- **FE-2 `(admin)` route group + AdminGate** at `fe-specs/FE-2-shell.md` (B.14 — admin shell composition; admin role guard at layout level). FE-8 mounts pages under `frontend/src/app/(authed)/(admin)/` without adding new guard plumbing.
 - **FE-2 primitives** consumed unchanged: `Pill` (FE-2 — used for status badges, role chips, mode pills), `Stat` (FE-2 — used for group-membership stats, test-list aggregate stats), `PageHeader` (FE-2 — eyebrow + serif-italic title pattern), `Icon` (lucide-react). shadcn install set from FE-2 (`Card`, `Button`, `Input`, `Label`, `Select`, `Dialog`, `DropdownMenu`, `Tabs`, `Toast`, `Skeleton`) — no new shadcn primitives needed for FE-8.
 - **FE-3 cursor pagination pattern** at `fe-specs/FE-3-content.md:634–636` — `useInfiniteQuery` with `getNextPageParam: (last) => last.meta.next_cursor` + `IntersectionObserver` sentinel. Every list table in FE-8 reuses this pattern unchanged. Backend `Page_T_` envelope contract at `frontend/openapi/schema.json` matches.
 - **FE-3 URL-state ↔ filter-state sync** at `fe-specs/FE-3-content.md:642–644` — `useRouter().replace()` (not `push`) so back-button doesn't accumulate filter noise. Catalogue's `?tab={tab}` tab state + paths/assignments filter state inherit this pattern.
@@ -52,7 +52,7 @@ The three files share a single PR. Three-file split chosen over the FE-1:747 exa
 - **Engagement queue, grade-review, ops dashboard, cost dashboard, adaptive-loop approve/reject.** FE-9 territory (`admin-ops.jsx` + `admin.jsx`). FE-8 ships no consumer for `/v1/admin/engagement/pending` (referenced from FE-3 §B.1) or for `/v1/admin/loop/*` operations. Out-of-scope surfaces explicitly excluded in §F.4.
 - **Subject deletion with cascade behaviour.** Backend exposes `DELETE /v1/subjects/{id}` (`frontend/openapi/schema.json:7879`); behaviour with pills attached is unspecified in the OpenAPI. v1 surfaces a delete affordance only when zero pills are attached to the subject; otherwise the delete button is disabled with a "subject has N pills" hint. Cascade-delete UX deferred to v1.x. Surfaced as §E item 3.
 
-**Additions to `(admin)/layout.tsx`:** none beyond what FE-2 mounts. The shared `(admin)` shell from FE-2 hosts all FE-8 pages unchanged.
+**Additions to `(authed)/(admin)/layout.tsx`:** none beyond what FE-2 mounts. The shared `(admin)` shell from FE-2 hosts all FE-8 pages unchanged.
 
 ---
 
@@ -60,13 +60,13 @@ The three files share a single PR. Three-file split chosen over the FE-1:747 exa
 
 | # | Capability | Route / file | Design source | Screenshot |
 |---|---|---|---|---|
-| 1 | Catalogue shell — 4-tab page with URL state `?tab={pills,subjects,proposals,safety}`, admin role guard | `(admin)/catalogue/page.tsx` | `admin-authoring.jsx:10–44` (`AdminAuthoringMock`) | `v6-fe8-17-pill-crud.png` (only the pills tab is screenshotted; other tabs §E.1) |
-| 2 | Pills tab — list + 5-variant modal (create / edit / submitting / errors / locked) | `(admin)/catalogue/_components/pills-tab.tsx` + `_components/pill-modal.tsx` | `admin-authoring.jsx:149–286` (`PillCrudMock`) | `v6-fe8-17-pill-crud.png` |
-| 3 | Subjects tab — list + simpler create/edit modal | `(admin)/catalogue/_components/subjects-tab.tsx` + `_components/subject-modal.tsx` | not in prototype — §E.1 design-reference gap | absent — §E.1 |
-| 4 | Proposals tab — AI-proposed pills queue with approve / reject row affordance (no modal, no edit-then-approve per AC-D8) | `(admin)/catalogue/_components/proposals-tab.tsx` | not in prototype — §E.1 design-reference gap | absent — §E.1 |
-| 5 | Safety tab — pills with `safety_relevant === true`, safety-override toggle reuses `SafetyToggle` from pill modal | `(admin)/catalogue/_components/safety-tab.tsx` | `admin-authoring.jsx:321–351` (`SafetyToggle` reused) | inherits row 2 |
-| 6 | Paths list — `/admin/paths` table view + 3-action row (Edit / Delete / new path button) | `(admin)/paths/page.tsx` + `_components/path-list.tsx` | `admin-authoring.jsx:767–803` (`PathListView`) | `v6-fe8-21-paths.png` |
-| 7 | Path editor — `/admin/paths/[id]/edit` two-column form (path details left + assigned-to + mechanics right) with drag-reorder pill rows | `(admin)/paths/[pathId]/edit/page.tsx` + `_components/path-editor.tsx` + `_components/path-pill-row.tsx` | `admin-authoring.jsx:805–916` (`PathEditor` + `PathPillRow`) | `v6-fe8-21-paths.png` |
+| 1 | Catalogue shell — 4-tab page with URL state `?tab={pills,subjects,proposals,safety}`, admin role guard | `(authed)/(admin)/catalogue/page.tsx` | `admin-authoring.jsx:10–44` (`AdminAuthoringMock`) | `v6-fe8-17-pill-crud.png` (only the pills tab is screenshotted; other tabs §E.1) |
+| 2 | Pills tab — list + 5-variant modal (create / edit / submitting / errors / locked) | `(authed)/(admin)/catalogue/_components/pills-tab.tsx` + `_components/pill-modal.tsx` | `admin-authoring.jsx:149–286` (`PillCrudMock`) | `v6-fe8-17-pill-crud.png` |
+| 3 | Subjects tab — list + simpler create/edit modal | `(authed)/(admin)/catalogue/_components/subjects-tab.tsx` + `_components/subject-modal.tsx` | not in prototype — §E.1 design-reference gap | absent — §E.1 |
+| 4 | Proposals tab — AI-proposed pills queue with approve / reject row affordance (no modal, no edit-then-approve per AC-D8) | `(authed)/(admin)/catalogue/_components/proposals-tab.tsx` | not in prototype — §E.1 design-reference gap | absent — §E.1 |
+| 5 | Safety tab — pills with `safety_relevant === true`, safety-override toggle reuses `SafetyToggle` from pill modal | `(authed)/(admin)/catalogue/_components/safety-tab.tsx` | `admin-authoring.jsx:321–351` (`SafetyToggle` reused) | inherits row 2 |
+| 6 | Paths list — `/admin/paths` table view + 3-action row (Edit / Delete / new path button) | `(authed)/(admin)/paths/page.tsx` + `_components/path-list.tsx` | `admin-authoring.jsx:767–803` (`PathListView`) | `v6-fe8-21-paths.png` |
+| 7 | Path editor — `/admin/paths/[id]/edit` two-column form (path details left + assigned-to + mechanics right) with drag-reorder pill rows | `(authed)/(admin)/paths/[pathId]/edit/page.tsx` + `_components/path-editor.tsx` + `_components/path-pill-row.tsx` | `admin-authoring.jsx:805–916` (`PathEditor` + `PathPillRow`) | `v6-fe8-21-paths.png` |
 
 Seven rows. Capability #1 is the route shell (4-tab page); capabilities #2–#5 are tab-content capabilities composed under #1 (each tab a distinct `_components/*-tab.tsx`); capability #6 is the paths-list route shell; capability #7 is the path-editor route shell with its drag-reorder row composed under §B.7 §2.
 
@@ -90,7 +90,7 @@ URL state declared on row #1: `?tab={pills,subjects,proposals,safety}` (default 
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/catalogue/page.tsx`. The `(admin)` route group exists per FE-2; the `catalogue/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- File: `frontend/src/app/(authed)/(admin)/catalogue/page.tsx`. The `(admin)` route group exists per FE-2; the `catalogue/` segment + its `error.tsx` boundary file are FE-8-introduced.
 - URL state: `?tab={pills|subjects|proposals|safety}` — default `pills` on mount if absent. Tab change calls `router.replace()` (not `push`) per FE-3 §C.7 precedent so back-button doesn't accumulate tab noise.
 - Server-side: static `<title>Catalogue · Acumen</title>` from `layout.tsx`. No `generateMetadata` dynamic-title in v1.
 - Nav-rail anchor: `shell.jsx:15` declares the admin nav id as `catalogue-admin` with label "Catalogue"; rail-highlight wiring per FE-2.
@@ -127,7 +127,7 @@ n/a — read-only shell. Tab selection is local + URL state, no form. TanStack Q
 | `tab_proposals_active` | `?tab=proposals` | `ProposalsTab` mounts. |
 | `tab_safety_active` | `?tab=safety` | `SafetyTab` mounts. |
 | `tab_invalid` | URL `?tab=foo` not in the four-valid set | Fall back to `pills` (default); `router.replace('?tab=pills')` clears stale param. No error banner; silent recovery. |
-| `error` | Any tab's query throws (non-404 — 5xx / network) | Pattern C boundary card mounts via `(admin)/catalogue/error.tsx`. Copy: "Couldn't load the catalogue." + "Try again" (resets boundary) + "Go to admin dashboard". |
+| `error` | Any tab's query throws (non-404 — 5xx / network) | Pattern C boundary card mounts via `(authed)/(admin)/catalogue/error.tsx`. Copy: "Couldn't load the catalogue." + "Try again" (resets boundary) + "Go to admin dashboard". |
 | `role_mismatch` | Testee role hits `/admin/catalogue` | AC-CD20 `(admin)` layout guard redirects to `/403` before page mount (FE-1 §C.4 five-posture matrix locked). |
 | `privacy_unacked` | Authed user with `privacy_ack_at === null` | AC-CD20 `(authed)` parent guard redirects to `/privacy` before the `(admin)` layout runs. |
 
@@ -197,7 +197,7 @@ Scenario: Initial fetch failure — Pattern C boundary
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/catalogue/_components/pills-tab.tsx`. Composed under `/admin/catalogue?tab=pills`. No own URL segment.
+- File: `frontend/src/app/(authed)/(admin)/catalogue/_components/pills-tab.tsx`. Composed under `/admin/catalogue?tab=pills`. No own URL segment.
 - Filter URL state: `?q={search}&subject={subjectId}&difficulty={d}&status={draft|published|all}` — debounced text search via `q`, segmented filter for subject, difficulty, status. All filter changes call `router.replace()` per FE-3 §C.7.
 - Modal state: NOT in URL (ephemeral). Modal-open state lives in `useState<{mode: 'create' | 'edit' | null, pillId?: string}>(null)` inside `PillsTab`.
 
@@ -218,7 +218,7 @@ Scenario: Initial fetch failure — Pattern C boundary
 
 | Endpoint | Purpose | Status |
 |---|---|---|
-| `GET /v1/pills?cursor={cursor}&limit=50&search={q}&subject_id={sid}` | List pills (cursor-paginated, server-side filters). Consumed by `PillsTable` via `useInfiniteQuery`. `staleTime: 30_000` per AC-CD21 default. | **Exists** at `frontend/openapi/schema.json:7129`. Returns `Page_PillResponse_`. **Filter query params confirmation pending — `search` + `subject_id` may not be wired server-side.** See §H (b) item 2. |
+| `GET /v1/pills?cursor={cursor}&limit=50&search={q}&subject_id={sid}` | List pills (cursor-paginated, server-side filters). Consumed by `PillsTable` via `useInfiniteQuery`. `staleTime: 30_000` per AC-CD21 default. | **Exists** at `frontend/openapi/schema.json:7129`. Returns `Page_PillResponse_`. **Filter query params confirmation pending — `search` + `subject_id` may not be wired server-side.** See §E item 7. |
 | `POST /v1/pills` | Create pill. Consumed by `PillModal` create variant. Returns `PillResponse`. | **Exists** at `frontend/openapi/schema.json:7263+`. Body: `PillCreate` schema. |
 | `PATCH /v1/pills/{pill_id}` | Edit pill. Consumed by `PillModal` edit variant. Returns updated `PillResponse`. | **Exists** at `frontend/openapi/schema.json:2377+`. Body: `PillUpdate` schema (all fields optional). |
 | `DELETE /v1/pills/{pill_id}` | Delete a pill. **Not wired in v1** — design uses `POST /v1/pills/{pill_id}/retire` (soft delete) for pills in use; hard delete only for never-used draft pills. See §H (b) item 1. | **Exists** at `frontend/openapi/schema.json:7263+` (DELETE) and `:7508` (retire endpoint). |
@@ -289,7 +289,7 @@ Submit handler:
 | `filter_search_typed` | User types in FilterBar text input | After 300ms debounce, `router.replace(?q={text})` fires; query refetches with new `q` param; pagination resets to first page. |
 | `filter_subject_changed` | User clicks a subject segment in FilterBar | `router.replace(?subject={subjectId})` fires; query refetches; pagination resets. |
 | `filter_difficulty_changed` | User picks a difficulty band in FilterBar | Same pattern as subject filter. |
-| `filter_status_changed` | User picks `Draft` / `Published` / `All` in FilterBar status filter | Same pattern. Client-side filter on `discoverable` field (server may not support — §H (b) item 2). |
+| `filter_status_changed` | User picks `Draft` / `Published` / `All` in FilterBar status filter | Same pattern. Client-side filter on `discoverable` field (server may not support — §E item 7). |
 | `modal_create_open` | User clicks "+ Add pill" CTA | `PillModal` mounts with `variant="create"`; form pristine; Subject dropdown populated from `useQuery(adminKeys.subjects.list())`. |
 | `modal_create_submitting` | User clicks "Create pill", rhf `isSubmitting === true` | Submit button shows pulse-dot + "Saving…"; fields disabled. |
 | `modal_create_validation_errors` | zod `safeParse` fails OR backend 422 | Inline errors render under each failing field per Pattern A; root error if any (toast Pattern B fallback for non-field errors). |
@@ -298,7 +298,7 @@ Submit handler:
 | `modal_success` | Save returns 2xx | Modal closes; `adminKeys.pills.all()` invalidated; toast.info("Pill saved"); list refetches. |
 | `modal_cancel` | User clicks Cancel | Modal closes without save; form state discarded. |
 | `modal_close_with_dirty` | User clicks Cancel with `formState.isDirty === true` | Browser-native `confirm()` "Discard unsaved changes?" before close. v1 simple; no custom dialog. |
-| `error` | List query throws (non-404) | Pattern C boundary card mounts via parent `(admin)/catalogue/error.tsx`. |
+| `error` | List query throws (non-404) | Pattern C boundary card mounts via parent `(authed)/(admin)/catalogue/error.tsx`. |
 
 **6. Acceptance criteria (Gherkin)**
 
@@ -402,9 +402,9 @@ Scenario: Cancel with dirty form prompts confirm
 
 **7. Edge cases / gotchas**
 
-- **`Used in` column derivation is not in `PillResponse`.** The OpenAPI `PillResponse` does not include `used_in_count` or similar. Two resolutions: (a) backend adds the field as a denormalised count, (b) frontend fires a parallel `GET /v1/tests?pill_id={id}` per row (N+1 problem). **§H (b) item 3 — verify backend has or will add `used_in_count` to `PillResponse` before build session opens.** v1 placeholder: render "—" in the column with a `// TODO(FE-8-build)` tag until the backend field lands.
+- **`Used in` column derivation is not in `PillResponse`.** The OpenAPI `PillResponse` does not include `used_in_count` or similar. **Resolved by §E item 8 LOCKED em-dash placeholder** with `data-testid="derived-count-pending"`; backend denormalised count deferred to v1.x.
 - **`Status: Draft | Published` mapping.** Design shows Draft / Published as a status dropdown; OpenAPI `PillResponse` has no `status` field but has `discoverable: boolean`. Tentative mapping: `discoverable=false` → Draft, `discoverable=true` → Published. **§H (b) item 7 — verify with backend that this is the canonical mapping (not a separate `status` enum).**
-- **Filter query params may not be wired server-side.** OpenAPI schema for `GET /v1/pills` parameters list isn't fully reproduced in this spec — `q` and `subject_id` may not exist. **§H (b) item 2 — verify the parameter set; if missing, filtering moves client-side with a warn note in §E.5.**
+- **Filter query params may not be wired server-side.** OpenAPI schema for `GET /v1/pills` parameters list isn't fully reproduced in this spec — `q` and `subject_id` may not exist. **Resolved by §E item 7 LOCKED v1 client-side filter fallback.**
 - **Modal-as-overlay, not modal-as-route.** Modal state is `useState`, not URL. Refreshing the page closes the modal; intentional v1 behaviour. Future v1.x may add deep-link modal state.
 - **`Cancel with dirty` uses browser `confirm()`.** Simple v1; deferred custom dialog to v1.x. shadcn `AlertDialog` is in FE-2's installed set but design doesn't show a custom confirm flow for this case.
 - **Optimistic updates not used.** All mutations wait for backend response before invalidating. Simpler error handling; design doesn't require optimistic UI.
@@ -426,7 +426,7 @@ Scenario: Cancel with dirty form prompts confirm
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/catalogue/_components/subjects-tab.tsx`. Composed under `/admin/catalogue?tab=subjects`.
+- File: `frontend/src/app/(authed)/(admin)/catalogue/_components/subjects-tab.tsx`. Composed under `/admin/catalogue?tab=subjects`.
 - Filter URL state: `?q={search}` (single text search; subjects don't have nested taxonomy in v1).
 - Modal state: ephemeral `useState`, not URL.
 
@@ -445,7 +445,7 @@ Scenario: Cancel with dirty form prompts confirm
 
 | Endpoint | Purpose | Status |
 |---|---|---|
-| `GET /v1/subjects?cursor={cursor}&limit=50&q={text}` | List subjects. Consumed by `SubjectsTable`. | **Exists** at `frontend/openapi/schema.json:7636`. Returns `Page_SubjectResponse_`. `q` query param verification — §H (b) item 2. |
+| `GET /v1/subjects?cursor={cursor}&limit=50&q={text}` | List subjects. Consumed by `SubjectsTable`. | **Exists** at `frontend/openapi/schema.json:7636`. Returns `Page_SubjectResponse_`. `q` query param verification — §E item 7. |
 | `POST /v1/subjects` | Create subject. Consumed by `SubjectModal` create. | **Exists** at `frontend/openapi/schema.json:7636+` (POST verb). Body: `SubjectCreate` schema. |
 | `PATCH /v1/subjects/{subject_id}` | Edit subject. Consumed by `SubjectModal` edit. | **Exists** at `frontend/openapi/schema.json:7770+`. Body: `SubjectUpdate`. |
 | `DELETE /v1/subjects/{subject_id}` | Delete subject. Behaviour with attached pills is unspecified; v1 only fires when pill count is zero. | **Exists** at `frontend/openapi/schema.json:7879`. v1 gates by client-side pill-count check. §H (b) item 5. |
@@ -538,7 +538,7 @@ Scenario: Subject filter by text search
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/catalogue/_components/proposals-tab.tsx`. Composed under `/admin/catalogue?tab=proposals`.
+- File: `frontend/src/app/(authed)/(admin)/catalogue/_components/proposals-tab.tsx`. Composed under `/admin/catalogue?tab=proposals`.
 - Filter URL state: `?status={pending|approved|rejected|all}` (default `pending`). No text search in v1 (proposal volume is low).
 - Modal state: NO modal in v1. Approve / reject fire as inline row actions per the "no edit-then-approve in v1" rule (AC-D8 + `FE_ROADMAP.md:163`).
 
@@ -548,7 +548,7 @@ Scenario: Subject filter by text search
 - **New in this PR:**
   - `ProposalsTab` — top-level tab. Renders status segmented filter + `ProposalsTable`.
   - `ProposalsTable` — columns: Created at (relative), Pill payload preview (name + subject + brief — extracted from `proposal.payload`), Status badge (Pending / Approved / Rejected pill), Approve + Reject row actions (rendered only when `status === "pending"`). Cursor-paginated per FE-3 §C.5.
-  - `ProposalDetailDrawer` (right-side drawer, NOT modal) — opens when admin clicks a proposal row. Shows full `payload` as a read-only display (formatted JSON or structured fields, depending on `payload` shape — see §H (a) item 2). Drawer has Approve + Reject buttons at the bottom.
+  - `ProposalDetailDrawer` (right-side drawer, NOT modal) — opens when admin clicks a proposal row. Shows full `payload` via `parse-proposal-payload.ts` (LOCKED v1 contract per §H (a)) — recognised structured fields as labelled rows; unrecognised shapes as formatted JSON. Drawer has Approve + Reject buttons at the bottom.
 - **shadcn primitives installed:** `Sheet` (shadcn drawer). **Add to FE-2's installed set; AC-CD-structural addition fold.** Note in §F.3.
 - **Design primitives reused:** `Pill` for status badges. `.tbl`, `.card`, `.t-meta`, `.btn` per FE-2.
 
@@ -556,7 +556,7 @@ Scenario: Subject filter by text search
 
 | Endpoint | Purpose | Status |
 |---|---|---|
-| `GET /v1/pill-proposals?cursor={cursor}&limit=50&status={status}` | List pill proposals. Consumed by `ProposalsTable`. | **Exists** at `frontend/openapi/schema.json:6860`. Returns `Page_PillProposalResponse_`. `status` query param verification — §H (b) item 2. |
+| `GET /v1/pill-proposals?cursor={cursor}&limit=50&status={status}` | List pill proposals. Consumed by `ProposalsTable`. | **Exists** at `frontend/openapi/schema.json:6860`. Returns `Page_PillProposalResponse_`. `status` query param verification — §E item 7. |
 | `POST /v1/pill-proposals/{proposal_id}/approve` | Approve a proposal — backend converts the proposal payload into a real pill row. | **Exists** at `frontend/openapi/schema.json:6994`. Empty body. Returns updated `PillProposalResponse` with `status="approved"`. |
 | `POST /v1/pill-proposals/{proposal_id}/reject` | Reject a proposal. | **Exists** at `frontend/openapi/schema.json:7053`. Empty body. Returns updated `PillProposalResponse` with `status="rejected"`. |
 
@@ -593,7 +593,7 @@ const rejectMutation = useMutation({
 |---|---|---|
 | `list_loading` / `list_empty_no_pending` / `list_happy_first_page` / `list_loading_more` / `list_happy_no_more` | (mirrors PillsTab list states) | Empty state copy when status filter is `pending` and zero results: "No proposals waiting for review — AI-proposed pills will appear here as the catalogue evolves." |
 | `filter_status_changed` | Admin clicks Approved / Rejected / All segment | URL replaces; refetch. |
-| `drawer_open` | Admin clicks a row | `ProposalDetailDrawer` mounts from the right (`Sheet`). Reads `proposal.payload` (untyped `object` per `frontend/openapi/schema.json:2230–2239` — §H (a) item 2). Renders structured fields if payload shape is known, otherwise formatted JSON. |
+| `drawer_open` | Admin clicks a row | `ProposalDetailDrawer` mounts from the right (`Sheet`). Reads `proposal.payload` via `parse-proposal-payload.ts` (LOCKED v1 contract per §H (a)). Renders structured fields if payload shape is recognised, otherwise formatted JSON. |
 | `approve_submitting` | Admin clicks Approve (from row or drawer) | Button shows spinner; row dims; on success the proposal status flips to "approved" + a new pill appears in `/admin/catalogue?tab=pills`. |
 | `reject_submitting` | Admin clicks Reject | Similar to approve; proposal status flips to "rejected". |
 | `approve_error` / `reject_error` | Mutation throws | Pattern B error toast surfaces; row remounts to pending state. |
@@ -666,7 +666,7 @@ Scenario: No edit-then-approve affordance in v1
 
 **7. Edge cases / gotchas**
 
-- **`PillProposalResponse.payload` is untyped (`object`).** `frontend/openapi/schema.json:2230–2239` declares `payload: object | null`. The drawer renders defensively: if `payload` has known fields (name, subject hint, description, difficulty hint), render structured rows; otherwise fall back to formatted JSON. **§H (a) item 2 — request backend types the payload contract before build session opens, OR confirm "formatted JSON fallback is acceptable for v1".**
+- **`PillProposalResponse.payload` rendering — LOCKED v1 contract** per §H (a). The drawer uses `parse-proposal-payload.ts` to render recognised structured fields (`name`, `subject_hint`, `description`, `difficulty_hint`, `related_pill_ids`) as labelled rows; unrecognised shapes fall back to formatted JSON. Backend typing of the payload discriminated union is deferred to v1.x.
 - **Approve creates a pill — but with what subject?** If the proposal payload contains a subject suggestion, the backend resolves it to a `subject_id` at approve time. If subject suggestion is missing, backend behaviour is unclear — does it 422 or create with a default subject? **§H (b) item 8 — verify approve-without-subject behaviour.**
 - **Reject is final in v1.** No undo affordance. Rejected proposals stay in the list (filterable via status filter) but cannot be reverted to pending. Design doesn't show an "Unreject" path. Surfaced as §F.2.
 - **Drawer over modal.** Chose drawer (`Sheet`) over modal because the payload may be lengthy (multi-paragraph description, difficulty rationale, related pills suggestions) and drawers handle scrolling better. Modal-as-overlay still used for pill / subject CRUD because those forms are short.
@@ -681,7 +681,7 @@ Scenario: No edit-then-approve affordance in v1
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/catalogue/_components/safety-tab.tsx`. Composed under `/admin/catalogue?tab=safety`.
+- File: `frontend/src/app/(authed)/(admin)/catalogue/_components/safety-tab.tsx`. Composed under `/admin/catalogue?tab=safety`.
 - Filter URL state: `?q={search}&subject={subjectId}` (no status filter — all rows are `safety_relevant=true` by definition).
 - Modal state: ephemeral confirm modal for override-off toggle (high-impact action — see §5).
 
@@ -690,7 +690,7 @@ Scenario: No edit-then-approve affordance in v1
 - **Scaffold reused:** same as `PillsTab` §2.
 - **New in this PR:**
   - `SafetyTab` — top-level tab. Renders `FilterBar` + `SafetyPillsTable`.
-  - `SafetyPillsTable` — columns: Pill name, Subject, Override status (Auto-derived / Admin override since {date}), Toggle action (flips `safety_relevant` via `POST /v1/pills/{id}/safety`), Edit row action (opens `PillModal` from B.2). Cursor-paginated per FE-3 §C.5.
+  - `SafetyPillsTable` — columns: Pill name, Subject, Override status (Auto-derived / Admin override since {date}), Toggle action (flips `safety_relevant` via `PATCH /v1/pills/{id}/safety`), Edit row action (opens `PillModal` from B.2). Cursor-paginated per FE-3 §C.5.
   - `SafetyOverrideConfirmModal` — confirmation modal when toggling OFF (i.e., admin sets `safety_relevant=false` on a pill currently `true`). High-impact because it re-enables AI teaching material generation per AC-D21. Toggling ON has no confirm step (additive — adds safety treatment).
 - **shadcn primitives installed:** none beyond FE-2's set + `Sheet` added in B.4.
 - **Design primitives reused:** `Pill` (FE-2) for the "Safety" badge + override-source badge ("Auto" / "Admin"). `SafetyToggle` from B.2 reused.
@@ -699,8 +699,8 @@ Scenario: No edit-then-approve affordance in v1
 
 | Endpoint | Purpose | Status |
 |---|---|---|
-| `GET /v1/pills?cursor={cursor}&limit=50&safety_relevant=true&q={text}&subject_id={sid}` | List safety pills only. Consumed by `SafetyPillsTable`. | **Exists** (same endpoint as B.2). `safety_relevant=true` filter param verification — §H (b) item 2. |
-| `POST /v1/pills/{pill_id}/safety` | Toggle the safety_relevant flag. Body: `{ safety_relevant: boolean }`. | **Exists** at `frontend/openapi/schema.json:7567`. Request schema `PillSafetyOverride` at `:2363`. Returns updated `PillResponse`. |
+| `GET /v1/pills?cursor={cursor}&limit=50&safety_relevant=true&q={text}&subject_id={sid}` | List safety pills only. Consumed by `SafetyPillsTable`. | **Exists** (same endpoint as B.2). `safety_relevant=true` filter param verification — §E item 7. |
+| `PATCH /v1/pills/{pill_id}/safety` | Toggle the safety_relevant flag. Body: `{ safety_relevant: boolean }`. | **Exists** at `frontend/openapi/schema.json:1538` (method: `patch`, operationId `override_pill_safety_v1_pills__pill_id__safety_patch`). Request schema `PillSafetyOverride`. Returns updated `PillResponse`. |
 
 **4. Form fields + zod + rhf**
 
@@ -709,7 +709,7 @@ n/a — single-toggle mutation, no form.
 ```ts
 const safetyToggleMutation = useMutation({
   mutationFn: ({ pillId, value }: { pillId: string; value: boolean }) =>
-    unwrap(client.POST("/v1/pills/{pill_id}/safety", {
+    unwrap(client.PATCH("/v1/pills/{pill_id}/safety", {
       params: { path: { pill_id: pillId } },
       body: { safety_relevant: value },
     })),
@@ -761,7 +761,7 @@ Scenario: Admin removes a safety override (turns off)
   Then SafetyOverrideConfirmModal mounts
   And the modal copy mentions resuming AI teaching material per AC-D21
   When the admin clicks Confirm
-  Then POST /v1/pills/{id}/safety fires with {safety_relevant: false}
+  Then PATCH /v1/pills/{id}/safety fires with {safety_relevant: false}
   And on 2xx the row updates and toast.info("Safety override removed") renders
 ```
 
@@ -770,7 +770,7 @@ Scenario: Admin marks a pill safety-relevant (turns on) — no confirm
   Given pill C is safety_relevant=false
   When the admin clicks the toggle to flip it ON
   Then NO confirm modal mounts (additive action, low-risk)
-  And POST /v1/pills/{id}/safety fires with {safety_relevant: true}
+  And PATCH /v1/pills/{id}/safety fires with {safety_relevant: true}
   And on 2xx the row updates and toast.info("Marked safety-relevant") renders
 ```
 
@@ -810,7 +810,7 @@ Scenario: Filter by subject narrows the safety list
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/paths/page.tsx`. The `(admin)` route group exists per FE-2; the `paths/` segment + its `error.tsx` boundary file are FE-8-introduced.
+- File: `frontend/src/app/(authed)/(admin)/paths/page.tsx`. The `(admin)` route group exists per FE-2; the `paths/` segment + its `error.tsx` boundary file are FE-8-introduced.
 - URL state: none in v1. (Filter / search deferred to v1.x per §E item 5.)
 - Static `<title>Learning paths · Acumen</title>`.
 - Nav-rail anchor: `shell.jsx` admin nav `paths` id (FE-2 adds the rail entry; verify §H (b) item 9).
@@ -899,7 +899,7 @@ Scenario: Empty list
 
 **1. Route segment + URL state**
 
-- File: `frontend/src/app/(admin)/paths/[pathId]/edit/page.tsx`. Dynamic param `pathId` — value `"new"` triggers create-mode (no fetch), any UUID triggers edit-mode (fetch the path on mount).
+- File: `frontend/src/app/(authed)/(admin)/paths/[pathId]/edit/page.tsx`. Dynamic param `pathId` — value `"new"` triggers create-mode (no fetch), any UUID triggers edit-mode (fetch the path on mount).
 - URL state: none. All editor state is local rhf form state + local pill-array state. Save → navigate back to `/admin/paths`.
 - Static `<title>Edit learning path · Acumen</title>` (in edit mode; "New learning path · Acumen" in create mode).
 
@@ -979,7 +979,7 @@ Submit handler:
 | `submit_success_edit` | Edit mode 2xx | toast.info("Path saved"); `router.push('/admin/paths')`. |
 | `submit_validation_errors` | 422 from backend | `applyApiErrorToForm` projects errors onto fields. |
 | `cancel_dirty` | User clicks Cancel with dirty form | Browser `confirm("Discard unsaved changes?")` before navigation. |
-| `error` | `GET /v1/learning-paths/{id}` 5xx | Pattern C boundary card mounts via `(admin)/paths/[pathId]/edit/error.tsx`. |
+| `error` | `GET /v1/learning-paths/{id}` 5xx | Pattern C boundary card mounts via `(authed)/(admin)/paths/[pathId]/edit/error.tsx`. |
 
 **6. Acceptance criteria (Gherkin)**
 
@@ -1159,19 +1159,28 @@ And §B entries cite `adminKeys.{users,groups,tests,...}` per the schema above.
 - Cross-resource mutations (e.g. approving a proposal creates a pill — see B.4 §4) invalidate both: `adminKeys.proposals.all()` AND `adminKeys.pills.all()`.
 - Optimistic updates not used in v1 (verified in §B.5 §7 + sibling files).
 
-### C.2 `(admin)` route group + role guard
+### C.2 `(authed)/(admin)/` route-group chain + role guard
 
-Inherited from FE-2 (`fe-specs/FE-2-shell.md` B.14). FE-8 adds no new guard plumbing — every FE-8 page mounts under `frontend/src/app/(admin)/{...}/page.tsx` and inherits:
+Inherited from FE-2 (`fe-specs/FE-2-shell.md §B.12 + §B.14`). The `(admin)` layout is **nested under `(authed)/layout.tsx`** — the chain is auth-guard (authed) → privacy-ack subgate (authed except `/privacy`) → admin role guard (admin). FE-8 pages mount as `frontend/src/app/(authed)/(admin)/{segment}/page.tsx` and inherit the full chain without adding new guard plumbing.
 
 - **Posture 4** (testee role → `/admin/*`): redirect to `/403` per FE-1 §C.4 five-posture matrix.
 - **Posture 3** (privacy unacked): redirect to `/privacy` per FE-1 §C.4.
 - **Posture 2** (unauthenticated): redirect to `/login?next={path}` per FE-1 §C.4.
 
-The `(admin)/layout.tsx` from FE-2 mounts the admin shell (Rail with admin nav ids: `ops`, `review`, `engagement`, `catalogue-admin`, `users`, `cost`, `loop` per `shell.jsx:15`) and runs the role guard. FE-8 pages add their own segment + `error.tsx` (Pattern C boundary).
+The FE-2 admin shell (Rail + TopBar) mounts inside `(authed)/(admin)/layout.tsx` and runs the role guard. FE-8 pages add their own segment + `error.tsx` (Pattern C boundary).
+
+**ADMIN_NAV structural addition — LOCKED.** FE-8 extends FE-2's 7-item `ADMIN_NAV` (per `fe-specs/FE-2-shell.md:324`) with four new rail ids and unbundles "Users & Groups" into two:
+
+- `paths` → `/admin/paths` (FE-8 catalogue §B.6)
+- `tests` → `/admin/tests` (FE-8 tests §B.1)
+- `groups` → `/admin/groups` (FE-8 identity §B.2 — was sub-anchor of "Users & Groups")
+- `assignments` → `/admin/assignments` (FE-8 identity §B.4)
+
+The resulting `ADMIN_NAV` is 11 items: `ops`, `review`, `engagement`, `catalogue-admin`, `paths`, `tests`, `users`, `groups`, `assignments`, `cost`, `loop`. Rail-highlight wiring per FE-2 §B.3 (`activeRoute` prop). This is folded into the FE-8 catalogue build PR handover under the SESSION_START.md AC-CD-structural-additions carve-out; FE-2's `Rail.tsx` + `Rail.test.tsx` receive a small update-in-place to extend the `ADMIN_NAV` constant. **No spec edit to FE-2** — the addition is forward-only per the SESSION_START carve-out. Build session adds the four rail ids in `Rail.tsx` + extends the `Rail.test.tsx` admin-nav assertion (`fe-specs/FE-2-shell.md:1577`) to cover the 11-item list.
 
 ### C.3 `applyApiErrorToForm` reuse
 
-Every modal form in FE-8 imports `applyApiErrorToForm` from `frontend/src/lib/api/form-errors.ts` (consensus path per `CODE_SPEC.md:1024` + FE-3:16 + FE-4:16; **NOT** FE-1:538's stale `lib/forms/` path — drift surfaced in §H (b) item 1). Pattern from FE-1 §C.2 used unchanged:
+Every modal form in FE-8 imports `applyApiErrorToForm` from `frontend/src/lib/api/form-errors.ts` (canonical path per `CODE_SPEC.md:1024`). Pattern from FE-1 §C.2 used unchanged:
 
 1. `try { await unwrap(client.POST(...)) }` → success path: invalidate + toast + close.
 2. `catch (err) { applyApiErrorToForm(err, form, { fieldMap: { BUSINESS_CODE: 'field_name' } }) }` → 422 validation errors project onto field paths; business codes route via `fieldMap`; unknown errors fall through to root + Pattern B toast.
@@ -1216,7 +1225,7 @@ No new toast severity tiers introduced.
 
 ### C.8 Pattern C boundary
 
-Each FE-8 page adds an `error.tsx` boundary file per FE-1 §C.6: `(admin)/catalogue/error.tsx`, `(admin)/paths/error.tsx`, `(admin)/paths/[pathId]/edit/error.tsx`. Each uses FE-1's `BoundaryFrame` pattern (wave icon + "Couldn't load X" + "Try again" + "Go to admin dashboard") with copy localised per page.
+Each FE-8 page adds an `error.tsx` boundary file per FE-1 §C.6: `(authed)/(admin)/catalogue/error.tsx`, `(authed)/(admin)/paths/error.tsx`, `(authed)/(admin)/paths/[pathId]/edit/error.tsx`. Each uses FE-1's `BoundaryFrame` pattern (wave icon + "Couldn't load X" + "Try again" + "Go to admin dashboard") with copy localised per page.
 
 ---
 
@@ -1230,18 +1239,19 @@ Vitest config from FE-0 + MSW from FE-1 §D. Tests under `frontend/tests/` and `
 - `frontend/src/components/admin/filter-bar.test.tsx` — debounce timing (typing 5 chars within 300ms fires 1 search; typing 5 chars over 500ms fires 5 searches but only the last lands due to TanStack Query's last-write-wins).
 - `frontend/src/components/admin/difficulty-range-slider.test.tsx` — controlled component behaviour; min/max clamp; disabled mode.
 - `frontend/src/components/admin/safety-toggle.test.tsx` — on/off rendering; disabled mode; onChange firing.
+- `frontend/src/lib/proposals/parse-proposal-payload.test.ts` — table test of recognised-vs-unrecognised payload shapes (recognised: `name`, `subject_hint`, `description`, `difficulty_hint`, `related_pill_ids`) and the formatted-JSON fallback path. LOCKED v1 contract per §H (a).
 
 ### D.2 Page integration tests
 
 One test file per §B entry, using MSW handlers:
 
-- `frontend/src/app/(admin)/catalogue/page.test.tsx` — §B.1 trios (5 scenarios).
-- `frontend/src/app/(admin)/catalogue/_components/pills-tab.test.tsx` — §B.2 trios (10 scenarios).
-- `frontend/src/app/(admin)/catalogue/_components/subjects-tab.test.tsx` — §B.3 trios (5 scenarios).
-- `frontend/src/app/(admin)/catalogue/_components/proposals-tab.test.tsx` — §B.4 trios (7 scenarios).
-- `frontend/src/app/(admin)/catalogue/_components/safety-tab.test.tsx` — §B.5 trios (6 scenarios).
-- `frontend/src/app/(admin)/paths/page.test.tsx` — §B.6 trios (4 scenarios).
-- `frontend/src/app/(admin)/paths/[pathId]/edit/page.test.tsx` — §B.7 trios (7 scenarios).
+- `frontend/src/app/(authed)/(admin)/catalogue/page.test.tsx` — §B.1 trios (5 scenarios).
+- `frontend/src/app/(authed)/(admin)/catalogue/_components/pills-tab.test.tsx` — §B.2 trios (10 scenarios).
+- `frontend/src/app/(authed)/(admin)/catalogue/_components/subjects-tab.test.tsx` — §B.3 trios (5 scenarios).
+- `frontend/src/app/(authed)/(admin)/catalogue/_components/proposals-tab.test.tsx` — §B.4 trios (7 scenarios).
+- `frontend/src/app/(authed)/(admin)/catalogue/_components/safety-tab.test.tsx` — §B.5 trios (6 scenarios).
+- `frontend/src/app/(authed)/(admin)/paths/page.test.tsx` — §B.6 trios (4 scenarios).
+- `frontend/src/app/(authed)/(admin)/paths/[pathId]/edit/page.test.tsx` — §B.7 trios (7 scenarios).
 
 Total: 44 catalogue-side integration scenarios.
 
@@ -1265,12 +1275,14 @@ Single test, exercises every page in the catalogue file.
 
 | # | Placeholder | Location | Action before production |
 |---|---|---|---|
-| 1 | No prototype mocks for Subjects tab, Proposals tab, Safety tab (only Pills tab is screenshotted in `v6-fe8-17-pill-crud.png`) | `(admin)/catalogue/_components/{subjects,proposals,safety}-tab.tsx` | **Design-reference gap surfaced.** Build session inherits the Pills tab + FE-1 modal patterns by structural inheritance; design-Claude session adds the 3 missing tabs (Subjects + Proposals + Safety) post-FE-8 when usability feedback is in. Tag the 3 components with `// TODO(design-ref): mocks pending`. |
-| 2 | `Used in` column on Pills tab + `pill_count` column on Subjects tab + `assigned_to` summary on Paths list — derived fields not in OpenAPI | `(admin)/catalogue/_components/{pills,subjects}-table.tsx` + `(admin)/paths/_components/path-list.tsx` | Backend adds denormalised count fields (covered by §H (b) item 3). Until landed, columns render "—" with a placeholder tag. |
-| 3 | Subject deletion with attached pills | `(admin)/catalogue/_components/delete-subject-modal.tsx` | v1 disables delete when pill_count > 0 (client-side gate). v1.x: backend cascade behaviour + admin re-assignment UX. |
+| 1 | No prototype mocks for Subjects tab, Proposals tab, Safety tab (only Pills tab is screenshotted in `v6-fe8-17-pill-crud.png`) | `(authed)/(admin)/catalogue/_components/{subjects,proposals,safety}-tab.tsx` | **Design-reference gap surfaced.** Build session inherits the Pills tab + FE-1 modal patterns by structural inheritance; design-Claude session adds the 3 missing tabs (Subjects + Proposals + Safety) post-FE-8 when usability feedback is in. Tag the 3 components with `// TODO(design-ref): mocks pending`. |
+| 2 | `Used in` column on Pills tab + `pill_count` column on Subjects tab + `assigned_to` summary on Paths list — derived fields not in OpenAPI | `(authed)/(admin)/catalogue/_components/{pills,subjects}-table.tsx` + `(authed)/(admin)/paths/_components/path-list.tsx` | Backend adds denormalised count fields (covered by §H (b) item 3). Until landed, columns render "—" with a placeholder tag. |
+| 3 | Subject deletion with attached pills | `(authed)/(admin)/catalogue/_components/delete-subject-modal.tsx` | v1 disables delete when pill_count > 0 (client-side gate). v1.x: backend cascade behaviour + admin re-assignment UX. |
 | 4 | Pill cloning + migration to clone | (no v1 surface) | Design (`admin-authoring.jsx:228–229`) mentions cloning to change locked fields. v1 ships no clone affordance; admin clones manually by re-creating. v1.x adds a Clone CTA in the locked-pill warning banner. |
-| 5 | Paths list filter / search | `(admin)/paths/page.tsx` | v1 ships paginated list only. v1.x adds text search + filter by "has-assignments" / "no-assignments". |
-| 6 | Drawer for proposal detail rendering with untyped `payload` field | `(admin)/catalogue/_components/proposal-detail-drawer.tsx` | Defensive rendering: structured display if payload fields are recognised, formatted JSON fallback otherwise. Resolves once §H (a) item 2 lands (backend types the payload contract). |
+| 5 | Paths list filter / search | `(authed)/(admin)/paths/page.tsx` | v1 ships paginated list only. v1.x adds text search + filter by "has-assignments" / "no-assignments". |
+| 6 | Drawer for proposal detail rendering with untyped `payload` field | `(authed)/(admin)/catalogue/_components/proposal-detail-drawer.tsx` | LOCKED via `parse-proposal-payload.ts` for v1: structured display for recognised payload shapes (`name`, `subject_hint`, `description`, `difficulty_hint`, `related_pill_ids`), formatted-JSON fallback otherwise. Backend typing deferred to v1.x. |
+| 7 | Client-side filter fallback for `/v1/pills` + `/v1/subjects` when server-side `q` / `subject_id` / `safety_relevant` filtering is not wired | `(authed)/(admin)/catalogue/_components/{pills,subjects,safety}-tab.tsx` | LOCKED v1 fallback: fire the list query without server-side filter params; filter the cursor-paginated cache client-side until backend wires the params. Server-side filtering deferred to v1.x. |
+| 8 | Derived-count columns (`used_in_count` on PillResponse, `pill_count` on SubjectResponse, `assigned_count` on LearningPathResponse) render as em-dash placeholders | `(authed)/(admin)/catalogue/_components/{pills,subjects}-table.tsx` + `(authed)/(admin)/paths/_components/path-list.tsx` | LOCKED v1: render `—` with `data-testid="derived-count-pending"`; backend denormalised counts deferred to v1.x. Supersedes the prior item 2 placeholder-tag note. |
 
 ---
 
@@ -1286,12 +1298,13 @@ No edit to SPEC.md required. Recorded here for the build session: AC-D21 + SPEC 
 
 ### F.3 `CODE_SPEC.md` AC-CD-structural additions
 
-Two AC-CD-level structural additions surfaced at plan time, foldable into the FE-8 catalogue build PR's handover per SESSION_START.md carve-out:
+Three AC-CD-level structural additions surfaced at plan time, foldable into the FE-8 catalogue build PR's handover per SESSION_START.md carve-out:
 
 1. **`@dnd-kit/core` + `@dnd-kit/sortable`** as runtime deps for `PathEditor` drag-reorder (B.7 §2). Lightweight, accessible drag library; aligns with shadcn ecosystem. No conflict with FE-2's installed primitives.
 2. **shadcn `Sheet` primitive** added to FE-2's installed set for `ProposalDetailDrawer` (B.4 §2). Drawer pattern chosen over modal for longer payload contents.
+3. **`ADMIN_NAV` extended by 4 rail ids** (`paths`, `tests`, `groups`, `assignments`) with "Users & Groups" unbundled. Forward-only per SESSION_START carve-out — `Rail.tsx` + `Rail.test.tsx` update in the FE-8 catalogue build PR; FE-2 spec text unchanged. Documented canonically in §C.2.
 
-Neither violates AC-CD19 (Next.js 15 stack lock); both are additive primitive/library installs.
+None of the three violates AC-CD19 (Next.js 15 stack lock); all are additive primitive/library/constant installs.
 
 ### F.4 FE-9 boundary explicitly excluded
 
@@ -1337,21 +1350,22 @@ The cross-walk surfaced 12 candidate items. After review, they're classified int
 
 ### (a) BLOCKERS for the FE-8 catalogue build session — must land before the build session opens
 
-1. **`applyApiErrorToForm` path drift in FE-1 spec.** FE-1-auth.md:538 + :519 + :664 say `frontend/src/lib/forms/applyApiErrorToForm.ts`; `CODE_SPEC.md:1024` + `fe-specs/FE-3-content.md:16` + `fe-specs/FE-4-runner.md:16` say `frontend/src/lib/api/form-errors.ts`. Consensus + CODE_SPEC win. **Resolution:** user authors a separate one-line cross-spec-drift PR correcting FE-1's three call-sites. **The FE-8 catalogue build session cannot open until that correction is on `main`** (FE-8 has 15+ forms across the three files; building against the stale path would fragment the codebase). User-locked at plan time per `/root/.claude/plans/fresh-session-fe-8-tingly-candy.md` §10 Q3 = "separate cross-spec-drift PR".
-2. **`PillProposalResponse.payload` is untyped (`object`).** `frontend/openapi/schema.json:2230–2239` declares `payload: object | null`. The proposal detail drawer (B.4 §2) needs to render this content; defensive JSON-fallback works for v1 but a typed contract (name / subject hint / description / difficulty hint as discriminated fields) would be cleaner. **Resolution path A** (preferred): user authors a backend spec-clarification PR typing the proposal payload. **Resolution path B**: confirm "JSON-fallback is acceptable for v1" and proceed. Surfaced for user decision before build session opens.
+**Phase 0 spec-clarification PR (this PR) cleared the prior cross-spec drift on `applyApiErrorToForm` path (FE-1 already canonically cites `frontend/src/lib/api/form-errors.ts` at `fe-specs/FE-1-auth.md:498/515/517/653` per `CODE_SPEC.md:1024` — no FE-1 amendment required) and LOCKED the `PillProposalResponse.payload` rendering contract for v1.**
+
+1. **`PillProposalResponse.payload` FE-owned rendering contract — LOCKED for v1.** Backend `payload` is `object | null` per `frontend/openapi/schema.json:2230–2239`. v1 renders the proposal drawer via `frontend/src/lib/proposals/parse-proposal-payload.ts`: recognised structured fields (`name`, `subject_hint`, `description`, `difficulty_hint`, `related_pill_ids`) render as labelled rows; unrecognised payloads fall back to formatted JSON. Backend typing of the payload discriminated union is **deferred to v1.x**. No build-session gate — the helper IS the v1 contract.
 
 ### (b) BUILD-SESSION VERIFICATION TASKS — front-loaded at the start of the FE-8 catalogue build session
 
 The build session opens with a verification step before any code lands: read the FastAPI handlers for `/v1/pills`, `/v1/subjects`, `/v1/pill-proposals`, `/v1/learning-paths` + the relevant Pydantic response schemas, confirm the assumptions below match reality. If any diverge, halt and surface for spec-clarification PR.
 
-3. **`used_in_count` on `PillResponse` + `pill_count` on `SubjectResponse` + `assigned_count` on `LearningPathResponse`.** Design surfaces these derived counts in the list tables. OpenAPI does not currently include them. Verify: does backend expose them on the response schemas? If not, are they computable via a single `?include=counts` query param? If not, render "—" with a `// TODO(FE-8-build)` and surface as §E.2 ongoing placeholder.
+3. **`used_in_count` on `PillResponse` + `pill_count` on `SubjectResponse` + `assigned_count` on `LearningPathResponse`.** RESOLVED by §E item 8 — render em-dash placeholders for v1; backend derived counts deferred to v1.x.
 4. **`safety_relevant_overridden_at` semantics.** Spec assumes `null` = auto-derived by AC-D21 cron, non-null = admin-override timestamp. Verify against `app/api/operations/safety_links.py` (PR-024) — the cron may set the timestamp itself, breaking the auto-vs-admin distinction. If so, surface a separate `safety_relevant_source: "auto" | "admin"` field.
 5. **`DELETE /v1/subjects/{id}` behaviour with attached pills.** OpenAPI doesn't document the response. Verify: 422 with detail / 409 / cascade-delete the pills (unlikely)? Spec body assumes 422; v1 frontend gates by client-side pill-count check.
 6. **`PillCreate.name` server-side min length.** OpenAPI may have `minLength: 8` (mirroring AC-CD password discipline) or `minLength: 1`. Verify; if stricter, FE zod stays at 1 but backend 422 surfaces under the field via `applyApiErrorToForm`.
 7. **`PillResponse.discoverable` is the Draft/Published mapping.** Spec body assumes `discoverable=false → Draft, discoverable=true → Published`. Verify there isn't a separate `status` enum on `PillResponse`. If there is, switch the mapping.
 8. **`POST /v1/pill-proposals/{id}/approve` without subject hint.** Verify backend behaviour: 422 / picks a default subject / creates without subject. Inform the proposal drawer's UX.
-9. **`paths` nav-rail id.** Verify `shell.jsx` admin nav (`shell.jsx:15` declares 7 ids: ops, review, engagement, catalogue-admin, users, cost, loop). `paths` is NOT in that list — if FE-2 hasn't added it, FE-8 either (a) adds it as an AC-CD-structural addition fold or (b) nests path management inside the catalogue page as a 5th tab. Build session decides; spec body assumes (a).
-10. **`LearningPathResponse` fields.** Verify `pill_ids[]` is present + ordered. Verify `assigned_count` or equivalent is present (covers item 3 sibling).
+9. **`paths` nav-rail id.** RESOLVED by §C.2 LOCKED ADMIN_NAV addition — `paths` is a top-level rail id (path 5 of 11), not nested under catalogue tabs.
+10. **`LearningPathResponse` fields.** `pill_ids[]` verification still required at build time (ordered array assumption). `assigned_count` resolved by §E item 8 (em-dash placeholder).
 11. **`DELETE /v1/learning-paths/{id}` cascade.** Verify what happens to assignments referencing the path. Spec body assumes assignments survive with `path_id` set to null OR the assignment is hard-deleted. UX confirmation modal copy reflects either outcome with "bound assignments will lose their reference" verbiage that's true in both cases.
 
 ### (c) APPROVED RESOLUTIONS — folded into FE-8 catalogue build PR scope, captured in the build PR's handover
