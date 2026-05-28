@@ -2191,11 +2191,278 @@ const adminUsersHandlers = [
   adminUserReactivateHandler,
 ];
 
-export const adminGroupsListHandler = http.get(`${API}/v1/groups`, adminEmptyPage);
-export const adminGroupMembersListHandler = http.get(
-  `${API}/v1/groups/:group_id/members`,
-  adminEmptyPage,
+// FE-8 Slice 9 — stateful Groups CRUD (per admin-identity §B.2 + §B.3).
+// Replaces the Slice-1 empty-page stubs. Includes 2 system groups +
+// 2 custom groups; `add member` POST is single-user per wire shape.
+
+type GroupResponseSchema = components["schemas"]["GroupResponse"];
+type GroupCreateSchema = components["schemas"]["GroupCreate"];
+type GroupUpdateSchema = components["schemas"]["GroupUpdate"];
+type GroupMemberRequestSchema = components["schemas"]["GroupMemberRequest"];
+
+const ADMIN_GROUP_ISO = "2026-03-01T00:00:00Z";
+
+const adminGroupId = (n: number): string =>
+  `bbbb3333-bbbb-bbbb-bbbb-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_GROUPS: GroupResponseSchema[] = [
+  {
+    id: adminGroupId(1),
+    name: "All Users",
+    description: "Every user on the platform — managed automatically.",
+    is_system: true,
+    // Reference the seed admin users (Slice 8).
+    member_ids: [adminUserId(1), adminUserId(2), adminUserId(3), adminUserId(4)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(2),
+    name: "All Testees",
+    description: "Every testee user.",
+    is_system: true,
+    member_ids: [adminUserId(2), adminUserId(3), adminUserId(4)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(3),
+    name: "Q3 2026 induction",
+    description: "Onboarding cohort for the Q3 hiring wave.",
+    is_system: false,
+    member_ids: [adminUserId(2)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(4),
+    name: "Seniors",
+    description: null,
+    is_system: false,
+    member_ids: [],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+];
+
+// Deep-clone each group so tests that mutate `member_ids` in place
+// (via the resolver shape) don't leak across tests through the shared
+// fixture object identity.
+const cloneAdminGroups = (): GroupResponseSchema[] =>
+  DEFAULT_ADMIN_GROUPS.map((g) => ({ ...g, member_ids: [...g.member_ids] }));
+
+let mockAdminGroups: GroupResponseSchema[] = cloneAdminGroups();
+let nextAdminGroupSeq = DEFAULT_ADMIN_GROUPS.length + 1;
+
+export const setMockAdminGroups = (groups: GroupResponseSchema[]): void => {
+  mockAdminGroups = groups.map((g) => ({ ...g, member_ids: [...g.member_ids] }));
+};
+
+export const resetMockAdminGroups = (): void => {
+  mockAdminGroups = cloneAdminGroups();
+  nextAdminGroupSeq = DEFAULT_ADMIN_GROUPS.length + 1;
+};
+
+export const getMockAdminGroups = (): GroupResponseSchema[] => mockAdminGroups;
+
+const adminGroupsListHandler = http.get(`${API}/v1/groups`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminGroups.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminGroups.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminGroupGetHandler = http.get(`${API}/v1/groups/:group_id`, ({ params }) => {
+  const g = mockAdminGroups.find((x) => x.id === String(params.group_id));
+  if (!g) {
+    return HttpResponse.json(
+      {
+        error: { code: "not_found", message: "Group not found.", detail: null },
+      },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(g);
+});
+
+const adminGroupCreateHandler = http.post(`${API}/v1/groups`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as GroupCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Group name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: GroupResponseSchema = {
+    id: adminGroupId(nextAdminGroupSeq),
+    name: body.name,
+    description: body.description ?? null,
+    is_system: false,
+    member_ids: [],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  };
+  nextAdminGroupSeq += 1;
+  mockAdminGroups = [created, ...mockAdminGroups];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminGroupUpdateHandler = http.patch(
+  `${API}/v1/groups/:group_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as GroupUpdateSchema | null;
+    const next: GroupResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
 );
+
+const adminGroupAddMemberHandler = http.post(
+  `${API}/v1/groups/:group_id/members`,
+  async ({ params, request }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as GroupMemberRequestSchema | null;
+    if (!body || typeof body.user_id !== "string") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "user_id"], msg: "user_id required", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    if (existing.member_ids.includes(body.user_id)) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "member_already",
+            message: "User is already a member of this group.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const next: GroupResponseSchema = {
+      ...existing,
+      member_ids: [...existing.member_ids, body.user_id],
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return HttpResponse.json(next, { status: 201 });
+  },
+);
+
+const adminGroupRemoveMemberHandler = http.delete(
+  `${API}/v1/groups/:group_id/members/:user_id`,
+  ({ params }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const next: GroupResponseSchema = {
+      ...existing,
+      member_ids: existing.member_ids.filter((id) => id !== String(params.user_id)),
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminGroupsHandlers = [
+  adminGroupsListHandler,
+  adminGroupGetHandler,
+  adminGroupCreateHandler,
+  adminGroupUpdateHandler,
+  adminGroupAddMemberHandler,
+  adminGroupRemoveMemberHandler,
+];
 export const adminAssignmentsListHandler = http.get(
   `${API}/v1/assignments`,
   adminEmptyPage,
@@ -2252,8 +2519,7 @@ export const handlers = [
   ...adminProposalsHandlers,
   ...adminPathsHandlers,
   ...adminUsersHandlers,
-  adminGroupsListHandler,
-  adminGroupMembersListHandler,
+  ...adminGroupsHandlers,
   adminAssignmentsListHandler,
   adminTestsListHandler,
   adminTestQuestionsListHandler,
