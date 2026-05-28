@@ -71,10 +71,16 @@ export function Sheet({
   );
 }
 
-export function SheetHeader({ children }: { children: ReactNode }) {
+export function SheetHeader({
+  children,
+  eyebrow = "Proposal",
+}: {
+  children: ReactNode;
+  eyebrow?: string;
+}) {
   return (
     <div className="px-6 py-5 border-b border-line shrink-0">
-      <div className="eyebrow mb-2">Proposal</div>
+      <div className="eyebrow mb-2">{eyebrow}</div>
       <div className="serif text-[22px] leading-[1.2] tracking-[-0.01em]">{children}</div>
     </div>
   );

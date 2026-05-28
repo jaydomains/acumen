@@ -475,6 +475,9 @@ function formatRelative(iso: string): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return iso;
   const delta = Date.now() - t;
+  // Future dates (clock skew or server timezone mismatch) would
+  // render as "-5s ago" without a guard — fall back to absolute date.
+  if (delta < 0) return new Date(iso).toLocaleDateString();
   const sec = Math.round(delta / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.round(sec / 60);
