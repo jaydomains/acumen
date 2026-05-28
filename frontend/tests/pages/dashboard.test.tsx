@@ -92,12 +92,8 @@ describe("Testee dashboard page", () => {
 
   it("renders RecentAttemptsCard with attempts from the wire (FE-7 flag-flip)", async () => {
     render(mountTree(<TesteeDashboardPage />));
-    expect(
-      await screen.findByTestId("recent-attempts-card"),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findAllByTestId("recent-attempts-row"),
-    ).toHaveLength(5);
+    expect(await screen.findByTestId("recent-attempts-card")).toBeInTheDocument();
+    expect(await screen.findAllByTestId("recent-attempts-row")).toHaveLength(5);
   });
 
   it("hero placeholders render '—' (no /v1/me/competence fires under onUnhandledRequest=error)", () => {

@@ -78,9 +78,7 @@ afterEach(() => {
 describe("RecentAttemptsCard", () => {
   it("mounts the card with the heading", async () => {
     render(mountTree(<RecentAttemptsCard />));
-    expect(
-      await screen.findByTestId("recent-attempts-card"),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("recent-attempts-card")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: /your last attempts/i }),
     ).toBeInTheDocument();
@@ -118,18 +116,18 @@ describe("RecentAttemptsCard", () => {
   it("renders the empty-state copy when the wire returns no rows", async () => {
     setMockMeAttempts([]);
     render(mountTree(<RecentAttemptsCard />));
-    expect(
-      await screen.findByTestId("recent-attempts-empty"),
-    ).toHaveTextContent(/no attempts yet/i);
+    expect(await screen.findByTestId("recent-attempts-empty")).toHaveTextContent(
+      /no attempts yet/i,
+    );
     expect(screen.queryByTestId("recent-attempts-row")).toBeNull();
   });
 
   it("renders the error state on a 500", async () => {
     setMockMeAttemptsStatus(500);
     render(mountTree(<RecentAttemptsCard />));
-    expect(
-      await screen.findByTestId("recent-attempts-error"),
-    ).toHaveTextContent(/couldn’t load/i);
+    expect(await screen.findByTestId("recent-attempts-error")).toHaveTextContent(
+      /couldn’t load/i,
+    );
   });
 
   it("clicking a row navigates to /attempts/{id}/result", async () => {
@@ -138,9 +136,7 @@ describe("RecentAttemptsCard", () => {
     render(mountTree(<RecentAttemptsCard />));
     const row = await screen.findByTestId("recent-attempts-row");
     await user.click(row);
-    expect(routerPush).toHaveBeenLastCalledWith(
-      `/attempts/${attemptId(1)}/result`,
-    );
+    expect(routerPush).toHaveBeenLastCalledWith(`/attempts/${attemptId(1)}/result`);
   });
 
   it("pressing Enter on a focused row navigates", async () => {
@@ -150,9 +146,7 @@ describe("RecentAttemptsCard", () => {
     const row = await screen.findByTestId("recent-attempts-row");
     row.focus();
     await user.keyboard("{Enter}");
-    expect(routerPush).toHaveBeenLastCalledWith(
-      `/attempts/${attemptId(2)}/result`,
-    );
+    expect(routerPush).toHaveBeenLastCalledWith(`/attempts/${attemptId(2)}/result`);
   });
 
   it("renders null competence_delta as '—' in --ink-3", async () => {

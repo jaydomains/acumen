@@ -17,10 +17,7 @@
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { formatRelative } from "@/lib/result/format-relative";
-import {
-  useMeAttemptsCapped,
-  type AttemptListItem,
-} from "@/lib/queries/me";
+import { useMeAttemptsCapped, type AttemptListItem } from "@/lib/queries/me";
 import { cn } from "@/lib/utils";
 
 const RECENT_LIMIT = 5;
@@ -33,8 +30,7 @@ function formatDelta(value: number | null | undefined): {
     return { text: "—", color: "var(--ink-3)" };
   }
   const formatted = value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
-  const color =
-    value > 0 ? "var(--ok)" : value < 0 ? "var(--danger)" : "var(--ink-3)";
+  const color = value > 0 ? "var(--ok)" : value < 0 ? "var(--danger)" : "var(--ink-3)";
   return { text: formatted, color };
 }
 
@@ -65,9 +61,7 @@ function Row({ row }: { row: AttemptListItem }) {
       )}
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-ink truncate">
-          {row.pill_name}
-        </div>
+        <div className="text-[13px] font-medium text-ink truncate">{row.pill_name}</div>
         <div className="mt-2 text-[11px] font-mono uppercase tracking-[0.04em] text-ink-3">
           {formatRelative(row.submitted_at)} · {row.origin}
         </div>
@@ -93,35 +87,21 @@ export function RecentAttemptsCard() {
   const rows = data?.data ?? [];
 
   return (
-    <Card
-      data-testid="recent-attempts-card"
-      className="flex flex-col gap-4 p-6"
-    >
+    <Card data-testid="recent-attempts-card" className="flex flex-col gap-4 p-6">
       <div className="eyebrow">Recent</div>
-      <h2 className="font-serif text-[22px] tracking-[-0.015em]">
-        Your last attempts
-      </h2>
+      <h2 className="font-serif text-[22px] tracking-[-0.015em]">Your last attempts</h2>
       {isLoading && (
-        <div
-          data-testid="recent-attempts-loading"
-          className="text-[13px] text-ink-3"
-        >
+        <div data-testid="recent-attempts-loading" className="text-[13px] text-ink-3">
           Loading…
         </div>
       )}
       {isError && (
-        <div
-          data-testid="recent-attempts-error"
-          className="text-[13px] text-danger"
-        >
+        <div data-testid="recent-attempts-error" className="text-[13px] text-danger">
           Couldn’t load recent attempts.
         </div>
       )}
       {!isLoading && !isError && rows.length === 0 && (
-        <div
-          data-testid="recent-attempts-empty"
-          className="text-[13px] text-ink-3"
-        >
+        <div data-testid="recent-attempts-empty" className="text-[13px] text-ink-3">
           No attempts yet — your last results will appear here.
         </div>
       )}
