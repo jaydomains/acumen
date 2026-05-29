@@ -12,7 +12,10 @@
 
 import { Pill, type PillTone } from "@/components/primitives/Pill";
 import { Stat } from "@/components/primitives/Stat";
+import { Icon } from "@/components/primitives/Icon";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useCostSummary, type CostSummaryResponse } from "@/lib/queries/admin-cost";
@@ -46,7 +49,19 @@ export function CostDashboard() {
         actions={<RangeSelector />}
       />
 
-      {query.isPending ? (
+      {query.isError ? (
+        <BoundaryFrame
+          glyph={<Icon name="wave" size={24} />}
+          eyebrow="AI COST"
+          title="We couldn't load the cost dashboard."
+          body="The cost-summary request failed. Try again, and if it keeps failing, let your administrator know."
+          actions={
+            <Button onClick={() => query.refetch()} variant="outline" size="sm">
+              Try again
+            </Button>
+          }
+        />
+      ) : query.isPending ? (
         <CostSkeleton />
       ) : query.data ? (
         <CostBody data={query.data} />

@@ -25,6 +25,8 @@ import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/form-errors";
 import { adminKeys } from "@/lib/queries/admin-keys";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
+import { Icon } from "@/components/primitives/Icon";
 import { Pill, type PillTone } from "@/components/primitives/Pill";
 import { Modal, ModalActions, ModalHeader } from "@/components/admin/modal";
 import { Field, FieldError } from "@/components/admin/field";
@@ -138,13 +140,27 @@ export function LoopQueue() {
         ))}
       </div>
 
-      <LoopTable
-        rows={rows}
-        isPending={query.isPending}
-        status={status}
-        onApprove={(row) => setModal({ kind: "approve", row })}
-        onReject={(row) => setModal({ kind: "reject", row })}
-      />
+      {query.isError ? (
+        <BoundaryFrame
+          glyph={<Icon name="wave" size={24} />}
+          eyebrow="LOOPS"
+          title="We couldn't load the loop queue."
+          body="The loop-queue request failed. Try again, and if it keeps failing, let your administrator know."
+          actions={
+            <Button onClick={() => query.refetch()} variant="outline" size="sm">
+              Try again
+            </Button>
+          }
+        />
+      ) : (
+        <LoopTable
+          rows={rows}
+          isPending={query.isPending}
+          status={status}
+          onApprove={(row) => setModal({ kind: "approve", row })}
+          onReject={(row) => setModal({ kind: "reject", row })}
+        />
+      )}
 
       {modal.kind === "approve" ? (
         <ApproveModal row={modal.row} onClose={() => setModal({ kind: "closed" })} />

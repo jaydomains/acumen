@@ -148,4 +148,18 @@ describe("grade-review queue — detail + override", () => {
       expect(screen.queryByTestId("override-substitute-form")).not.toBeInTheDocument(),
     );
   });
+
+  it("query failure renders the inline Pattern C boundary with retry", async () => {
+    server.use(
+      http.get(`${API}/v1/admin/grade-reviews/flagged`, () =>
+        HttpResponse.json(
+          { error: { code: "server_error", message: "boom", detail: null } },
+          { status: 500 },
+        ),
+      ),
+    );
+    render(mountTree(<GradeReviewPage />));
+    await waitFor(() => expect(screen.getByTestId("boundary-frame")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Try again/i })).toBeInTheDocument();
+  });
 });

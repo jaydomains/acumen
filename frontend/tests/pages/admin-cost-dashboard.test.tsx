@@ -125,4 +125,18 @@ describe("cost dashboard", () => {
     expect(screen.getByTestId("cost-daily-placeholder")).toBeInTheDocument();
     expect(screen.getByText(/Daily history coming in v1\.x/)).toBeInTheDocument();
   });
+
+  it("query failure renders the inline Pattern C boundary with retry", async () => {
+    server.use(
+      http.get(`${API}/v1/admin/cost/summary`, () =>
+        HttpResponse.json(
+          { error: { code: "server_error", message: "boom", detail: null } },
+          { status: 500 },
+        ),
+      ),
+    );
+    render(mountTree(<CostPage />));
+    await waitFor(() => expect(screen.getByTestId("boundary-frame")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Try again/i })).toBeInTheDocument();
+  });
 });

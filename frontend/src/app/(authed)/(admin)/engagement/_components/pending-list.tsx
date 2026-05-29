@@ -15,8 +15,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
 import { Pill } from "@/components/primitives/Pill";
 import { Icon } from "@/components/primitives/Icon";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SweepButton } from "@/components/admin/sweep-button";
 import {
@@ -88,6 +90,22 @@ export function PendingList() {
 }
 
 function PendingTable({ query }: { query: ReturnType<typeof useEngagementPending> }) {
+  if (query.isError) {
+    return (
+      <BoundaryFrame
+        glyph={<Icon name="wave" size={24} />}
+        eyebrow="ENGAGEMENT"
+        title="We couldn't load engagement."
+        body="The pending-assignments request failed. Try again, and if it keeps failing, let your administrator know."
+        actions={
+          <Button onClick={() => query.refetch()} variant="outline" size="sm">
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
+
   if (query.isPending) {
     return (
       <div className="mt-5" data-testid="engagement-loading">

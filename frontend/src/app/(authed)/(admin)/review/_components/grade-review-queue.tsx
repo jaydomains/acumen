@@ -19,6 +19,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/shell/PageHeader";
+import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
+import { Icon } from "@/components/primitives/Icon";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   useFlaggedGradeReviews,
@@ -104,44 +107,63 @@ export function GradeReviewQueue() {
         subtitle="Flagged grades are where the AI grader and its reviewer disagree. Keep the AI grade, accept the reviewer, or substitute your own."
       />
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-        <div className="lg:col-span-4">
-          <div
-            className="mb-3 inline-flex border border-line"
-            role="tablist"
-            aria-label="Verdict filter"
-          >
-            {VERDICTS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={v === verdict}
-                onClick={() => writeParams({ verdict: v, selected: null })}
-                data-testid={`review-verdict-${v}`}
-                className={cn(
-                  "px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]",
-                  v === verdict ? "bg-ink text-bg-raised" : "text-ink-3 hover:bg-bg-deep",
-                )}
-              >
-                {VERDICT_LABEL[v]}
-              </button>
-            ))}
+      {primary.isError ? (
+        <BoundaryFrame
+          glyph={<Icon name="wave" size={24} />}
+          eyebrow="GRADE REVIEW"
+          title="We couldn't load the review queue."
+          body="The grade-review request failed. Try again, and if it keeps failing, let your administrator know."
+          actions={
+            <Button onClick={() => primary.refetch()} variant="outline" size="sm">
+              Try again
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <div
+              className="mb-3 inline-flex border border-line"
+              role="tablist"
+              aria-label="Verdict filter"
+            >
+              {VERDICTS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={v === verdict}
+                  onClick={() => writeParams({ verdict: v, selected: null })}
+                  data-testid={`review-verdict-${v}`}
+                  className={cn(
+                    "px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]",
+                    v === verdict
+                      ? "bg-ink text-bg-raised"
+                      : "text-ink-3 hover:bg-bg-deep",
+                  )}
+                >
+                  {VERDICT_LABEL[v]}
+                </button>
+              ))}
+            </div>
+
+            <QueueList
+              reviews={rows}
+              isPending={primary.isPending}
+              verdict={verdict}
+              selectedId={selected}
+              onSelect={(id) => writeParams({ selected: id })}
+            />
           </div>
 
-          <QueueList
-            reviews={rows}
-            isPending={primary.isPending}
-            verdict={verdict}
-            selectedId={selected}
-            onSelect={(id) => writeParams({ selected: id })}
-          />
+          <div className="lg:col-span-8">
+            <DetailPane
+              review={selectedRow}
+              onApplyOverride={() => setDrawerOpen(true)}
+            />
+          </div>
         </div>
-
-        <div className="lg:col-span-8">
-          <DetailPane review={selectedRow} onApplyOverride={() => setDrawerOpen(true)} />
-        </div>
-      </div>
+      )}
 
       {drawerOpen && selectedRow ? (
         <OverrideDrawer
