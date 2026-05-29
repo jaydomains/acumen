@@ -39,13 +39,21 @@
     },
     {
       "id": "slice-6-system-page",
-      "status": "open",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 6 complete + stacked on PR #66 (NOT merged). admin-system.ts (drive-index + realism-status GETs; bootstrap/drive-ingest/realism/safety-links run mutations); /system route (5 SystemOpCards via SweepButton, session-local + GET-backed stats, per-card error isolation, read-only drive-index card); MSW handlers; 5 integration tests. All 6 endpoints verified present incl. realism/status (§H(a)8 blocker resolved). Fix round 1: removed unused Button import (lint). THREE-LAYER GREEN on commit 2ef31e4: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 7 (close-out).",
+      "lastFindingNote": "Slices 4/5/6 cumulative tests: 925 passing."
+    },
+    {
+      "id": "slice-7-ops-landing-closeout",
+      "status": "implemented-awaiting-green",
       "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "Slice 6 opened: System page (FE-9-admin-systems.md §B.3). Reuses SweepButton for op cards (bootstrap/drive-ingest/realism/safety-links). Pre-build contract verification + build next."
+      "lastFinding": "Slice 7 (CLOSE-OUT) implemented: /ops landing (5 shared-cache cards + defensive hero, replacing FE-2 placeholder) + ops/error.tsx; nav-rail extension (calibration + system, Rail.tsx 11→13, Rail.test + shell-roundtrip updated); FE_CHECKLIST FE-9 rows → done; handovers/PR-066-fe9-admin-operations.md written; admin-ops-landing.test.tsx. Local gates: typecheck + lint + prettier clean, 930 tests pass. On three-layer green for the close-out commit → the SINGLE Q4=B squash-merge (gh pr merge --squash --delete-branch). This is the only slice that merges; FE-9 roadmap closes."
     }
   ],
-  "currentIndex": 5,
+  "currentIndex": 6,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {

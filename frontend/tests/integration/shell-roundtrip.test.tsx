@@ -177,8 +177,12 @@ describe("FE-2 shell round-trip", () => {
       screen.getByPlaceholderText("Search pills, testees, attempts…"),
     ).toBeInTheDocument();
 
-    // PageHeader copy.
-    expect(screen.getByRole("heading", { name: /operations/i })).toBeInTheDocument();
+    // PageHeader copy — FE-9 replaced the placeholder with the real ops
+    // landing, whose h1 is the serif "Acumen, at a glance." ("OPERATIONS"
+    // is now the eyebrow above it).
+    expect(
+      screen.getByRole("heading", { name: /Acumen, at a glance/i }),
+    ).toBeInTheDocument();
   });
 
   it("testee hitting an admin route is bounced to /403 by the role gate", async () => {

@@ -1,21 +1,24 @@
-"use client";
-
 /**
- * Admin ops landing at `/ops`. Empty placeholder per FE-2-shell.md
- * §B.14 — FE-9 lands the real loop / engagement / cost / calibration
- * content on top of this scaffold.
+ * Admin ops landing (`/ops`) per FE-9 admin-ops §B.1 — the FE-9 close-out
+ * (`fe-specs/FE-9-admin-ops.md:82–227`). Replaces the FE-2 placeholder
+ * with the real five-card operations overview.
+ *
+ * Server component for static metadata; the read-only client surface
+ * lives under `_components/`.
  */
 
-import { PageHeader } from "@/components/shell/PageHeader";
+import { Suspense } from "react";
+import type { Metadata } from "next";
+import { OpsLanding } from "./_components/ops-landing";
+
+export const metadata: Metadata = {
+  title: "Operations · Acumen",
+};
 
 export default function OpsPage() {
-  // TODO(FE-9): real ops content (loop actions, engagement sweep,
-  // calibration, system page).
   return (
-    <PageHeader
-      eyebrow="OPERATIONS"
-      title="Operations"
-      subtitle="System overview — placeholder until FE-9 lands the loop / engagement / cost / calibration sections."
-    />
+    <Suspense>
+      <OpsLanding />
+    </Suspense>
   );
 }
