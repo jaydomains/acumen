@@ -2475,8 +2475,11 @@ const ADMIN_ASSIGNMENT_ISO = "2026-04-20T00:00:00Z";
 const adminAssignmentId = (n: number): string =>
   `eeee4444-eeee-eeee-eeee-${String(n).padStart(12, "0")}`;
 
-// Thin tests seed for the AssignmentEditor picker (Slice 10 ships
-// list-only `useAdminTests`; Slice 11 will swap in full state).
+// Tests seed — Slice 10 shipped 2; Slice 11 extends to 4 covering
+// every display-status branch + every authored mode (per_testee
+// published, frozen draft, hand_authored published, per_testee
+// locked via lock_mode="campaign-locked"). Benchmark mode authoring
+// is deferred per §E.8; no benchmark seed.
 const adminTestId = (n: number): string =>
   `ffff5555-ffff-ffff-ffff-${String(n).padStart(12, "0")}`;
 const DEFAULT_ADMIN_TESTS: TestResponseSchema[] = [
@@ -2526,7 +2529,58 @@ const DEFAULT_ADMIN_TESTS: TestResponseSchema[] = [
     created_at: ADMIN_ASSIGNMENT_ISO,
     updated_at: ADMIN_ASSIGNMENT_ISO,
   },
+  // Frozen-mode draft — exercises Slice 11 status filter "draft" + the
+  // em-dash pill column (frozen tests have no single pill_id).
+  {
+    id: adminTestId(3),
+    name: "Q1 Cohort baseline",
+    mode: "frozen",
+    status: "draft",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 45,
+    pause_allowance: 1,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.65,
+    target_difficulty: 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: true,
+    randomise_option_order: true,
+    pill_id: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  // Campaign-locked — exercises the deriveDisplayStatus 'locked' branch
+  // + the lock-icon prefix on the status pill (Slice 11 drift Finding #7).
+  {
+    id: adminTestId(4),
+    name: "ISO 9001 audit walk-through",
+    mode: "hand_authored",
+    status: "published",
+    visibility: "library",
+    timed: false,
+    duration_minutes: 60,
+    pause_allowance: 0,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 0,
+    pass_threshold: 0.8,
+    target_difficulty: 7,
+    lock_mode: "campaign-locked",
+    campaign_id: "00000000-0000-0000-0000-000000000abc",
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
 ];
+let nextAdminTestSeq = DEFAULT_ADMIN_TESTS.length + 1;
 
 let mockAdminTests: TestResponseSchema[] = [...DEFAULT_ADMIN_TESTS];
 export const setMockAdminTests = (tests: TestResponseSchema[]): void => {
@@ -2534,6 +2588,7 @@ export const setMockAdminTests = (tests: TestResponseSchema[]): void => {
 };
 export const resetMockAdminTests = (): void => {
   mockAdminTests = [...DEFAULT_ADMIN_TESTS];
+  nextAdminTestSeq = DEFAULT_ADMIN_TESTS.length + 1;
 };
 export const getMockAdminTests = (): TestResponseSchema[] => [...mockAdminTests];
 
@@ -2685,6 +2740,9 @@ const adminAssignmentsHandlers = [
   adminAssignmentDeleteHandler,
 ];
 
+type TestCreateSchema = components["schemas"]["TestCreate"];
+type TestUpdateSchema = components["schemas"]["TestUpdate"];
+
 const adminTestsListHandler = http.get(`${API}/v1/tests`, ({ request }) => {
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor");
@@ -2696,6 +2754,109 @@ const adminTestsListHandler = http.get(`${API}/v1/tests`, ({ request }) => {
   const next_cursor = nextStart < mockAdminTests.length ? String(nextStart) : null;
   return HttpResponse.json({ data: slice, meta: { next_cursor } });
 });
+
+const adminTestGetHandler = http.get(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+  if (!t) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "Test not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(t);
+});
+
+const adminTestCreateHandler = http.post(`${API}/v1/tests`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as TestCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Test name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: TestResponseSchema = {
+    id: adminTestId(nextAdminTestSeq),
+    name: body.name,
+    mode: body.mode ?? "per_testee",
+    status: "draft",
+    visibility: body.visibility ?? "library",
+    timed: body.timed ?? true,
+    duration_minutes: body.duration_minutes ?? 30,
+    pause_allowance: body.pause_allowance ?? 2,
+    timeout_behaviour: body.timeout_behaviour ?? "auto_submit",
+    max_pause_duration_minutes: body.max_pause_duration_minutes ?? 5,
+    pass_threshold: body.pass_threshold ?? 0.7,
+    target_difficulty: body.target_difficulty ?? 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: body.benchmark_scope ?? null,
+    benchmark_target_testee_id: body.benchmark_target_testee_id ?? null,
+    randomise_question_order: body.randomise_question_order ?? false,
+    randomise_option_order: body.randomise_option_order ?? false,
+    pill_id: body.pill_id ?? null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  };
+  nextAdminTestSeq += 1;
+  mockAdminTests = [created, ...mockAdminTests];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminTestUpdateHandler = http.patch(
+  `${API}/v1/tests/:test_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminTests.findIndex((x) => x.id === String(params.test_id));
+    const existing = idx >= 0 ? mockAdminTests[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as TestUpdateSchema | null;
+    // TestUpdate doesn't carry `mode` or `status` — those are immutable
+    // post-create on the wire. Only `name` + a handful of options are
+    // PATCH-able.
+    const next: TestResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    if (body && "pill_id" in body) {
+      next.pill_id = body.pill_id ?? null;
+    }
+    mockAdminTests = [
+      ...mockAdminTests.slice(0, idx),
+      next,
+      ...mockAdminTests.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminTestDeleteHandler = http.delete(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const before = mockAdminTests.length;
+  mockAdminTests = mockAdminTests.filter((t) => t.id !== String(params.test_id));
+  if (mockAdminTests.length === before) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "Test not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return new HttpResponse(null, { status: 204 });
+});
+
+const adminTestsHandlers = [
+  adminTestsListHandler,
+  adminTestGetHandler,
+  adminTestCreateHandler,
+  adminTestUpdateHandler,
+  adminTestDeleteHandler,
+];
 export const adminTestQuestionsListHandler = http.get(
   `${API}/v1/tests/:test_id/questions`,
   adminEmptyPage,
@@ -2749,6 +2910,6 @@ export const handlers = [
   ...adminUsersHandlers,
   ...adminGroupsHandlers,
   ...adminAssignmentsHandlers,
-  adminTestsListHandler,
+  ...adminTestsHandlers,
   adminTestQuestionsListHandler,
 ];

@@ -317,9 +317,13 @@ describe("assignments list — test picker filters to bindable tests (drift Find
     await user.click(screen.getByTestId("assignments-add-button"));
 
     const select = screen.getByTestId("assignment-target") as HTMLSelectElement;
-    // Both seed tests have pill_id set → both appear.
-    expect(select.querySelector('option[value^="test:"]')).toBeTruthy();
+    // Picker filters to tests with pill_id !== null (drift Finding #6).
+    // Slice 11 extended seeds with two pill_id=null tests (frozen +
+    // hand_authored) — those must NOT appear in the picker.
+    const allTests = getMockAdminTests();
+    const bindableCount = allTests.filter((t) => t.pill_id !== null).length;
     const testOptions = Array.from(select.querySelectorAll('option[value^="test:"]'));
-    expect(testOptions.length).toBe(getMockAdminTests().length);
+    expect(testOptions.length).toBe(bindableCount);
+    expect(testOptions.length).toBeLessThan(allTests.length);
   });
 });
