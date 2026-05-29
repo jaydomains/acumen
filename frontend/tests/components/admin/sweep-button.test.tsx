@@ -48,9 +48,7 @@ describe("SweepButton", () => {
     const d = deferred();
     const onRun = vi.fn(() => d.promise);
     const user = userEvent.setup();
-    render(
-      <SweepButton label="Run sweep now" runningLabel="Sweeping…" onRun={onRun} />,
-    );
+    render(<SweepButton label="Run sweep now" runningLabel="Sweeping…" onRun={onRun} />);
 
     await user.click(screen.getByTestId("sweep-button"));
 
@@ -99,5 +97,47 @@ describe("SweepButton", () => {
       expect(screen.getByTestId("sweep-button")).toHaveAttribute("data-state", "idle"),
     );
     expect(screen.getByText("Run sweep now")).toBeInTheDocument();
+  });
+
+  it("re-click during done cancels the stale reset timer (no mid-run revert)", async () => {
+    const d1 = deferred();
+    const d2 = deferred();
+    const onRun = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValueOnce(d1.promise)
+      .mockReturnValueOnce(d2.promise);
+    const user = userEvent.setup();
+    render(<SweepButton label="Run sweep now" runningLabel="Sweeping…" onRun={onRun} />);
+
+    // First run → done (arms the 1500ms done→idle reset timer).
+    await user.click(screen.getByTestId("sweep-button"));
+    await act(async () => {
+      d1.resolve();
+      await d1.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("sweep-button")).toHaveAttribute("data-state", "done"),
+    );
+
+    // Re-click within the done window kicks off a second run.
+    await user.click(screen.getByTestId("sweep-button"));
+    expect(screen.getByTestId("sweep-button")).toHaveAttribute("data-state", "running");
+    expect(onRun).toHaveBeenCalledTimes(2);
+
+    // The first run's reset timer must have been cleared — advancing well
+    // past 1500ms leaves the button running, not bounced back to idle.
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByTestId("sweep-button")).toHaveAttribute("data-state", "running");
+
+    // Second run resolves → done.
+    await act(async () => {
+      d2.resolve();
+      await d2.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("sweep-button")).toHaveAttribute("data-state", "done"),
+    );
   });
 });

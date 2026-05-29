@@ -26,8 +26,7 @@ import { adminKeys } from "@/lib/queries/admin-keys";
 import type { components } from "@/lib/api/types";
 
 export type EngagementWidgetItem = components["schemas"]["EngagementWidgetItem"];
-export type EngagementWidgetResponse =
-  components["schemas"]["EngagementWidgetResponse"];
+export type EngagementWidgetResponse = components["schemas"]["EngagementWidgetResponse"];
 export type SweepResult = components["schemas"]["SweepResult"];
 
 export function useEngagementPending() {

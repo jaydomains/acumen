@@ -3173,26 +3173,22 @@ const mockEngagementRows: components["schemas"]["EngagementWidgetItem"][] = [
   },
 ];
 
-const engagementPendingHandler = http.get(
-  `${API}/v1/admin/engagement/pending`,
-  () =>
-    HttpResponse.json<components["schemas"]["EngagementWidgetResponse"]>({
-      data: mockEngagementRows,
-    }),
+const engagementPendingHandler = http.get(`${API}/v1/admin/engagement/pending`, () =>
+  HttpResponse.json<components["schemas"]["EngagementWidgetResponse"]>({
+    data: mockEngagementRows,
+  }),
 );
 
-const engagementSweepHandler = http.post(
-  `${API}/v1/admin/engagement/sweep`,
-  () =>
-    HttpResponse.json<components["schemas"]["SweepResult"]>({
-      reminders_sent: 3,
-      escalations_sent: 1,
-      first_reminders_sent: 2,
-      second_reminders_sent: 1,
-      assignments_processed: 4,
-      duration_ms: 312,
-      last_swept_at: new Date().toISOString(),
-    }),
+const engagementSweepHandler = http.post(`${API}/v1/admin/engagement/sweep`, () =>
+  HttpResponse.json<components["schemas"]["SweepResult"]>({
+    reminders_sent: 3,
+    escalations_sent: 1,
+    first_reminders_sent: 2,
+    second_reminders_sent: 1,
+    assignments_processed: 4,
+    duration_ms: 312,
+    last_swept_at: new Date().toISOString(),
+  }),
 );
 
 const adminEngagementHandlers = [engagementPendingHandler, engagementSweepHandler];

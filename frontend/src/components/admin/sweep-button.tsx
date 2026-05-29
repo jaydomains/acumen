@@ -62,6 +62,13 @@ export function SweepButton({
 
   const handleClick = useCallback(async () => {
     if (state === "running") return;
+    // Re-triggering from the `done` state: cancel the previous run's
+    // pending done→idle reset so it can't fire mid-run and bounce the
+    // button back to idle while this new run is still in flight.
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
     setState("running");
     try {
       await onRun();
