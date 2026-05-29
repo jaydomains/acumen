@@ -3142,6 +3142,61 @@ const adminQuestionsHandlers = [
   adminQuestionDeleteHandler,
 ];
 
+// ── FE-9 engagement (admin-ops §B.4) ──
+// Enriched row + sweep shapes (§H(a) item 1 contract; landed in schema).
+const mockEngagementRows: components["schemas"]["EngagementWidgetItem"][] = [
+  {
+    assignment_id: "00000000-0000-0000-0000-0000000eea01",
+    testee_id: "00000000-0000-0000-0000-0000000eeb01",
+    testee_name: "Naledi P.",
+    pill_or_test_name: "Confined Space Entry",
+    assigner_name: "Gys M.",
+    created_at: "2026-04-25T09:00:00Z",
+    deadline: "2026-05-02T09:00:00Z",
+    is_mandatory: true,
+    days_stale: 34,
+    reminders_sent: 2,
+    escalated: true,
+  },
+  {
+    assignment_id: "00000000-0000-0000-0000-0000000eea02",
+    testee_id: "00000000-0000-0000-0000-0000000eeb02",
+    testee_name: "Kabelo R.",
+    pill_or_test_name: "Antifouling Systems",
+    assigner_name: "Jay V.",
+    created_at: "2026-05-15T09:00:00Z",
+    deadline: "2026-05-22T09:00:00Z",
+    is_mandatory: true,
+    days_stale: 14,
+    reminders_sent: 1,
+    escalated: false,
+  },
+];
+
+const engagementPendingHandler = http.get(
+  `${API}/v1/admin/engagement/pending`,
+  () =>
+    HttpResponse.json<components["schemas"]["EngagementWidgetResponse"]>({
+      data: mockEngagementRows,
+    }),
+);
+
+const engagementSweepHandler = http.post(
+  `${API}/v1/admin/engagement/sweep`,
+  () =>
+    HttpResponse.json<components["schemas"]["SweepResult"]>({
+      reminders_sent: 3,
+      escalations_sent: 1,
+      first_reminders_sent: 2,
+      second_reminders_sent: 1,
+      assignments_processed: 4,
+      duration_ms: 312,
+      last_swept_at: new Date().toISOString(),
+    }),
+);
+
+const adminEngagementHandlers = [engagementPendingHandler, engagementSweepHandler];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3199,4 +3254,5 @@ export const handlers = [
   ...adminAssignmentsHandlers,
   ...adminTestsHandlers,
   ...adminQuestionsHandlers,
+  ...adminEngagementHandlers,
 ];

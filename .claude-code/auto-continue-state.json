@@ -1,22 +1,23 @@
 {
-  "chainId": "tooling-state-poll-and-chain-state-file",
-  "chainOpenedAt": "2026-05-27T20:37:00Z",
+  "chainId": "fe-9-admin-operations",
+  "chainOpenedAt": "2026-05-29T00:00:00Z",
   "slices": [
     {
-      "id": "slice-1-replace-gh-pr-checks-watch-and-add-state-file",
+      "id": "slice-1-engagement-sweep-and-pending-list",
       "status": "open",
-      "prNumber": 62,
-      "fixRounds": 1,
-      "lastFinding": "Gitar PR #62: chain-state bootstrap committed with `slices[0].prNumber: null` (the file was authored before the PR existed). Set to 62 in this fold-in so a resuming session can poll the correct PR via convention (d). fixRounds incremented to 1 — the (b) circuit-breaker arms at 3."
+      "prNumber": null,
+      "fixRounds": 0,
+      "lastFinding": "FE-9 Slice 1 authored: adminKeys FE-9 roots (ops/gradeReviews/loops/engagement); admin-engagement.ts query module (useEngagementPending GET + useSweepEngagement POST); SweepButton canonical primitive (§C.4) + unit test; /engagement route segment (page.tsx server + _components/pending-list.tsx client + error.tsx Pattern C); MSW engagement pending+sweep handlers. Built against the ENRICHED EngagementWidgetItem/SweepResult wire shapes — the §H(a) item 1 row-enrichment contract has landed in the backend schema (schema.json), so the page consumes the post-enrichment columns/toast directly rather than the spec-prose sparse fallback. prNumber to be folded in after the PR opens (convention d)."
     }
   ],
   "currentIndex": 0,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {
-    "schemaBootstrap": "First write of .claude-code/auto-continue-state.json in this repo. Codifies the schema introduced by SESSION_START.md §193-230 convention (e), paired with the rewritten convention (d) that replaces `gh pr checks --watch` with a three-layer state-poll loop (CI + Gitar review + GitHub mergeable). Schema mirrors Throughline's docs/_meta/throughline/AUTO_CONTINUE_WORKFLOW.md §Chain State Persistence and the on-disk example at throughline's .claude-code/auto-continue-state.json.",
-    "nextChain": "FE-7 per FE_ROADMAP.md is the next phase chain; opening FE-7 will overwrite this file with the FE-7 chain's initial state (chainId=`fe-7-<slug>`, slices[] populated from the FE-7 plan, currentIndex=0).",
-    "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt). Matches the three named halt classes in §193-230 (a), (b), (c) respectively.",
-    "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart and is visible in `git status` / PR diffs. Per-slice `fixRounds` is the mechanical arming for the (b) circuit breaker — a fourth increment is the halt signal, not a fourth fix-round commit."
+    "chainBootstrap": "Overwrites the prior tooling-state chain per the nextChain convention. This is the FE-9 admin-operations chain (fe-specs/FE-9-admin-ops.md). Slice list is seeded with Slice 1 (engagement); subsequent slices append as they open.",
+    "specDriftNote": "Spec prose (FE-9-admin-ops.md §B.4) repeatedly assumes the pre-enrichment sparse EngagementWidgetItem/SweepResult shape with §H(a) item 1 'not yet landed'. The backend OpenAPI schema now carries the enriched fields (testee_name/pill_or_test_name/assigner_name/days_stale/reminders_sent/escalated on the row; first/second_reminders_sent/assignments_processed/duration_ms/last_swept_at on the result). Per the spec's own conditional instructions ('once that lands, replace the fallback'), Slice 1 builds to the enriched contract. Not a halt-class drift — the spec pre-decided this path.",
+    "routeNote": "Engagement ships at top-level /engagement (Rail.tsx:49 shipped contract), not /admin/engagement as the spec prose loosely writes. Mirrors how /ops is also a top-level (admin)-group segment.",
+    "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt).",
+    "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart. Per-slice `fixRounds` arms the (b) circuit breaker — a fourth increment is the halt signal."
   }
 }
