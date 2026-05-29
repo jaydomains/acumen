@@ -70,10 +70,11 @@ describe("Rail", () => {
     ]);
   });
 
-  // Updated to the 11-item ADMIN_NAV locked in FE-8 catalogue spec §C.2
-  // (`fe-specs/FE-8-admin-catalogue.md:1162–1170`). FE-8 unbundles the
-  // historic single `users` row into `users` + `groups`, and adds
-  // `paths`, `tests`, `assignments` as top-level rail entries.
+  // 11-item ADMIN_NAV locked in FE-8 catalogue spec §C.2
+  // (`fe-specs/FE-8-admin-catalogue.md:1162–1170`), extended to 13 by the
+  // FE-9 close-out (§H(b) item 14 / §F.4) which appends `calibration` +
+  // `system`. FE-8 unbundles the historic single `users` row into `users`
+  // + `groups`, and adds `paths`, `tests`, `assignments`.
   it("locks the admin nav order + hrefs", () => {
     expect(ADMIN_NAV.map((n) => n.href)).toEqual([
       "/ops",
@@ -87,10 +88,12 @@ describe("Rail", () => {
       "/admin/assignments",
       "/cost",
       "/loop",
+      "/calibration",
+      "/system",
     ]);
   });
 
-  it("locks the admin nav ids + labels (FE-8 §C.2 lock)", () => {
+  it("locks the admin nav ids + labels (FE-8 §C.2 lock + FE-9 extension)", () => {
     expect(ADMIN_NAV.map((n) => ({ id: n.id, label: n.label }))).toEqual([
       { id: "ops", label: "Operations" },
       { id: "review", label: "Grade Review" },
@@ -104,6 +107,9 @@ describe("Rail", () => {
       { id: "assignments", label: "Assignments" },
       { id: "cost", label: "AI Cost" },
       { id: "loop", label: "Loops" },
+      // FE-9 close-out extension.
+      { id: "calibration", label: "Calibration" },
+      { id: "system", label: "System" },
     ]);
   });
 });

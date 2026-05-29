@@ -1,22 +1,68 @@
 {
-  "chainId": "tooling-state-poll-and-chain-state-file",
-  "chainOpenedAt": "2026-05-27T20:37:00Z",
+  "chainId": "fe-9-admin-operations",
+  "chainOpenedAt": "2026-05-29T00:00:00Z",
   "slices": [
     {
-      "id": "slice-1-replace-gh-pr-checks-watch-and-add-state-file",
-      "status": "open",
-      "prNumber": 62,
+      "id": "slice-1-engagement-sweep-and-pending-list",
+      "status": "green-stacked",
+      "prNumber": 66,
       "fixRounds": 1,
-      "lastFinding": "Gitar PR #62: chain-state bootstrap committed with `slices[0].prNumber: null` (the file was authored before the PR existed). Set to 62 in this fold-in so a resuming session can poll the correct PR via convention (d). fixRounds incremented to 1 — the (b) circuit-breaker arms at 3."
+      "lastFinding": "FE-9 Slice 1 complete + stacked on PR #66 (NOT merged). adminKeys FE-9 roots; admin-engagement.ts query module; SweepButton canonical primitive (§C.4) + tests; /engagement route segment; MSW handlers. Built against ENRICHED EngagementWidgetItem/SweepResult (§H(a) item 1). Fix round 1: prettier + SweepButton done-state race (clear stale reset timer before re-run) + regression test. THREE-LAYER GREEN on commit 3636ad4: checks/e2e/migration-chain/docker-build all completed/success; Gitar APPROVED. Advanced to Slice 2."
+    },
+    {
+      "id": "slice-2-grade-review-queue",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 2 complete + stacked on PR #66 (NOT merged). admin-grade-reviews.ts (verdict-aware list + 3-action resolve); VerdictTile primitive (§B.2, reused by sibling calibration) + tests; /review route (server page + Pattern C error + client GradeReviewQueue with ?verdict=/?selected= URL state, auto-select, deep-link fallback via verdict=all since no single-row endpoint, QueueList, enriched DetailPane, OverrideDrawer); MSW handlers; 6 integration tests. Built to enriched/wired contract (verified: row enriched, ?verdict= wired). Fix round 1: 2 Gitar advisory nits — writeParams useCallback + superRefine co-located substitute validation. THREE-LAYER GREEN on commit feeabb6: all 11 checks (checks/e2e/migration-chain/docker-build x-runs) completed/success; Gitar APPROVED 3/3 resolved. Advanced to Slice 3."
+    },
+    {
+      "id": "slice-3-loop-queue",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "FE-9 Slice 3 complete + stacked on PR #66 (NOT merged). admin-loops.ts (status-aware GET + approve/reject mutations, reject wires {reason}); /loop route (server page + Pattern C error + client LoopQueue: ?status= server-side filter, LoopTable, Approve/Reject modals, 409 handling); MSW handlers; 5 integration tests. Pre-build verification all favorable (enriched row, ?status= wired, reject {reason} body). Route /loop (singular) per Rail.tsx:67. No new Gitar findings. THREE-LAYER GREEN on commit d5d0a1d: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 4."
+    },
+    {
+      "id": "slice-4-cost",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 4 complete + stacked on PR #66 (NOT merged). adminKeys systems roots (cost/calibration/system); admin-cost.ts (useCostSummary, local CostSummaryResponse type cast — endpoint is untyped inline dict §H(b)10); /cost route (server page + Pattern C error + read-only CostDashboard: summary strip, alert pills, provider bars, model table, deferred daily placeholder, range selector); MSW handler; 6 integration tests. Fix round 1: Gitar advisory — inline Pattern C BoundaryFrame on query.isError across ALL FOUR FE-9 query pages (cost/engagement/loop/grade-review) matching catalogue convention + 3 error-state tests. THREE-LAYER GREEN on commit 99e89d4: all 11 checks completed/success; Gitar APPROVED 4/4 resolved. Advanced to Slice 5."
+    },
+    {
+      "id": "slice-5-calibration",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "FE-9 Slice 5 complete + stacked on PR #66 (NOT merged). admin-calibration.ts (flagged GET + run/resolve mutations); VerdictTile generalised (optional score + subtitle) so calibration action tiles reuse it without regressing grade-review; bandFromLevel extracted to primitives/bands.ts (shared); /calibration route (run section, session-local summary strip, per-pill drift table, flagged table with ?pill= client filter, resolve modal with 3 tiles + conditional JSON editor, inline isError boundary); MSW handlers; 6 integration tests. Pre-build verification favorable (enriched row, action enum, ?pill= client-side). Nav: no calibration rail entry yet (§H(b)14) — Slice 7 adds it. No new Gitar findings. THREE-LAYER GREEN on commit 0d80f60: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 6."
+    },
+    {
+      "id": "slice-6-system-page",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 6 complete + stacked on PR #66 (NOT merged). admin-system.ts (drive-index + realism-status GETs; bootstrap/drive-ingest/realism/safety-links run mutations); /system route (5 SystemOpCards via SweepButton, session-local + GET-backed stats, per-card error isolation, read-only drive-index card); MSW handlers; 5 integration tests. All 6 endpoints verified present incl. realism/status (§H(a)8 blocker resolved). Fix round 1: removed unused Button import (lint). THREE-LAYER GREEN on commit 2ef31e4: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 7 (close-out).",
+      "lastFindingNote": "Slices 4/5/6 cumulative tests: 925 passing."
+    },
+    {
+      "id": "slice-7-ops-landing-closeout",
+      "status": "implemented-awaiting-green",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "Slice 7 (CLOSE-OUT) implemented: /ops landing (5 shared-cache cards + defensive hero, replacing FE-2 placeholder) + ops/error.tsx; nav-rail extension (calibration + system, Rail.tsx 11→13, Rail.test + shell-roundtrip updated); FE_CHECKLIST FE-9 rows → done; handovers/PR-066-fe9-admin-operations.md written; admin-ops-landing.test.tsx. Local gates: typecheck + lint + prettier clean, 930 tests pass. On three-layer green for the close-out commit → the SINGLE Q4=B squash-merge (gh pr merge --squash --delete-branch). This is the only slice that merges; FE-9 roadmap closes."
     }
   ],
-  "currentIndex": 0,
+  "currentIndex": 6,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {
-    "schemaBootstrap": "First write of .claude-code/auto-continue-state.json in this repo. Codifies the schema introduced by SESSION_START.md §193-230 convention (e), paired with the rewritten convention (d) that replaces `gh pr checks --watch` with a three-layer state-poll loop (CI + Gitar review + GitHub mergeable). Schema mirrors Throughline's docs/_meta/throughline/AUTO_CONTINUE_WORKFLOW.md §Chain State Persistence and the on-disk example at throughline's .claude-code/auto-continue-state.json.",
-    "nextChain": "FE-7 per FE_ROADMAP.md is the next phase chain; opening FE-7 will overwrite this file with the FE-7 chain's initial state (chainId=`fe-7-<slug>`, slices[] populated from the FE-7 plan, currentIndex=0).",
-    "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt). Matches the three named halt classes in §193-230 (a), (b), (c) respectively.",
-    "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart and is visible in `git status` / PR diffs. Per-slice `fixRounds` is the mechanical arming for the (b) circuit breaker — a fourth increment is the halt signal, not a fourth fix-round commit."
+    "chainBootstrap": "Overwrites the prior tooling-state chain per the nextChain convention. This is the FE-9 admin-operations chain (fe-specs/FE-9-admin-ops.md). Slice list is seeded with Slice 1 (engagement); subsequent slices append as they open.",
+    "mergeModel": "SINGLE PR (#66) spans all 7 FE-9 slices. Commits STACK on the branch; the PR stays OPEN across slices. After each slice reaches three-layer green (CI checks + Gitar review + GitHub mergeable), advance currentIndex and auto-continue into the next slice — DO NOT merge. The Q4=B `gh pr merge --squash --delete-branch` close-out fires ONCE, only after Slice 7 (ops landing + nav extension + checklist close + handover). 7 slices total. Confirmed anchors: Slice 1 = engagement /engagement (this slice); Slice 2 = grade-review queue /review; Slice 7 = ops landing + nav + checklist close + handover (close-out). Slices 3–6 per the approved plan body (not re-derived here).",
+    "specDriftNote": "Spec prose (FE-9-admin-ops.md §B.4) repeatedly assumes the pre-enrichment sparse EngagementWidgetItem/SweepResult shape with §H(a) item 1 'not yet landed'. The backend OpenAPI schema now carries the enriched fields (testee_name/pill_or_test_name/assigner_name/days_stale/reminders_sent/escalated on the row; first/second_reminders_sent/assignments_processed/duration_ms/last_swept_at on the result). Per the spec's own conditional instructions ('once that lands, replace the fallback'), Slice 1 builds to the enriched contract. Not a halt-class drift — the spec pre-decided this path.",
+    "routeNote": "Engagement ships at top-level /engagement (Rail.tsx:49 shipped contract), not /admin/engagement as the spec prose loosely writes. Mirrors how /ops is also a top-level (admin)-group segment.",
+    "ciWaitMechanism": "subscribe_pr_activity only pushes CI FAILURE events + review comments — it does NOT push CI SUCCESS. Do not wait for a 'green' webhook (it never arrives). To detect three-layer green, actively poll `pull_request_read get_check_runs` (a Monitor until-loop is the sanctioned wait; foreground sleep is blocked) until every run is completed/success, then advance. Keep the subscription for what it delivers: failure alerts + reviewer comments.",
+    "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt).",
+    "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart. Per-slice `fixRounds` arms the (b) circuit breaker — a fourth increment is the halt signal."
   }
 }

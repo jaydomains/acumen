@@ -65,6 +65,11 @@ export const ADMIN_NAV: NavItem[] = [
   },
   { id: "cost", label: "AI Cost", icon: "cost", href: "/cost" },
   { id: "loop", label: "Loops", icon: "loop", href: "/loop" },
+  // FE-9 systems surfaces (§H(b) item 14 / §F.4): the calibration +
+  // system pages shipped URL-only during their slices; the close-out
+  // adds their rail entries here.
+  { id: "calibration", label: "Calibration", icon: "sliders", href: "/calibration" },
+  { id: "system", label: "System", icon: "settings", href: "/system" },
 ];
 
 export type RailProps = {

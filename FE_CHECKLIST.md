@@ -123,11 +123,11 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Ops dashboard (flagged queues, engagement, cost summary, bootstrap status) | FE-9 | AC-D6, AC-D18, AC-D19, AC-D26 | `frontend/src/app/(admin)/ops/page.tsx` | missing | — |
-| Grade-review queue split-detail | FE-9 | AC-D19 | `frontend/src/app/(admin)/grade-reviews/page.tsx` | missing | — |
-| Admin override action (keep_ai / accept_reviewer / substitute) | FE-9 | AC-D19 | override panel | missing | — |
-| Loop queue (autonomous vs admin-reviewed): approve/reject | FE-9 | AC-D6 | `frontend/src/app/(admin)/loops/page.tsx` | missing | — |
-| Engagement (sweep + pending list; no per-row nudge in v1) | FE-9 | AC-D26 | `frontend/src/app/(admin)/engagement/page.tsx` | missing | — |
-| Cost dashboard (rolling month, by provider/model, budget %, alerts) | FE-9 | AC-D18 | `frontend/src/app/(admin)/cost/page.tsx` | missing | — |
-| Anchor calibration (run / flagged / resolve) | FE-9 | AC-D20, AC-D27 | `frontend/src/app/(admin)/calibration/page.tsx` | missing | — |
-| System page (bootstrap / drive-ingest / drive-index status / realism aggregate / safety-link check) | FE-9 | AC-D22, AC-D23 | `frontend/src/app/(admin)/system/page.tsx` | missing | — |
+| Ops dashboard (flagged queues, engagement, cost summary, bootstrap status) | FE-9 | AC-D6, AC-D18, AC-D19, AC-D26 | `frontend/src/app/(authed)/(admin)/ops/page.tsx` | done | PR #66 Slice 7 — `_components/ops-landing.tsx`, 5 shared-cache cards + defensive hero; `admin-ops-landing.test.tsx` |
+| Grade-review queue split-detail | FE-9 | AC-D19 | `frontend/src/app/(authed)/(admin)/review/page.tsx` | done | PR #66 Slice 2 — `/review`, `?verdict=`/`?selected=` URL state; `admin-grade-review-queue.test.tsx` |
+| Admin override action (keep_ai / accept_reviewer / substitute) | FE-9 | AC-D19 | `review/_components/override-drawer.tsx` | done | PR #66 Slice 2 — Sheet + rhf/zod superRefine; covered in grade-review tests |
+| Loop queue (autonomous vs admin-reviewed): approve/reject | FE-9 | AC-D6 | `frontend/src/app/(authed)/(admin)/loop/page.tsx` | done | PR #66 Slice 3 — `/loop`, server-side `?status=`; `admin-loop-queue.test.tsx`. Queue serves admin-reviewed rows only (autonomous self-progress) |
+| Engagement (sweep + pending list; no per-row nudge in v1) | FE-9 | AC-D26 | `frontend/src/app/(authed)/(admin)/engagement/page.tsx` | done | PR #66 Slice 1 — `/engagement`, SweepButton primitive; `sweep-button.test.tsx` |
+| Cost dashboard (rolling month, by provider/model, budget %, alerts) | FE-9 | AC-D18 | `frontend/src/app/(authed)/(admin)/cost/page.tsx` | done | PR #66 Slice 4 — `/cost`, read-only; `admin-cost-dashboard.test.tsx` |
+| Anchor calibration (run / flagged / resolve) | FE-9 | AC-D20, AC-D27 | `frontend/src/app/(authed)/(admin)/calibration/page.tsx` | done | PR #66 Slice 5 — `/calibration`, VerdictTile reuse; `admin-calibration.test.tsx`. v1 = AC-D23 flag queue; AC-D27 drift queue deferred (§E.4) |
+| System page (bootstrap / drive-ingest / drive-index status / realism aggregate / safety-link check) | FE-9 | AC-D22, AC-D23 | `frontend/src/app/(authed)/(admin)/system/page.tsx` | done | PR #66 Slice 6 — `/system`, 5 SystemOpCards; `admin-system-page.test.tsx` |

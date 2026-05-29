@@ -102,4 +102,62 @@ export const adminKeys = {
     detail: (testId: string, questionId: string) =>
       [...adminKeys.questions.all(testId), "detail", questionId] as const,
   },
+
+  // ── FE-9 ops key roots (fe-specs/FE-9-admin-ops.md §C.1) ──
+  // Appended unchanged from the FE-8 library above. The ops landing's
+  // synthetic `overview` key composes the page's underlying queries;
+  // cross-resource mutations (e.g. the engagement sweep) invalidate it
+  // so the landing refreshes on next visit.
+
+  // FE-9 ops landing (synthetic key — composes the landing's queries)
+  ops: {
+    all: () => [...adminKeys.all, "ops"] as const,
+    overview: () => [...adminKeys.ops.all(), "overview"] as const,
+  },
+
+  // FE-9 grade-review queue (B.2)
+  gradeReviews: {
+    all: () => [...adminKeys.all, "gradeReviews"] as const,
+    flagged: (filters?: { verdict?: "flagged" | "confirmed" | "all" }) =>
+      [...adminKeys.gradeReviews.all(), "flagged", filters ?? {}] as const,
+    detail: (gradeReviewId: string) =>
+      [...adminKeys.gradeReviews.all(), "detail", gradeReviewId] as const,
+  },
+
+  // FE-9 loop queue (B.3)
+  loops: {
+    all: () => [...adminKeys.all, "loops"] as const,
+    queue: (filters?: { status?: string }) =>
+      [...adminKeys.loops.all(), "queue", filters ?? {}] as const,
+  },
+
+  // FE-9 engagement (B.4)
+  engagement: {
+    all: () => [...adminKeys.all, "engagement"] as const,
+    pending: () => [...adminKeys.engagement.all(), "pending"] as const,
+  },
+
+  // ── FE-9 systems key roots (fe-specs/FE-9-admin-systems.md §C.1) ──
+
+  // Cost dashboard (systems §B.1) — read-only, no mutations.
+  cost: {
+    all: () => [...adminKeys.all, "cost"] as const,
+    summary: () => [...adminKeys.cost.all(), "summary"] as const,
+  },
+
+  // Anchor calibration (systems §B.2)
+  calibration: {
+    all: () => [...adminKeys.all, "calibration"] as const,
+    flaggedAnchors: (filters?: { pill_id?: string }) =>
+      [...adminKeys.calibration.all(), "flaggedAnchors", filters ?? {}] as const,
+    lastRun: () => [...adminKeys.calibration.all(), "lastRun"] as const,
+  },
+
+  // System page (systems §B.3)
+  system: {
+    all: () => [...adminKeys.all, "system"] as const,
+    driveIndex: () => [...adminKeys.system.all(), "driveIndex"] as const,
+    realismStatus: () => [...adminKeys.system.all(), "realismStatus"] as const,
+    safetyLinkStatus: () => [...adminKeys.system.all(), "safetyLinkStatus"] as const,
+  },
 };

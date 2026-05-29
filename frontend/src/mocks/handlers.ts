@@ -3142,6 +3142,441 @@ const adminQuestionsHandlers = [
   adminQuestionDeleteHandler,
 ];
 
+// ── FE-9 engagement (admin-ops §B.4) ──
+// Enriched row + sweep shapes (§H(a) item 1 contract; landed in schema).
+const mockEngagementRows: components["schemas"]["EngagementWidgetItem"][] = [
+  {
+    assignment_id: "00000000-0000-0000-0000-0000000eea01",
+    testee_id: "00000000-0000-0000-0000-0000000eeb01",
+    testee_name: "Naledi P.",
+    pill_or_test_name: "Confined Space Entry",
+    assigner_name: "Gys M.",
+    created_at: "2026-04-25T09:00:00Z",
+    deadline: "2026-05-02T09:00:00Z",
+    is_mandatory: true,
+    days_stale: 34,
+    reminders_sent: 2,
+    escalated: true,
+  },
+  {
+    assignment_id: "00000000-0000-0000-0000-0000000eea02",
+    testee_id: "00000000-0000-0000-0000-0000000eeb02",
+    testee_name: "Kabelo R.",
+    pill_or_test_name: "Antifouling Systems",
+    assigner_name: "Jay V.",
+    created_at: "2026-05-15T09:00:00Z",
+    deadline: "2026-05-22T09:00:00Z",
+    is_mandatory: true,
+    days_stale: 14,
+    reminders_sent: 1,
+    escalated: false,
+  },
+];
+
+const engagementPendingHandler = http.get(`${API}/v1/admin/engagement/pending`, () =>
+  HttpResponse.json<components["schemas"]["EngagementWidgetResponse"]>({
+    data: mockEngagementRows,
+  }),
+);
+
+const engagementSweepHandler = http.post(`${API}/v1/admin/engagement/sweep`, () =>
+  HttpResponse.json<components["schemas"]["SweepResult"]>({
+    reminders_sent: 3,
+    escalations_sent: 1,
+    first_reminders_sent: 2,
+    second_reminders_sent: 1,
+    assignments_processed: 4,
+    duration_ms: 312,
+    last_swept_at: new Date().toISOString(),
+  }),
+);
+
+const adminEngagementHandlers = [engagementPendingHandler, engagementSweepHandler];
+
+// ── FE-9 grade reviews (admin-ops §B.2) ──
+const mockGradeReviews: components["schemas"]["FlaggedGradeReviewItem"][] = [
+  {
+    grade_review_id: "00000000-0000-0000-0000-0000000d0a01",
+    grade_id: "00000000-0000-0000-0000-0000000d0b01",
+    attempt_id: "00000000-0000-0000-0000-0000000d0c01",
+    question_id: "00000000-0000-0000-0000-0000000d0d01",
+    testee_name: "Naledi P.",
+    pill_name: "Confined Space Entry",
+    question_prompt: "Describe the atmospheric tests required before entry.",
+    rubric_extract: "Full credit: names O2, LEL, and toxic-gas tests in sequence.",
+    testee_response: "Check oxygen levels and gas before going in.",
+    band: 3,
+    ai_score: 0.6,
+    ai_verdict: "partial",
+    ai_reasoning: "Mentions oxygen + gas but omits the LEL/sequence detail.",
+    review_reasoning: "Response is too vague to credit partial — no sequence named.",
+    created_at: "2026-05-27T09:00:00Z",
+  },
+  {
+    grade_review_id: "00000000-0000-0000-0000-0000000d0a02",
+    grade_id: "00000000-0000-0000-0000-0000000d0b02",
+    attempt_id: "00000000-0000-0000-0000-0000000d0c02",
+    question_id: "00000000-0000-0000-0000-0000000d0d02",
+    testee_name: "Kabelo R.",
+    pill_name: "Antifouling Systems",
+    question_prompt:
+      "Why is surface preparation critical before antifouling application?",
+    rubric_extract: "Full credit: links adhesion failure to inadequate prep.",
+    testee_response: "If you don't prep the surface the paint won't stick properly.",
+    band: 2,
+    ai_score: 1.0,
+    ai_verdict: "full",
+    ai_reasoning: "Correctly links prep to adhesion.",
+    review_reasoning: "Answer lacks the corrosion-pathway depth the rubric expects.",
+    created_at: "2026-05-28T14:30:00Z",
+  },
+];
+
+const gradeReviewsFlaggedHandler = http.get(
+  `${API}/v1/admin/grade-reviews/flagged`,
+  ({ request }) => {
+    const verdict = new URL(request.url).searchParams.get("verdict") ?? "flagged";
+    // Mock view: confirmed is empty at baseline; flagged/all return the rows.
+    const data = verdict === "confirmed" ? [] : mockGradeReviews;
+    return HttpResponse.json<components["schemas"]["FlaggedGradeReviewListResponse"]>({
+      data,
+    });
+  },
+);
+
+const gradeReviewResolveHandler = http.post(
+  `${API}/v1/admin/grade-reviews/:grade_review_id/resolve`,
+  async ({ params, request }) => {
+    const id = String(params.grade_review_id);
+    const row = mockGradeReviews.find((r) => r.grade_review_id === id);
+    const body = (await request.json().catch(() => null)) as
+      | components["schemas"]["GradeReviewResolveRequest"]
+      | null;
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "REVIEW_ALREADY_RESOLVED",
+            message: "This review was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const action = body?.action ?? "keep_ai";
+    const gradeScore =
+      action === "accept_reviewer"
+        ? 0
+        : action === "substitute"
+          ? (body?.score ?? row.ai_score)
+          : row.ai_score;
+    const gradeVerdict =
+      action === "accept_reviewer"
+        ? "none"
+        : action === "substitute"
+          ? (body?.verdict ?? row.ai_verdict)
+          : row.ai_verdict;
+    return HttpResponse.json<components["schemas"]["GradeReviewResolveResult"]>({
+      grade_review_id: id,
+      grade_id: row.grade_id,
+      attempt_id: row.attempt_id,
+      action,
+      grade_score: gradeScore,
+      grade_verdict: gradeVerdict,
+      attempt_overall_score: 0.72,
+      attempt_outcome: "pass",
+    });
+  },
+);
+
+const adminGradeReviewHandlers = [gradeReviewsFlaggedHandler, gradeReviewResolveHandler];
+
+// ── FE-9 loop queue (admin-ops §B.3) ──
+const mockLoopRows: components["schemas"]["LoopQueueItem"][] = [
+  {
+    weakness_report_id: "00000000-0000-0000-0000-0000000100a1",
+    attempt_id: "00000000-0000-0000-0000-0000000100b1",
+    testee_id: "00000000-0000-0000-0000-0000000100c1",
+    testee_name: "Naledi P.",
+    pill_id: "00000000-0000-0000-0000-0000000100d1",
+    pill_name: "Confined Space Entry",
+    overall_score: 0.42,
+    weak_pill_ids: [
+      "00000000-0000-0000-0000-0000000100d1",
+      "00000000-0000-0000-0000-0000000100d2",
+    ],
+    loop_mode: "admin_reviewed",
+    iteration: "1 of 1",
+    last_attempt_at: "2026-05-28T10:00:00Z",
+    status: "review",
+    created_at: "2026-05-28T10:05:00Z",
+  },
+  {
+    weakness_report_id: "00000000-0000-0000-0000-0000000100a2",
+    attempt_id: "00000000-0000-0000-0000-0000000100b2",
+    testee_id: "00000000-0000-0000-0000-0000000100c2",
+    testee_name: "Kabelo R.",
+    pill_id: "00000000-0000-0000-0000-0000000100d3",
+    pill_name: "Antifouling Systems",
+    overall_score: 0.55,
+    weak_pill_ids: ["00000000-0000-0000-0000-0000000100d3"],
+    loop_mode: "admin_reviewed",
+    iteration: "2 of ∞",
+    last_attempt_at: "2026-05-27T16:30:00Z",
+    status: "queued",
+    created_at: "2026-05-27T16:35:00Z",
+  },
+];
+
+const loopQueueHandler = http.get(`${API}/v1/admin/loop/queue`, ({ request }) => {
+  const status = new URL(request.url).searchParams.get("status");
+  const data = status ? mockLoopRows.filter((r) => r.status === status) : mockLoopRows;
+  return HttpResponse.json<components["schemas"]["LoopQueueListResponse"]>({ data });
+});
+
+const loopApproveHandler = http.post(
+  `${API}/v1/admin/loop/queue/:weakness_report_id/approve`,
+  ({ params }) => {
+    const id = String(params.weakness_report_id);
+    const row = mockLoopRows.find((r) => r.weakness_report_id === id);
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "LOOP_ALREADY_RESOLVED",
+            message: "This loop was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json<components["schemas"]["LoopApproveResult"]>({
+      weakness_report_id: id,
+      follow_up_count: row.weak_pill_ids.length || 1,
+    });
+  },
+);
+
+const loopRejectHandler = http.post(
+  `${API}/v1/admin/loop/queue/:weakness_report_id/reject`,
+  ({ params }) => {
+    const id = String(params.weakness_report_id);
+    if (!mockLoopRows.some((r) => r.weakness_report_id === id)) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "LOOP_ALREADY_RESOLVED",
+            message: "This loop was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json<components["schemas"]["LoopRejectResult"]>({
+      weakness_report_id: id,
+    });
+  },
+);
+
+const adminLoopHandlers = [loopQueueHandler, loopApproveHandler, loopRejectHandler];
+
+// ── FE-9 cost dashboard (admin-systems §B.1) ──
+// The endpoint returns an untyped inline dict; the shape mirrors the
+// locked `CostSummaryResponse` in `lib/queries/admin-cost.ts`.
+const costSummaryHandler = http.get(`${API}/v1/admin/cost/summary`, () =>
+  HttpResponse.json({
+    since: "2026-05-01T00:00:00Z",
+    year_month: "2026-05",
+    total_usd: 14.32,
+    by_provider: { anthropic: 12.1, openai: 2.22 },
+    by_model: {
+      "claude-sonnet-4-5": 12.1,
+      "gpt-4o-mini": 1.5,
+      "text-embedding-3-small": 0.72,
+    },
+    monthly_budget: 20.0,
+    percent_of_budget: 71.6,
+    alerts_fired_this_month: [50],
+  }),
+);
+
+const adminCostHandlers = [costSummaryHandler];
+
+// ── FE-9 anchor calibration (admin-systems §B.2) ──
+const mockFlaggedAnchors: components["schemas"]["FlaggedAnchorItem"][] = [
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a1",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p1",
+    pill_name: "Cathodic Protection",
+    band: 3,
+    type: "mcq",
+    config: {},
+    assigned_difficulty: 6,
+    regeneration_attempts: 2,
+    excluded: true,
+    excluded_reason: "Failed review: ambiguous correct option after 2 regenerations.",
+    created_at: "2026-05-26T08:00:00Z",
+  },
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a2",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p1",
+    pill_name: "Cathodic Protection",
+    band: 4,
+    type: "short_answer",
+    config: {},
+    assigned_difficulty: 8,
+    regeneration_attempts: 1,
+    excluded: true,
+    excluded_reason: "Rubric drift flagged during generate-and-review.",
+    created_at: "2026-05-26T09:00:00Z",
+  },
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a3",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p2",
+    pill_name: "Antifouling Systems",
+    band: 2,
+    type: "mcq",
+    config: {},
+    assigned_difficulty: 4,
+    regeneration_attempts: 3,
+    excluded: true,
+    excluded_reason: "Exhausted regeneration attempts.",
+    created_at: "2026-05-26T10:00:00Z",
+  },
+];
+
+const anchorsFlaggedHandler = http.get(`${API}/v1/admin/anchors/flagged`, () =>
+  HttpResponse.json<components["schemas"]["FlaggedAnchorListResponse"]>({
+    data: mockFlaggedAnchors,
+  }),
+);
+
+const calibrationRunHandler = http.post(`${API}/v1/admin/calibration/run`, () =>
+  HttpResponse.json<components["schemas"]["CalibrationSweepResult"]>({
+    anchors_processed: 2740,
+    anchors_updated: 142,
+    anchors_skipped_no_observations: 18,
+    mean_n: 12.4,
+    mean_effective_difficulty: 5.6,
+  }),
+);
+
+const anchorResolveHandler = http.post(
+  `${API}/v1/admin/anchors/:anchor_id/resolve`,
+  async ({ params, request }) => {
+    const id = String(params.anchor_id);
+    const row = mockFlaggedAnchors.find((r) => r.anchor_question_id === id);
+    const body = (await request.json().catch(() => null)) as
+      | components["schemas"]["AnchorResolveRequest"]
+      | null;
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "ANCHOR_ALREADY_RESOLVED",
+            message: "Anchor was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const action = body?.action ?? "keep";
+    return HttpResponse.json<components["schemas"]["AnchorResolveResult"]>({
+      anchor_question_id: id,
+      action,
+      excluded: action === "reject",
+      needs_admin_attention: false,
+      regeneration_attempts: row.regeneration_attempts,
+    });
+  },
+);
+
+const adminCalibrationHandlers = [
+  anchorsFlaggedHandler,
+  calibrationRunHandler,
+  anchorResolveHandler,
+];
+
+// ── FE-9 system operations (admin-systems §B.3) ──
+const driveIndexHandler = http.get(`${API}/v1/admin/drive/index`, () =>
+  HttpResponse.json<components["schemas"]["DriveIndexStatus"]>({
+    chunks: 4120,
+    files: 412,
+    last_indexed_at: "2026-05-29T18:00:00Z",
+  }),
+);
+
+const driveIngestRunHandler = http.post(`${API}/v1/admin/drive/ingest`, () =>
+  HttpResponse.json<components["schemas"]["DriveIngestResult"]>({
+    files_seen: 412,
+    files_unchanged: 402,
+    files_added: 7,
+    files_changed: 3,
+    files_deleted: 0,
+    files_failed: 0,
+    chunks_added: 84,
+    chunks_deleted: 0,
+    embed_calls: 84,
+  }),
+);
+
+const realismStatusHandler = http.get(`${API}/v1/admin/realism/status`, () =>
+  HttpResponse.json<components["schemas"]["RealismStatusResponse"]>({
+    last_aggregated_at: "2026-05-29T02:00:00Z",
+    flags_processed_last_run: 38,
+    below_threshold_count: 4,
+    auto_suppressed_count: 1,
+    total_flag_count_active: 52,
+  }),
+);
+
+const realismAggregateRunHandler = http.post(`${API}/v1/admin/realism/aggregate`, () =>
+  HttpResponse.json<components["schemas"]["RealismAggregationResult"]>({
+    flags_processed: 38,
+    questions_updated: 6,
+    anchors_excluded: 1,
+    anchor_questions_seen: 240,
+  }),
+);
+
+const safetyLinkCheckRunHandler = http.post(`${API}/v1/admin/safety-links/check`, () =>
+  HttpResponse.json<components["schemas"]["SafetyLinkCheckResult"]>({
+    links_checked: 96,
+    links_broken_replaced: 2,
+    links_drift_flagged: 3,
+    links_unchanged: 91,
+  }),
+);
+
+const bootstrapRunHandler = http.post(`${API}/v1/admin/bootstrap/run`, () =>
+  HttpResponse.json<components["schemas"]["BootstrapRunResult"]>({
+    pills_processed: 137,
+    anchors_generated: 2740,
+    anchors_excluded: 14,
+    safety_pills_curated: 18,
+    safety_links_added: 54,
+    drive_step_ran: true,
+    drive_files_seen: 412,
+    drive_files_changed: 3,
+    drive_files_added: 7,
+    drive_files_deleted: 0,
+    duration_seconds: 184,
+  }),
+);
+
+const adminSystemHandlers = [
+  driveIndexHandler,
+  driveIngestRunHandler,
+  realismStatusHandler,
+  realismAggregateRunHandler,
+  safetyLinkCheckRunHandler,
+  bootstrapRunHandler,
+];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3199,4 +3634,10 @@ export const handlers = [
   ...adminAssignmentsHandlers,
   ...adminTestsHandlers,
   ...adminQuestionsHandlers,
+  ...adminEngagementHandlers,
+  ...adminGradeReviewHandlers,
+  ...adminLoopHandlers,
+  ...adminCostHandlers,
+  ...adminCalibrationHandlers,
+  ...adminSystemHandlers,
 ];
