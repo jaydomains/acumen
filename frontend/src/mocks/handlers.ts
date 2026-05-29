@@ -3193,6 +3193,105 @@ const engagementSweepHandler = http.post(`${API}/v1/admin/engagement/sweep`, () 
 
 const adminEngagementHandlers = [engagementPendingHandler, engagementSweepHandler];
 
+// ── FE-9 grade reviews (admin-ops §B.2) ──
+const mockGradeReviews: components["schemas"]["FlaggedGradeReviewItem"][] = [
+  {
+    grade_review_id: "00000000-0000-0000-0000-0000000d0a01",
+    grade_id: "00000000-0000-0000-0000-0000000d0b01",
+    attempt_id: "00000000-0000-0000-0000-0000000d0c01",
+    question_id: "00000000-0000-0000-0000-0000000d0d01",
+    testee_name: "Naledi P.",
+    pill_name: "Confined Space Entry",
+    question_prompt: "Describe the atmospheric tests required before entry.",
+    rubric_extract: "Full credit: names O2, LEL, and toxic-gas tests in sequence.",
+    testee_response: "Check oxygen levels and gas before going in.",
+    band: 3,
+    ai_score: 0.6,
+    ai_verdict: "partial",
+    ai_reasoning: "Mentions oxygen + gas but omits the LEL/sequence detail.",
+    review_reasoning: "Response is too vague to credit partial — no sequence named.",
+    created_at: "2026-05-27T09:00:00Z",
+  },
+  {
+    grade_review_id: "00000000-0000-0000-0000-0000000d0a02",
+    grade_id: "00000000-0000-0000-0000-0000000d0b02",
+    attempt_id: "00000000-0000-0000-0000-0000000d0c02",
+    question_id: "00000000-0000-0000-0000-0000000d0d02",
+    testee_name: "Kabelo R.",
+    pill_name: "Antifouling Systems",
+    question_prompt:
+      "Why is surface preparation critical before antifouling application?",
+    rubric_extract: "Full credit: links adhesion failure to inadequate prep.",
+    testee_response: "If you don't prep the surface the paint won't stick properly.",
+    band: 2,
+    ai_score: 1.0,
+    ai_verdict: "full",
+    ai_reasoning: "Correctly links prep to adhesion.",
+    review_reasoning: "Answer lacks the corrosion-pathway depth the rubric expects.",
+    created_at: "2026-05-28T14:30:00Z",
+  },
+];
+
+const gradeReviewsFlaggedHandler = http.get(
+  `${API}/v1/admin/grade-reviews/flagged`,
+  ({ request }) => {
+    const verdict = new URL(request.url).searchParams.get("verdict") ?? "flagged";
+    // Mock view: confirmed is empty at baseline; flagged/all return the rows.
+    const data = verdict === "confirmed" ? [] : mockGradeReviews;
+    return HttpResponse.json<components["schemas"]["FlaggedGradeReviewListResponse"]>({
+      data,
+    });
+  },
+);
+
+const gradeReviewResolveHandler = http.post(
+  `${API}/v1/admin/grade-reviews/:grade_review_id/resolve`,
+  async ({ params, request }) => {
+    const id = String(params.grade_review_id);
+    const row = mockGradeReviews.find((r) => r.grade_review_id === id);
+    const body = (await request.json().catch(() => null)) as
+      | components["schemas"]["GradeReviewResolveRequest"]
+      | null;
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "REVIEW_ALREADY_RESOLVED",
+            message: "This review was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const action = body?.action ?? "keep_ai";
+    const gradeScore =
+      action === "accept_reviewer"
+        ? 0
+        : action === "substitute"
+          ? (body?.score ?? row.ai_score)
+          : row.ai_score;
+    const gradeVerdict =
+      action === "accept_reviewer"
+        ? "none"
+        : action === "substitute"
+          ? (body?.verdict ?? row.ai_verdict)
+          : row.ai_verdict;
+    return HttpResponse.json<components["schemas"]["GradeReviewResolveResult"]>({
+      grade_review_id: id,
+      grade_id: row.grade_id,
+      attempt_id: row.attempt_id,
+      action,
+      grade_score: gradeScore,
+      grade_verdict: gradeVerdict,
+      attempt_overall_score: 0.72,
+      attempt_outcome: "pass",
+    });
+  },
+);
+
+const adminGradeReviewHandlers = [gradeReviewsFlaggedHandler, gradeReviewResolveHandler];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3251,4 +3350,5 @@ export const handlers = [
   ...adminTestsHandlers,
   ...adminQuestionsHandlers,
   ...adminEngagementHandlers,
+  ...adminGradeReviewHandlers,
 ];

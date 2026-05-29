@@ -4,13 +4,20 @@
   "slices": [
     {
       "id": "slice-1-engagement-sweep-and-pending-list",
-      "status": "open",
+      "status": "green-stacked",
       "prNumber": 66,
       "fixRounds": 1,
-      "lastFinding": "FE-9 Slice 1 authored + pushed to PR #66. adminKeys FE-9 roots (ops/gradeReviews/loops/engagement); admin-engagement.ts query module (useEngagementPending GET + useSweepEngagement POST); SweepButton canonical primitive (§C.4) + unit tests; /engagement route segment (page.tsx server + _components/pending-list.tsx client + error.tsx Pattern C); MSW engagement pending+sweep handlers. Built against the ENRICHED EngagementWidgetItem/SweepResult wire shapes (§H(a) item 1 enrichment landed in schema.json). Fix round 1: prettier format:check + Gitar SweepButton done-state race (clear stale reset timer before re-run) + regression test. Local gates green: typecheck + lint + prettier clean, sweep-button 5/5. Gitar review APPROVED. Awaiting CI checks/migration-chain/docker-build to complete green; on three-layer green, advance currentIndex 0→1 and auto-continue into Slice 2 — NO merge (see mergeModel note)."
+      "lastFinding": "FE-9 Slice 1 complete + stacked on PR #66 (NOT merged). adminKeys FE-9 roots; admin-engagement.ts query module; SweepButton canonical primitive (§C.4) + tests; /engagement route segment; MSW handlers. Built against ENRICHED EngagementWidgetItem/SweepResult (§H(a) item 1). Fix round 1: prettier + SweepButton done-state race (clear stale reset timer before re-run) + regression test. THREE-LAYER GREEN on commit 3636ad4: checks/e2e/migration-chain/docker-build all completed/success; Gitar APPROVED. Advanced to Slice 2."
+    },
+    {
+      "id": "slice-2-grade-review-queue",
+      "status": "open",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "Slice 2 opened: Grade-review queue at /review (FE-9-admin-ops.md §B.2). Pre-build drift-sweep + plan next."
     }
   ],
-  "currentIndex": 0,
+  "currentIndex": 1,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {
@@ -18,6 +25,7 @@
     "mergeModel": "SINGLE PR (#66) spans all 7 FE-9 slices. Commits STACK on the branch; the PR stays OPEN across slices. After each slice reaches three-layer green (CI checks + Gitar review + GitHub mergeable), advance currentIndex and auto-continue into the next slice — DO NOT merge. The Q4=B `gh pr merge --squash --delete-branch` close-out fires ONCE, only after Slice 7 (ops landing + nav extension + checklist close + handover). 7 slices total. Confirmed anchors: Slice 1 = engagement /engagement (this slice); Slice 2 = grade-review queue /review; Slice 7 = ops landing + nav + checklist close + handover (close-out). Slices 3–6 per the approved plan body (not re-derived here).",
     "specDriftNote": "Spec prose (FE-9-admin-ops.md §B.4) repeatedly assumes the pre-enrichment sparse EngagementWidgetItem/SweepResult shape with §H(a) item 1 'not yet landed'. The backend OpenAPI schema now carries the enriched fields (testee_name/pill_or_test_name/assigner_name/days_stale/reminders_sent/escalated on the row; first/second_reminders_sent/assignments_processed/duration_ms/last_swept_at on the result). Per the spec's own conditional instructions ('once that lands, replace the fallback'), Slice 1 builds to the enriched contract. Not a halt-class drift — the spec pre-decided this path.",
     "routeNote": "Engagement ships at top-level /engagement (Rail.tsx:49 shipped contract), not /admin/engagement as the spec prose loosely writes. Mirrors how /ops is also a top-level (admin)-group segment.",
+    "ciWaitMechanism": "subscribe_pr_activity only pushes CI FAILURE events + review comments — it does NOT push CI SUCCESS. Do not wait for a 'green' webhook (it never arrives). To detect three-layer green, actively poll `pull_request_read get_check_runs` (a Monitor until-loop is the sanctioned wait; foreground sleep is blocked) until every run is completed/success, then advance. Keep the subscription for what it delivers: failure alerts + reviewer comments.",
     "haltReasonVocabulary": "haltReason is one of `spec-drift`, `circuit-breaker`, `user-pause`, or null (no halt).",
     "writeSemantics": "Writes are atomic (write-temp + rename). The file is committed so chain state survives session restart. Per-slice `fixRounds` arms the (b) circuit breaker — a fourth increment is the halt signal."
   }
