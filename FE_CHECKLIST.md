@@ -110,14 +110,14 @@
 
 | Capability | Phase | Anchors | Files to touch | Status | Evidence |
 |---|---|---|---|---|---|
-| Admin catalogue (pills/subjects/proposals/safety tabs) | FE-8 | AC-D7, AC-D8, AC-D21 | `frontend/src/app/(admin)/catalogue/page.tsx` | missing | — |
-| Pill CRUD + safety-override toggle | FE-8 | AC-D7, AC-D21 | pill editor | missing | — |
-| Pill-proposal approve/reject (no edit-then-approve in v1) | FE-8 | AC-D8 | proposals tab | missing | — |
-| Users CRUD + deactivate/reactivate | FE-8 | AC-D2, AC-D14 | `frontend/src/app/(admin)/users/page.tsx` | missing | — |
-| Groups CRUD + membership (system-group immutability) | FE-8 | AC-D15 | `frontend/src/app/(admin)/groups/page.tsx` | missing | — |
-| Test authoring (4 modes, **single editor with mode-conditional sections**, question editor, publish/lock/unlock) | FE-8 | AC-D3, AC-D5, AC-D13, AC-D17, AC-D24 | `frontend/src/app/(admin)/tests/*` | missing | — |
-| Learning-path authoring | FE-8 | AC-D7 | `frontend/src/app/(admin)/paths/*` | missing | — |
-| Assignment authoring (testees + groups, deadline, loop_mode) | FE-8 | AC-D15, AC-D26, AC-D6 | `frontend/src/app/(admin)/assignments/page.tsx` | missing | — |
+| Admin catalogue (pills/subjects/proposals/safety tabs) | FE-8 | AC-D7, AC-D8, AC-D21 | `frontend/src/app/(authed)/(admin)/admin/catalogue/page.tsx` | done | PR #65 |
+| Pill CRUD + safety-override toggle | FE-8 | AC-D7, AC-D21 | pill editor | done | PR #65 |
+| Pill-proposal approve/reject (no edit-then-approve in v1) | FE-8 | AC-D8 | proposals tab | done | PR #65 |
+| Users CRUD + deactivate/reactivate | FE-8 | AC-D2, AC-D14 | `frontend/src/app/(authed)/(admin)/admin/users/page.tsx` | done | PR #65 |
+| Groups CRUD + membership (system-group immutability) | FE-8 | AC-D15 | `frontend/src/app/(authed)/(admin)/admin/groups/page.tsx` | done | PR #65 |
+| Test authoring (3 of 4 modes shipping: per_testee + frozen + hand_authored; benchmark stubbed v1.x N3; **single editor with mode-conditional sections**, 5-type question editor modal, publish/unlock — lock disabled v1 pending /v1/campaigns) | FE-8 | AC-D3, AC-D5, AC-D13, AC-D17, AC-D24 | `frontend/src/app/(authed)/(admin)/admin/tests/*` | done | PR #65 |
+| Learning-path authoring | FE-8 | AC-D7 | `frontend/src/app/(authed)/(admin)/admin/paths/*` | done | PR #65 |
+| Assignment authoring (testees + groups, deadline, loop_mode; create + delete only, edit dropped per Phase 0 lock) | FE-8 | AC-D15, AC-D26, AC-D6 | `frontend/src/app/(authed)/(admin)/admin/assignments/page.tsx` | done | PR #65 |
 
 ## FE-9 — Admin operations
 
