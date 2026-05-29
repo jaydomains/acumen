@@ -16,9 +16,8 @@
  * no single-row endpoint — §H(b) item 3).
  */
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { cn } from "@/lib/utils";
 import {
@@ -61,29 +60,34 @@ export function GradeReviewQueue() {
     : null;
   const selectedRow = inList ?? fallbackRow;
 
-  const writeParams = (updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null || value === "") params.delete(key);
-      else params.set(key, value);
-    }
-    const qs = params.toString();
-    router.replace(qs ? `/review?${qs}` : "/review");
-  };
+  const writeParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null || value === "") params.delete(key);
+        else params.set(key, value);
+      }
+      const qs = params.toString();
+      router.replace(qs ? `/review?${qs}` : "/review");
+    },
+    [router, searchParams],
+  );
 
-  // Normalise a missing/invalid verdict param to the default.
+  // Normalise a missing/invalid verdict param to the default. The
+  // `isVerdict` guard makes this idempotent — re-running after the
+  // replace lands (and `writeParams` re-identifies) is a no-op.
   useEffect(() => {
     if (!isVerdict(verdictParam)) writeParams({ verdict: "flagged" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verdictParam]);
+  }, [verdictParam, writeParams]);
 
-  // Auto-select the first row when nothing is selected.
+  // Auto-select the first row when nothing is selected. The `!selected`
+  // guard makes this idempotent across `writeParams`/`rows` re-identity.
+  const firstRowId = rows[0]?.grade_review_id ?? null;
   useEffect(() => {
-    if (!primary.isPending && !selected && rows.length > 0) {
-      writeParams({ selected: rows[0]!.grade_review_id });
+    if (!primary.isPending && !selected && firstRowId) {
+      writeParams({ selected: firstRowId });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primary.isPending, selected, rows.length]);
+  }, [primary.isPending, selected, firstRowId, writeParams]);
 
   const onResolved = () => {
     setDrawerOpen(false);

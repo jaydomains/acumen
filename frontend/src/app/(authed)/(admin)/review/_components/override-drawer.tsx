@@ -42,11 +42,24 @@ const TILES: Array<{
   { label: "None", score: 0, verdict: "none" },
 ];
 
-const substituteSchema = z.object({
-  score: z.number().min(0).max(1).optional(),
-  verdict: z.enum(["full", "partial", "none"]).optional(),
-  reasoning: z.string().max(2000).optional().default(""),
-});
+// Validation is co-located in the schema: a tile must be picked before
+// submit. `superRefine` surfaces the rule as an error on the verdict
+// (tile-group) path, so the handler stays purely about dispatching.
+const substituteSchema = z
+  .object({
+    score: z.number().min(0).max(1).optional(),
+    verdict: z.enum(["full", "partial", "none"]).optional(),
+    reasoning: z.string().max(2000).optional().default(""),
+  })
+  .superRefine((val, ctx) => {
+    if (val.score === undefined || val.verdict === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pick a verdict to substitute",
+        path: ["verdict"],
+      });
+    }
+  });
 type SubstituteInput = z.infer<typeof substituteSchema>;
 
 function successMessage(result: GradeReviewResolveResult): string {
@@ -116,10 +129,9 @@ export function OverrideDrawer({
   };
 
   const onSubstitute = form.handleSubmit(async (values) => {
-    if (values.score === undefined || values.verdict === undefined) {
-      form.setError("root", { message: "Pick a verdict to substitute" });
-      return;
-    }
+    // The schema's superRefine guarantees both are present once we reach
+    // the success path; this narrow is just for the optional output type.
+    if (values.score === undefined || values.verdict === undefined) return;
     await runResolve({
       action: "substitute",
       score: values.score,
@@ -187,14 +199,20 @@ export function OverrideDrawer({
                   onSelect={() => {
                     form.setValue("score", tile.score, { shouldValidate: false });
                     form.setValue("verdict", tile.verdict, { shouldValidate: false });
-                    form.clearErrors("root");
+                    form.clearErrors("verdict");
                   }}
                 />
               ))}
             </div>
           </Field>
-          {form.formState.errors.root?.message ? (
-            <FieldError msg={form.formState.errors.root.message} />
+          {(form.formState.errors.verdict?.message ??
+          form.formState.errors.root?.message) ? (
+            <FieldError
+              msg={
+                (form.formState.errors.verdict?.message ??
+                  form.formState.errors.root?.message)!
+              }
+            />
           ) : null}
           <Field label="Reason — visible to testee — optional" error={null}>
             <textarea
