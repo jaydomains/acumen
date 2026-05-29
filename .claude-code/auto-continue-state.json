@@ -5,9 +5,9 @@
     {
       "id": "slice-1-engagement-sweep-and-pending-list",
       "status": "open",
-      "prNumber": null,
+      "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "FE-9 Slice 1 authored: adminKeys FE-9 roots (ops/gradeReviews/loops/engagement); admin-engagement.ts query module (useEngagementPending GET + useSweepEngagement POST); SweepButton canonical primitive (§C.4) + unit test; /engagement route segment (page.tsx server + _components/pending-list.tsx client + error.tsx Pattern C); MSW engagement pending+sweep handlers. Built against the ENRICHED EngagementWidgetItem/SweepResult wire shapes — the §H(a) item 1 row-enrichment contract has landed in the backend schema (schema.json), so the page consumes the post-enrichment columns/toast directly rather than the spec-prose sparse fallback. prNumber to be folded in after the PR opens (convention d)."
+      "lastFinding": "FE-9 Slice 1 authored + pushed; PR #66 opened (non-draft, base main). adminKeys FE-9 roots (ops/gradeReviews/loops/engagement); admin-engagement.ts query module (useEngagementPending GET + useSweepEngagement POST); SweepButton canonical primitive (§C.4) + unit test; /engagement route segment (page.tsx server + _components/pending-list.tsx client + error.tsx Pattern C); MSW engagement pending+sweep handlers. Built against the ENRICHED EngagementWidgetItem/SweepResult wire shapes — the §H(a) item 1 row-enrichment contract has landed in the backend schema (schema.json), so the page consumes the post-enrichment columns/toast directly rather than the spec-prose sparse fallback. Local gates green: typecheck + lint clean, 890 tests pass. Awaiting CI + Gitar review + mergeable before squash-merge (convention d)."
     }
   ],
   "currentIndex": 0,
