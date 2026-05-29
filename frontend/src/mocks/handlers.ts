@@ -3501,6 +3501,82 @@ const adminCalibrationHandlers = [
   anchorResolveHandler,
 ];
 
+// ── FE-9 system operations (admin-systems §B.3) ──
+const driveIndexHandler = http.get(`${API}/v1/admin/drive/index`, () =>
+  HttpResponse.json<components["schemas"]["DriveIndexStatus"]>({
+    chunks: 4120,
+    files: 412,
+    last_indexed_at: "2026-05-29T18:00:00Z",
+  }),
+);
+
+const driveIngestRunHandler = http.post(`${API}/v1/admin/drive/ingest`, () =>
+  HttpResponse.json<components["schemas"]["DriveIngestResult"]>({
+    files_seen: 412,
+    files_unchanged: 402,
+    files_added: 7,
+    files_changed: 3,
+    files_deleted: 0,
+    files_failed: 0,
+    chunks_added: 84,
+    chunks_deleted: 0,
+    embed_calls: 84,
+  }),
+);
+
+const realismStatusHandler = http.get(`${API}/v1/admin/realism/status`, () =>
+  HttpResponse.json<components["schemas"]["RealismStatusResponse"]>({
+    last_aggregated_at: "2026-05-29T02:00:00Z",
+    flags_processed_last_run: 38,
+    below_threshold_count: 4,
+    auto_suppressed_count: 1,
+    total_flag_count_active: 52,
+  }),
+);
+
+const realismAggregateRunHandler = http.post(`${API}/v1/admin/realism/aggregate`, () =>
+  HttpResponse.json<components["schemas"]["RealismAggregationResult"]>({
+    flags_processed: 38,
+    questions_updated: 6,
+    anchors_excluded: 1,
+    anchor_questions_seen: 240,
+  }),
+);
+
+const safetyLinkCheckRunHandler = http.post(`${API}/v1/admin/safety-links/check`, () =>
+  HttpResponse.json<components["schemas"]["SafetyLinkCheckResult"]>({
+    links_checked: 96,
+    links_broken_replaced: 2,
+    links_drift_flagged: 3,
+    links_unchanged: 91,
+  }),
+);
+
+const bootstrapRunHandler = http.post(`${API}/v1/admin/bootstrap/run`, () =>
+  HttpResponse.json<components["schemas"]["BootstrapRunResult"]>({
+    pills_processed: 137,
+    anchors_generated: 2740,
+    anchors_excluded: 14,
+    safety_pills_curated: 18,
+    safety_links_added: 54,
+    drive_step_ran: true,
+    drive_files_seen: 412,
+    drive_files_changed: 3,
+    drive_files_added: 7,
+    drive_files_deleted: 0,
+    duration_seconds: 184,
+  }),
+);
+
+const adminSystemHandlers = [
+  driveIndexHandler,
+  driveIngestRunHandler,
+  realismStatusHandler,
+  realismAggregateRunHandler,
+  safetyLinkCheckRunHandler,
+  bootstrapRunHandler,
+];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3563,4 +3639,5 @@ export const handlers = [
   ...adminLoopHandlers,
   ...adminCostHandlers,
   ...adminCalibrationHandlers,
+  ...adminSystemHandlers,
 ];

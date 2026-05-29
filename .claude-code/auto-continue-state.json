@@ -32,13 +32,20 @@
     },
     {
       "id": "slice-5-calibration",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "FE-9 Slice 5 complete + stacked on PR #66 (NOT merged). admin-calibration.ts (flagged GET + run/resolve mutations); VerdictTile generalised (optional score + subtitle) so calibration action tiles reuse it without regressing grade-review; bandFromLevel extracted to primitives/bands.ts (shared); /calibration route (run section, session-local summary strip, per-pill drift table, flagged table with ?pill= client filter, resolve modal with 3 tiles + conditional JSON editor, inline isError boundary); MSW handlers; 6 integration tests. Pre-build verification favorable (enriched row, action enum, ?pill= client-side). Nav: no calibration rail entry yet (§H(b)14) — Slice 7 adds it. No new Gitar findings. THREE-LAYER GREEN on commit 0d80f60: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 6."
+    },
+    {
+      "id": "slice-6-system-page",
       "status": "open",
       "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "Slice 5 opened: Anchor calibration (FE-9-admin-systems.md §B.2). Reuses SweepButton (run trigger) + VerdictTile (resolve modal). Pre-build contract verification + build next."
+      "lastFinding": "Slice 6 opened: System page (FE-9-admin-systems.md §B.3). Reuses SweepButton for op cards (bootstrap/drive-ingest/realism/safety-links). Pre-build contract verification + build next."
     }
   ],
-  "currentIndex": 4,
+  "currentIndex": 5,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {
