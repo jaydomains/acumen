@@ -29,6 +29,7 @@ export type TestResponse = components["schemas"]["TestResponse"];
 export type TestCreate = components["schemas"]["TestCreate"];
 export type TestUpdate = components["schemas"]["TestUpdate"];
 export type TestsPage = components["schemas"]["Page_TestResponse_"];
+export type TestMode = components["schemas"]["TestMode"];
 
 const PAGE_SIZE = 50;
 
@@ -106,5 +107,61 @@ export function useDeleteTest() {
         }),
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: adminKeys.tests.all() }),
+  });
+}
+
+export function usePublishTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (testId: string) =>
+      unwrap(
+        client.POST("/v1/tests/{test_id}/publish", {
+          params: { path: { test_id: testId } },
+        }),
+      ),
+    onSuccess: (_data, testId) => {
+      qc.invalidateQueries({ queryKey: adminKeys.tests.all() });
+      qc.invalidateQueries({ queryKey: adminKeys.tests.detail(testId) });
+    },
+  });
+}
+
+/**
+ * Lock-to-campaign hook. Slice 12 ships the wire surface; the button
+ * itself is **disabled** in v1 because no `/v1/campaigns` endpoint
+ * exists on the wire — there's no v1 mechanism for an admin to obtain
+ * a `campaign_id` to satisfy the wire's `CampaignLockRequest` body
+ * (Slice 12 drift Finding #1). Deferred to v1.x per §E pattern.
+ */
+export function useLockTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ testId, campaign_id }: { testId: string; campaign_id: string }) =>
+      unwrap(
+        client.POST("/v1/tests/{test_id}/lock", {
+          params: { path: { test_id: testId } },
+          body: { campaign_id },
+        }),
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: adminKeys.tests.all() });
+      qc.invalidateQueries({ queryKey: adminKeys.tests.detail(vars.testId) });
+    },
+  });
+}
+
+export function useUnlockTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (testId: string) =>
+      unwrap(
+        client.POST("/v1/tests/{test_id}/unlock", {
+          params: { path: { test_id: testId } },
+        }),
+      ),
+    onSuccess: (_data, testId) => {
+      qc.invalidateQueries({ queryKey: adminKeys.tests.all() });
+      qc.invalidateQueries({ queryKey: adminKeys.tests.detail(testId) });
+    },
   });
 }

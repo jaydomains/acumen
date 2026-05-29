@@ -2755,14 +2755,16 @@ const adminTestsListHandler = http.get(`${API}/v1/tests`, ({ request }) => {
   return HttpResponse.json({ data: slice, meta: { next_cursor } });
 });
 
+// `/v1/tests/:test_id` is owned by *both* the testee `getTestHandler`
+// (mockTests map, FE-4 attempt runner) and the admin editor. Slice 12
+// registers `adminTestGetHandler` *before* the testee handler in the
+// `handlers` array and returns `undefined` here on miss so MSW falls
+// through to the testee handler — that way admin seed IDs resolve to
+// the admin shape and any other ID resolves via the testee handler
+// (which 404s if absent, preserving existing FE-4 + Slice 11 behaviour).
 const adminTestGetHandler = http.get(`${API}/v1/tests/:test_id`, ({ params }) => {
   const t = mockAdminTests.find((x) => x.id === String(params.test_id));
-  if (!t) {
-    return HttpResponse.json(
-      { error: { code: "not_found", message: "Test not found.", detail: null } },
-      { status: 404 },
-    );
-  }
+  if (!t) return undefined;
   return HttpResponse.json(t);
 });
 
@@ -2850,12 +2852,112 @@ const adminTestDeleteHandler = http.delete(`${API}/v1/tests/:test_id`, ({ params
   return new HttpResponse(null, { status: 204 });
 });
 
+const replaceMockTest = (next: TestResponseSchema): void => {
+  const idx = mockAdminTests.findIndex((x) => x.id === next.id);
+  if (idx < 0) return;
+  mockAdminTests = [
+    ...mockAdminTests.slice(0, idx),
+    next,
+    ...mockAdminTests.slice(idx + 1),
+  ];
+};
+
+// `POST /v1/tests/{test_id}/publish` flips status draft → published.
+const adminTestPublishHandler = http.post(
+  `${API}/v1/tests/:test_id/publish`,
+  ({ params }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      status: "published",
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+// `POST /v1/tests/{test_id}/lock` — wire surface only; ships disabled
+// in v1 (Slice 12 drift Finding #1 — no `/v1/campaigns` endpoint to
+// feed `CampaignLockRequest.campaign_id`). The handler still records
+// the campaign-locked state so seed-based fixtures can exercise the
+// derived "locked" status without going through the UI button.
+const adminTestLockHandler = http.post(
+  `${API}/v1/tests/:test_id/lock`,
+  async ({ params, request }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as {
+      campaign_id?: string;
+    } | null;
+    if (!body || typeof body.campaign_id !== "string") {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ["body", "campaign_id"],
+              msg: "campaign_id required",
+              type: "missing",
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      lock_mode: "campaign-locked",
+      campaign_id: body.campaign_id,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+const adminTestUnlockHandler = http.post(
+  `${API}/v1/tests/:test_id/unlock`,
+  ({ params }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      lock_mode: "open",
+      campaign_id: null,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+// `adminTestGetHandler` is registered separately in the `handlers`
+// array (before `getTestHandler`) so it has first-dibs on `/v1/tests/
+// :test_id` and falls through to the testee handler on a miss.
 const adminTestsHandlers = [
   adminTestsListHandler,
-  adminTestGetHandler,
   adminTestCreateHandler,
   adminTestUpdateHandler,
   adminTestDeleteHandler,
+  adminTestPublishHandler,
+  adminTestLockHandler,
+  adminTestUnlockHandler,
 ];
 export const adminTestQuestionsListHandler = http.get(
   `${API}/v1/tests/:test_id/questions`,
@@ -2880,6 +2982,13 @@ export const handlers = [
   // `resolve` as a `:test_id` path param). MSW dispatches in handler-
   // array order, so resolve-first preserves the literal route.
   resolveTestHandler,
+  // `adminTestGetHandler` (admin editor) shares `/v1/tests/:test_id`
+  // with `getTestHandler` (testee attempt runner). Slice 12 registers
+  // the admin variant first; it returns `undefined` on a miss against
+  // the admin seed, letting MSW fall through to the testee handler.
+  // Admin seed IDs are `ffff5555-…`; testee seed IDs are distinct, so
+  // both surfaces stay isolated.
+  adminTestGetHandler,
   getTestHandler,
   autosaveHandler,
   flagRealismHandler,
