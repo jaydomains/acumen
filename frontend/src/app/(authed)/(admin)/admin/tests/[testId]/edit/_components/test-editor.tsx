@@ -24,7 +24,7 @@
  * endpoint to feed `CampaignLockRequest.campaign_id`).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,7 +37,6 @@ import { Field, FieldRow, FieldError } from "@/components/admin/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import {
   useAdminTest,
   useCreateTest,
@@ -86,9 +85,15 @@ export function TestEditor() {
     },
   });
 
-  // Hydrate on edit-mode load.
+  // Hydrate on edit-mode load. Slice 13 cleanup: gate on a `hydrated`
+  // ref so subsequent `testQuery.data` invalidations (e.g. after a
+  // PATCH succeeds and TanStack invalidates) don't stomp in-flight
+  // edits the user has typed since the last save. The first server
+  // payload wins; later refetches no-op.
+  const hydratedRef = useRef(false);
   useEffect(() => {
     if (isCreate) return;
+    if (hydratedRef.current) return;
     const data = testQuery.data;
     if (!data) return;
     form.reset({
@@ -102,6 +107,7 @@ export function TestEditor() {
       randomise_question_order: data.randomise_question_order,
       randomise_option_order: data.randomise_option_order,
     });
+    hydratedRef.current = true;
   }, [isCreate, testQuery.data, form]);
 
   const createMutation = useCreateTest();
@@ -442,7 +448,6 @@ export function TestEditor() {
           </ModalActions>
         </Modal>
       ) : null}
-      <span className={cn("hidden")} aria-hidden />
     </>
   );
 }
