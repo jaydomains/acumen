@@ -136,4 +136,28 @@ export const adminKeys = {
     all: () => [...adminKeys.all, "engagement"] as const,
     pending: () => [...adminKeys.engagement.all(), "pending"] as const,
   },
+
+  // ── FE-9 systems key roots (fe-specs/FE-9-admin-systems.md §C.1) ──
+
+  // Cost dashboard (systems §B.1) — read-only, no mutations.
+  cost: {
+    all: () => [...adminKeys.all, "cost"] as const,
+    summary: () => [...adminKeys.cost.all(), "summary"] as const,
+  },
+
+  // Anchor calibration (systems §B.2)
+  calibration: {
+    all: () => [...adminKeys.all, "calibration"] as const,
+    flaggedAnchors: (filters?: { pill_id?: string }) =>
+      [...adminKeys.calibration.all(), "flaggedAnchors", filters ?? {}] as const,
+    lastRun: () => [...adminKeys.calibration.all(), "lastRun"] as const,
+  },
+
+  // System page (systems §B.3)
+  system: {
+    all: () => [...adminKeys.all, "system"] as const,
+    driveIndex: () => [...adminKeys.system.all(), "driveIndex"] as const,
+    realismStatus: () => [...adminKeys.system.all(), "realismStatus"] as const,
+    safetyLinkStatus: () => [...adminKeys.system.all(), "safetyLinkStatus"] as const,
+  },
 };

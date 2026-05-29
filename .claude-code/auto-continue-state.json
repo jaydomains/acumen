@@ -18,13 +18,20 @@
     },
     {
       "id": "slice-3-loop-queue",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 0,
+      "lastFinding": "FE-9 Slice 3 complete + stacked on PR #66 (NOT merged). admin-loops.ts (status-aware GET + approve/reject mutations, reject wires {reason}); /loop route (server page + Pattern C error + client LoopQueue: ?status= server-side filter, LoopTable, Approve/Reject modals, 409 handling); MSW handlers; 5 integration tests. Pre-build verification all favorable (enriched row, ?status= wired, reject {reason} body). Route /loop (singular) per Rail.tsx:67. No new Gitar findings. THREE-LAYER GREEN on commit d5d0a1d: all 11 checks completed/success; Gitar APPROVED. Advanced to Slice 4."
+    },
+    {
+      "id": "slice-4-cost",
       "status": "open",
       "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "Slice 3 opened: Loop queue at /loops (FE-9-admin-ops.md §B.3). Pre-build contract verification + build next."
+      "lastFinding": "Slice 4 opened: Cost surface (FE-9-admin-systems.md). First slice from the sibling systems spec. Pre-build contract verification + build next."
     }
   ],
-  "currentIndex": 2,
+  "currentIndex": 3,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {

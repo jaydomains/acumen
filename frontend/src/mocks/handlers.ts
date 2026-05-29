@@ -3383,6 +3383,28 @@ const loopRejectHandler = http.post(
 
 const adminLoopHandlers = [loopQueueHandler, loopApproveHandler, loopRejectHandler];
 
+// ── FE-9 cost dashboard (admin-systems §B.1) ──
+// The endpoint returns an untyped inline dict; the shape mirrors the
+// locked `CostSummaryResponse` in `lib/queries/admin-cost.ts`.
+const costSummaryHandler = http.get(`${API}/v1/admin/cost/summary`, () =>
+  HttpResponse.json({
+    since: "2026-05-01T00:00:00Z",
+    year_month: "2026-05",
+    total_usd: 14.32,
+    by_provider: { anthropic: 12.1, openai: 2.22 },
+    by_model: {
+      "claude-sonnet-4-5": 12.1,
+      "gpt-4o-mini": 1.5,
+      "text-embedding-3-small": 0.72,
+    },
+    monthly_budget: 20.0,
+    percent_of_budget: 71.6,
+    alerts_fired_this_month: [50],
+  }),
+);
+
+const adminCostHandlers = [costSummaryHandler];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3443,4 +3465,5 @@ export const handlers = [
   ...adminEngagementHandlers,
   ...adminGradeReviewHandlers,
   ...adminLoopHandlers,
+  ...adminCostHandlers,
 ];
