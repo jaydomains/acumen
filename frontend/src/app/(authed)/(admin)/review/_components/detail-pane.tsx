@@ -13,17 +13,9 @@
 
 import { Pill } from "@/components/primitives/Pill";
 import { BandTag } from "@/components/primitives/BandTag";
-import { BAND_PIP_LEVEL, type Band } from "@/components/primitives/bands";
+import { bandFromLevel } from "@/components/primitives/bands";
 import { Button } from "@/components/ui/button";
 import type { FlaggedGradeReviewItem } from "@/lib/queries/admin-grade-reviews";
-
-/** Map the wire's integer band (1..5 pip level) back to the Band union. */
-function bandFromLevel(level: number): Band | null {
-  const entry = (Object.entries(BAND_PIP_LEVEL) as Array<[Band, number]>).find(
-    ([, lvl]) => lvl === level,
-  );
-  return entry ? entry[0] : null;
-}
 
 export function DetailPane({
   review,

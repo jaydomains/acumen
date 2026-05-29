@@ -14,10 +14,16 @@ import { Icon } from "@/components/primitives/Icon";
 import { cn } from "@/lib/utils";
 
 export type VerdictTileProps = {
-  /** Top label, e.g. "Full" / "Partial" / "None". */
+  /** Top label, e.g. "Full" / "Partial" / "None" / "Accept" / "Reject". */
   label: string;
-  /** Numeric score rendered as the subtitle, e.g. 1, 0.6, 0.4, 0. */
-  score: number;
+  /**
+   * Numeric score rendered as the subtitle (grade-review tiles, e.g. 1,
+   * 0.6, 0.4, 0). Omit for action-only tiles (e.g. calibration
+   * Accept/Reject/Override), optionally pairing with `subtitle`.
+   */
+  score?: number;
+  /** Descriptive subtitle shown when there is no numeric `score`. */
+  subtitle?: string;
   selected: boolean;
   onSelect: () => void;
   disabled?: boolean;
@@ -26,19 +32,21 @@ export type VerdictTileProps = {
 export function VerdictTile({
   label,
   score,
+  subtitle,
   selected,
   onSelect,
   disabled,
 }: VerdictTileProps) {
+  const hasScore = score !== undefined;
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
-      aria-label={`${label} · ${score.toFixed(1)}`}
+      aria-label={hasScore ? `${label} · ${score.toFixed(1)}` : label}
       disabled={disabled}
       onClick={onSelect}
-      data-testid={`verdict-tile-${label.toLowerCase()}-${score}`}
+      data-testid={`verdict-tile-${label.toLowerCase()}${hasScore ? `-${score}` : ""}`}
       className={cn(
         "relative flex aspect-square flex-col items-start justify-between border p-3 text-left transition-colors",
         selected
@@ -53,11 +61,22 @@ export function VerdictTile({
         </span>
       ) : null}
       <span className="font-medium text-[13px]">{label}</span>
-      <span
-        className={cn("font-mono text-[18px]", selected ? "text-bg-raised" : "text-ink")}
-      >
-        {score.toFixed(1)}
-      </span>
+      {hasScore ? (
+        <span
+          className={cn(
+            "font-mono text-[18px]",
+            selected ? "text-bg-raised" : "text-ink",
+          )}
+        >
+          {score.toFixed(1)}
+        </span>
+      ) : subtitle ? (
+        <span
+          className={cn("text-[11.5px]", selected ? "text-bg-raised/80" : "text-ink-3")}
+        >
+          {subtitle}
+        </span>
+      ) : null}
     </button>
   );
 }

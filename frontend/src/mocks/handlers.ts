@@ -3405,6 +3405,102 @@ const costSummaryHandler = http.get(`${API}/v1/admin/cost/summary`, () =>
 
 const adminCostHandlers = [costSummaryHandler];
 
+// ── FE-9 anchor calibration (admin-systems §B.2) ──
+const mockFlaggedAnchors: components["schemas"]["FlaggedAnchorItem"][] = [
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a1",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p1",
+    pill_name: "Cathodic Protection",
+    band: 3,
+    type: "mcq",
+    config: {},
+    assigned_difficulty: 6,
+    regeneration_attempts: 2,
+    excluded: true,
+    excluded_reason: "Failed review: ambiguous correct option after 2 regenerations.",
+    created_at: "2026-05-26T08:00:00Z",
+  },
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a2",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p1",
+    pill_name: "Cathodic Protection",
+    band: 4,
+    type: "short_answer",
+    config: {},
+    assigned_difficulty: 8,
+    regeneration_attempts: 1,
+    excluded: true,
+    excluded_reason: "Rubric drift flagged during generate-and-review.",
+    created_at: "2026-05-26T09:00:00Z",
+  },
+  {
+    anchor_question_id: "00000000-0000-0000-0000-0000000ca0a3",
+    pill_id: "00000000-0000-0000-0000-0000000ca0p2",
+    pill_name: "Antifouling Systems",
+    band: 2,
+    type: "mcq",
+    config: {},
+    assigned_difficulty: 4,
+    regeneration_attempts: 3,
+    excluded: true,
+    excluded_reason: "Exhausted regeneration attempts.",
+    created_at: "2026-05-26T10:00:00Z",
+  },
+];
+
+const anchorsFlaggedHandler = http.get(`${API}/v1/admin/anchors/flagged`, () =>
+  HttpResponse.json<components["schemas"]["FlaggedAnchorListResponse"]>({
+    data: mockFlaggedAnchors,
+  }),
+);
+
+const calibrationRunHandler = http.post(`${API}/v1/admin/calibration/run`, () =>
+  HttpResponse.json<components["schemas"]["CalibrationSweepResult"]>({
+    anchors_processed: 2740,
+    anchors_updated: 142,
+    anchors_skipped_no_observations: 18,
+    mean_n: 12.4,
+    mean_effective_difficulty: 5.6,
+  }),
+);
+
+const anchorResolveHandler = http.post(
+  `${API}/v1/admin/anchors/:anchor_id/resolve`,
+  async ({ params, request }) => {
+    const id = String(params.anchor_id);
+    const row = mockFlaggedAnchors.find((r) => r.anchor_question_id === id);
+    const body = (await request.json().catch(() => null)) as
+      | components["schemas"]["AnchorResolveRequest"]
+      | null;
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "ANCHOR_ALREADY_RESOLVED",
+            message: "Anchor was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const action = body?.action ?? "keep";
+    return HttpResponse.json<components["schemas"]["AnchorResolveResult"]>({
+      anchor_question_id: id,
+      action,
+      excluded: action === "reject",
+      needs_admin_attention: false,
+      regeneration_attempts: row.regeneration_attempts,
+    });
+  },
+);
+
+const adminCalibrationHandlers = [
+  anchorsFlaggedHandler,
+  calibrationRunHandler,
+  anchorResolveHandler,
+];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3466,4 +3562,5 @@ export const handlers = [
   ...adminGradeReviewHandlers,
   ...adminLoopHandlers,
   ...adminCostHandlers,
+  ...adminCalibrationHandlers,
 ];

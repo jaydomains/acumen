@@ -25,13 +25,20 @@
     },
     {
       "id": "slice-4-cost",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 4 complete + stacked on PR #66 (NOT merged). adminKeys systems roots (cost/calibration/system); admin-cost.ts (useCostSummary, local CostSummaryResponse type cast — endpoint is untyped inline dict §H(b)10); /cost route (server page + Pattern C error + read-only CostDashboard: summary strip, alert pills, provider bars, model table, deferred daily placeholder, range selector); MSW handler; 6 integration tests. Fix round 1: Gitar advisory — inline Pattern C BoundaryFrame on query.isError across ALL FOUR FE-9 query pages (cost/engagement/loop/grade-review) matching catalogue convention + 3 error-state tests. THREE-LAYER GREEN on commit 99e89d4: all 11 checks completed/success; Gitar APPROVED 4/4 resolved. Advanced to Slice 5."
+    },
+    {
+      "id": "slice-5-calibration",
       "status": "open",
       "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "Slice 4 opened: Cost surface (FE-9-admin-systems.md). First slice from the sibling systems spec. Pre-build contract verification + build next."
+      "lastFinding": "Slice 5 opened: Anchor calibration (FE-9-admin-systems.md §B.2). Reuses SweepButton (run trigger) + VerdictTile (resolve modal). Pre-build contract verification + build next."
     }
   ],
-  "currentIndex": 3,
+  "currentIndex": 4,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {

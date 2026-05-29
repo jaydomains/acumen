@@ -14,3 +14,15 @@ export const BAND_PIP_LEVEL: Record<Band, number> = {
   advanced: 4,
   expert: 5,
 };
+
+/**
+ * Map a wire integer band (1..5 pip level) back to the `Band` union, or
+ * `null` when out of range. Consumed by admin surfaces that receive the
+ * band as an integer (FE-9 grade-review detail + calibration table).
+ */
+export function bandFromLevel(level: number): Band | null {
+  const entry = (Object.entries(BAND_PIP_LEVEL) as Array<[Band, number]>).find(
+    ([, lvl]) => lvl === level,
+  );
+  return entry ? entry[0] : null;
+}
