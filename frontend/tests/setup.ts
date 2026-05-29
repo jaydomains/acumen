@@ -13,8 +13,36 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
+
+// Radix Select uses Pointer Events APIs that jsdom doesn't implement
+// (`hasPointerCapture` / `releasePointerCapture` / `scrollIntoView`).
+// Patch them as no-ops so Radix-driven dropdowns work under user-event
+// in Slice 3+ tests. See radix-ui/primitives#2034.
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+}
 import { server } from "@/mocks/node";
 import {
+  resetMockAdminAssignments,
+  resetMockAdminGroups,
+  resetMockAdminPaths,
+  resetMockAdminPills,
+  resetMockAdminProposals,
+  resetMockAdminQuestions,
+  resetMockAdminSubjects,
+  resetMockAdminTests,
+  resetMockAdminUsers,
   resetMockAttemptState,
   resetMockAuthState,
   resetMockCatalogue,
@@ -37,6 +65,21 @@ afterEach(() => {
   resetMockAttemptState();
   resetMockMeCompetence();
   resetMockMeAttempts();
+  // FE-8 admin seeds — Slice 14 fix per drift sweep Finding #2. Without
+  // these the round-trip tests leak state into the next test file (or
+  // vice versa) because Slice 12+ added stateful CRUD handlers (tests,
+  // questions) on top of the existing admin domains. Each page test
+  // resets locally; round-trips mount multiple pages and mutate
+  // multiple seeds.
+  resetMockAdminSubjects();
+  resetMockAdminPills();
+  resetMockAdminProposals();
+  resetMockAdminPaths();
+  resetMockAdminUsers();
+  resetMockAdminGroups();
+  resetMockAdminTests();
+  resetMockAdminAssignments();
+  resetMockAdminQuestions();
 });
 
 afterAll(() => {

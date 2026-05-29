@@ -52,7 +52,11 @@ export type IconName =
   | "inbox"
   | "wave"
   | "sun"
-  | "moon";
+  | "moon"
+  | "paths"
+  | "tests"
+  | "groups"
+  | "clipboard";
 
 export type IconProps = {
   name: IconName;
@@ -350,6 +354,39 @@ export function Icon({
       return (
         <svg {...common}>
           <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" />
+        </svg>
+      );
+    case "paths":
+      return (
+        <svg {...common}>
+          <circle cx="5" cy="6" r="1.6" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+          <circle cx="19" cy="18" r="1.6" fill="currentColor" />
+          <path d="M6.4 7 11 11M13.4 13l4.2 4" />
+        </svg>
+      );
+    case "tests":
+      return (
+        <svg {...common}>
+          <rect x="4" y="3" width="16" height="18" rx="1.5" />
+          <path d="m7.5 9 2 2 4-4M7.5 16l2 2 4-4" />
+        </svg>
+      );
+    case "groups":
+      return (
+        <svg {...common}>
+          <circle cx="8" cy="9" r="3" />
+          <circle cx="16" cy="9" r="3" />
+          <path d="M3 19c.7-3 2.6-4.5 5-4.5s4.3 1.5 5 4.5" />
+          <path d="M14 14.5c2.4 0 4.3 1.5 5 4.5h2" />
+        </svg>
+      );
+    case "clipboard":
+      return (
+        <svg {...common}>
+          <rect x="5" y="5" width="14" height="16" rx="1.5" />
+          <rect x="9" y="3" width="6" height="4" rx="1" />
+          <path d="M8.5 12h7M8.5 16h5" />
         </svg>
       );
     // Runtime safety net for any value smuggled past the IconName union

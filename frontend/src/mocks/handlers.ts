@@ -1169,6 +1169,1979 @@ export const meAttemptsListHandler = http.get(`${API}/v1/attempts`, ({ request }
   return HttpResponse.json(page);
 });
 
+// =====================================================================
+// FE-8 admin stub handlers (Slice 1) — empty `Page<T>` for every
+// admin-facing GET-list endpoint so admin pages don't 404 in tests /
+// dev before each domain slice ships its full CRUD. Each later FE-8
+// slice replaces the corresponding stub with a stateful handler.
+//
+// Append-only per the existing handler-array convention (FE-1 §D).
+// =====================================================================
+
+// FE-8 Slice 2 — stateful Subjects CRUD (per §B.3). Replaces the
+// Slice-1 empty stub. Module-scope state so tests can `setMockSubjects`
+// / `resetMockSubjects` between scenarios. Stub pattern from
+// `mockAttempts` above.
+
+type SubjectResponseSchema = components["schemas"]["SubjectResponse"];
+type SubjectCreateSchema = components["schemas"]["SubjectCreate"];
+type SubjectUpdateSchema = components["schemas"]["SubjectUpdate"];
+
+const ADMIN_SUBJECT_ISO = "2026-04-01T00:00:00Z";
+
+// Hex-only suffix so `z.string().uuid()` accepts these in form-driven
+// flows (e.g. PillModal's `subject_id` field). Earlier slug-suffixed
+// shape ("0000paint-qa") parsed as text but failed uuid validation.
+const adminSubjectId = (n: number): string =>
+  `dddddddd-dddd-dddd-dddd-${String(n).padStart(12, "0")}`;
+
+const ADMIN_SUBJECT_IDS = {
+  paintQa: adminSubjectId(1),
+  marine: adminSubjectId(2),
+  nace: adminSubjectId(3),
+  safety: adminSubjectId(4),
+} as const;
+
+const DEFAULT_ADMIN_SUBJECTS: SubjectResponseSchema[] = [
+  {
+    id: ADMIN_SUBJECT_IDS.paintQa,
+    name: "Paint QA",
+    description: "Paint application quality assurance.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: ADMIN_SUBJECT_IDS.marine,
+    name: "Marine coatings",
+    description: "Marine and immersion-service coating systems.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: ADMIN_SUBJECT_IDS.nace,
+    name: "NACE corrosion",
+    description: null,
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+  {
+    id: ADMIN_SUBJECT_IDS.safety,
+    name: "Site safety",
+    description: "Safety-tagged subject.",
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  },
+];
+
+let mockAdminSubjects: SubjectResponseSchema[] = [...DEFAULT_ADMIN_SUBJECTS];
+let nextAdminSubjectSeq = DEFAULT_ADMIN_SUBJECTS.length + 1;
+
+export const setMockAdminSubjects = (subjects: SubjectResponseSchema[]): void => {
+  mockAdminSubjects = [...subjects];
+};
+
+export const resetMockAdminSubjects = (): void => {
+  mockAdminSubjects = [...DEFAULT_ADMIN_SUBJECTS];
+  nextAdminSubjectSeq = DEFAULT_ADMIN_SUBJECTS.length + 1;
+};
+
+export const getMockAdminSubjects = (): SubjectResponseSchema[] => [...mockAdminSubjects];
+
+const adminSubjectsListHandler = http.get(`${API}/v1/subjects`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminSubjects.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminSubjects.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminSubjectCreateHandler = http.post(`${API}/v1/subjects`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as SubjectCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Subject name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: SubjectResponseSchema = {
+    id: adminSubjectId(nextAdminSubjectSeq),
+    name: body.name,
+    description: body.description ?? null,
+    created_at: ADMIN_SUBJECT_ISO,
+    updated_at: ADMIN_SUBJECT_ISO,
+  };
+  nextAdminSubjectSeq += 1;
+  mockAdminSubjects = [created, ...mockAdminSubjects];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminSubjectUpdateHandler = http.patch(
+  `${API}/v1/subjects/:subject_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminSubjects.findIndex((s) => s.id === String(params.subject_id));
+    const existing = idx >= 0 ? mockAdminSubjects[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Subject not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as SubjectUpdateSchema | null;
+    const next: SubjectResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+    };
+    mockAdminSubjects = [
+      ...mockAdminSubjects.slice(0, idx),
+      next,
+      ...mockAdminSubjects.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminSubjectDeleteHandler = http.delete(
+  `${API}/v1/subjects/:subject_id`,
+  ({ params }) => {
+    const before = mockAdminSubjects.length;
+    mockAdminSubjects = mockAdminSubjects.filter(
+      (s) => s.id !== String(params.subject_id),
+    );
+    if (mockAdminSubjects.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Subject not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminSubjectsHandlers = [
+  adminSubjectsListHandler,
+  adminSubjectCreateHandler,
+  adminSubjectUpdateHandler,
+  adminSubjectDeleteHandler,
+];
+
+// Removed in Slice 13 — `adminTestQuestionsListHandler` no longer
+// stubs an empty page; it now reads from `mockAdminQuestions` so the
+// frozen pool table renders real rows. Kept the comment as a marker
+// in case another admin domain wants the helper back.
+
+// FE-8 Slice 3 — stateful Pills CRUD (per §B.2). Replaces the Slice-1
+// empty-page stub. Mirrors the Subjects pattern from Slice 2.
+
+type PillCreateSchema = components["schemas"]["PillCreate"];
+type PillUpdateSchema = components["schemas"]["PillUpdate"];
+type PillSafetyOverrideSchema = components["schemas"]["PillSafetyOverride"];
+
+const ADMIN_PILL_ISO = "2026-04-05T00:00:00Z";
+
+// Hex-only suffix — same rationale as `adminSubjectId`.
+const adminPillId = (n: number): string =>
+  `eeeeeeee-eeee-eeee-eeee-${String(n).padStart(12, "0")}`;
+
+const buildAdminPill = (input: {
+  n: number;
+  name: string;
+  subject_id: string;
+  description?: string | null;
+  discoverable?: boolean;
+  safety_relevant?: boolean;
+  available_difficulty_min?: number;
+  available_difficulty_max?: number;
+  retired?: boolean;
+  /** Override the auto-derived `safety_relevant_overridden_at`. Pass
+   *  `null` to model an auto-tagged safety pill (no admin override).
+   *  Default: ADMIN_PILL_ISO when safety_relevant is true (admin
+   *  override), null otherwise. */
+  safety_overridden_at?: string | null;
+}): PillResponse => ({
+  id: adminPillId(input.n),
+  subject_id: input.subject_id,
+  name: input.name,
+  description: input.description ?? `Practice and learning for ${input.name}.`,
+  available_difficulty_min: input.available_difficulty_min ?? 1,
+  available_difficulty_max: input.available_difficulty_max ?? 10,
+  discoverable: input.discoverable ?? true,
+  safety_relevant: input.safety_relevant ?? false,
+  safety_relevant_overridden_at:
+    input.safety_overridden_at !== undefined
+      ? input.safety_overridden_at
+      : input.safety_relevant
+        ? ADMIN_PILL_ISO
+        : null,
+  estimated_minutes: null,
+  retired_at: input.retired ? ADMIN_PILL_ISO : null,
+  created_at: ADMIN_PILL_ISO,
+  updated_at: ADMIN_PILL_ISO,
+});
+
+const DEFAULT_ADMIN_PILLS: PillResponse[] = [
+  buildAdminPill({
+    n: 1,
+    name: "Reference Panels",
+    subject_id: ADMIN_SUBJECT_IDS.paintQa,
+    available_difficulty_min: 2,
+    available_difficulty_max: 8,
+  }),
+  buildAdminPill({
+    n: 2,
+    name: "DFT Measurement",
+    subject_id: ADMIN_SUBJECT_IDS.paintQa,
+    available_difficulty_min: 3,
+    available_difficulty_max: 9,
+  }),
+  buildAdminPill({
+    n: 3,
+    name: "Antifouling Systems",
+    subject_id: ADMIN_SUBJECT_IDS.marine,
+  }),
+  buildAdminPill({
+    n: 4,
+    name: "Cathodic Protection",
+    subject_id: ADMIN_SUBJECT_IDS.marine,
+    discoverable: false, // draft
+  }),
+  buildAdminPill({
+    n: 5,
+    name: "Confined Space Entry",
+    subject_id: ADMIN_SUBJECT_IDS.safety,
+    safety_relevant: true,
+    // Admin override (default) — exercises Slice 5 §B.5 §5
+    // `row_override_source_admin` state.
+  }),
+  buildAdminPill({
+    n: 6,
+    name: "Working at Height",
+    subject_id: ADMIN_SUBJECT_IDS.safety,
+    safety_relevant: true,
+    // Auto-tagged at create — exercises Slice 5 §B.5 §5
+    // `row_override_source_auto` state.
+    safety_overridden_at: null,
+  }),
+];
+
+let mockAdminPills: PillResponse[] = [...DEFAULT_ADMIN_PILLS];
+let nextAdminPillSeq = DEFAULT_ADMIN_PILLS.length + 1;
+
+export const setMockAdminPills = (pills: PillResponse[]): void => {
+  mockAdminPills = [...pills];
+};
+
+export const resetMockAdminPills = (): void => {
+  mockAdminPills = [...DEFAULT_ADMIN_PILLS];
+  nextAdminPillSeq = DEFAULT_ADMIN_PILLS.length + 1;
+};
+
+export const getMockAdminPills = (): PillResponse[] => [...mockAdminPills];
+
+const adminPillsListHandler = http.get(`${API}/v1/pills`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminPills.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminPills.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminPillCreateHandler = http.post(`${API}/v1/pills`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as PillCreateSchema | null;
+  const detail: { loc: (string | number)[]; msg: string; type: string }[] = [];
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    detail.push({ loc: ["body", "name"], msg: "Title is required.", type: "missing" });
+  }
+  if (!body || typeof body.subject_id !== "string" || body.subject_id === "") {
+    detail.push({
+      loc: ["body", "subject_id"],
+      msg: "Pick a subject.",
+      type: "missing",
+    });
+  }
+  if (detail.length > 0) {
+    return HttpResponse.json({ detail }, { status: 422 });
+  }
+  const created: PillResponse = {
+    id: adminPillId(nextAdminPillSeq),
+    subject_id: body!.subject_id,
+    name: body!.name,
+    description: body!.description ?? null,
+    available_difficulty_min: body!.available_difficulty_min ?? 1,
+    available_difficulty_max: body!.available_difficulty_max ?? 10,
+    discoverable: body!.discoverable ?? true,
+    safety_relevant: false,
+    safety_relevant_overridden_at: null,
+    estimated_minutes: body!.estimated_minutes ?? null,
+    retired_at: null,
+    created_at: ADMIN_PILL_ISO,
+    updated_at: ADMIN_PILL_ISO,
+  };
+  nextAdminPillSeq += 1;
+  mockAdminPills = [created, ...mockAdminPills];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminPillUpdateHandler = http.patch(
+  `${API}/v1/pills/:pill_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminPills.findIndex((p) => p.id === String(params.pill_id));
+    const existing = idx >= 0 ? mockAdminPills[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Pill not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as PillUpdateSchema | null;
+    const next: PillResponse = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      available_difficulty_min:
+        body?.available_difficulty_min ?? existing.available_difficulty_min,
+      available_difficulty_max:
+        body?.available_difficulty_max ?? existing.available_difficulty_max,
+      discoverable: body?.discoverable ?? existing.discoverable,
+      estimated_minutes:
+        body && "estimated_minutes" in body
+          ? (body.estimated_minutes ?? null)
+          : existing.estimated_minutes,
+    };
+    mockAdminPills = [
+      ...mockAdminPills.slice(0, idx),
+      next,
+      ...mockAdminPills.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPillSafetyHandler = http.patch(
+  `${API}/v1/pills/:pill_id/safety`,
+  async ({ params, request }) => {
+    const idx = mockAdminPills.findIndex((p) => p.id === String(params.pill_id));
+    const existing = idx >= 0 ? mockAdminPills[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Pill not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as PillSafetyOverrideSchema | null;
+    if (!body || typeof body.safety_relevant !== "boolean") {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ["body", "safety_relevant"],
+              msg: "field required",
+              type: "missing",
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const next: PillResponse = {
+      ...existing,
+      safety_relevant: body.safety_relevant,
+      safety_relevant_overridden_at: ADMIN_PILL_ISO,
+    };
+    mockAdminPills = [
+      ...mockAdminPills.slice(0, idx),
+      next,
+      ...mockAdminPills.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPillsHandlers = [
+  adminPillsListHandler,
+  adminPillCreateHandler,
+  adminPillUpdateHandler,
+  adminPillSafetyHandler,
+];
+
+// FE-8 Slice 4 — stateful pill-proposals (per §B.4). Replaces the
+// Slice-1 empty-page stub. Wire shape: `ProcessingTaskStatus`
+// (pending|running|done|failed) on `status`; admin decision stashed
+// in `payload.decision` ("approved" | "rejected") per backend at
+// `app/domain/catalogue.py:594,620`. Approve also mutates
+// `mockAdminPills` so the §D.3 round-trip (approve → pill visible
+// in Pills tab) works end-to-end.
+
+type PillProposalResponseSchema = components["schemas"]["PillProposalResponse"];
+// OpenAPI typings narrow `payload` to `Record<string, never> | null` which
+// rejects arbitrary keys. The real wire shape is "arbitrary JSON object"
+// (`app/schemas.py:292`), so we widen on the way in via this cast helper.
+const asProposalPayload = (
+  p: Record<string, unknown>,
+): PillProposalResponseSchema["payload"] => p as PillProposalResponseSchema["payload"];
+
+const ADMIN_PROPOSAL_ISO = "2026-04-10T00:00:00Z";
+
+const adminProposalId = (n: number): string =>
+  `ffffffff-ffff-ffff-ffff-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_PROPOSALS: PillProposalResponseSchema[] = [
+  {
+    id: adminProposalId(1),
+    status: "pending",
+    payload: asProposalPayload({
+      proposal: {
+        name: "Cathodic Protection Field Inspection",
+        description:
+          "Inspect anode placement, take potential readings, and document deviations per ISO 15589-1.",
+        subject_id: ADMIN_SUBJECT_IDS.marine,
+        available_difficulty_min: 4,
+        available_difficulty_max: 8,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+  {
+    id: adminProposalId(2),
+    status: "pending",
+    payload: asProposalPayload({
+      proposal: {
+        name: "Adhesion Pull-Off Test",
+        description: "ISO 4624 pull-off adhesion test on cured coatings.",
+        subject_id: ADMIN_SUBJECT_IDS.paintQa,
+        available_difficulty_min: 2,
+        available_difficulty_max: 6,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+  {
+    id: adminProposalId(3),
+    status: "done",
+    payload: asProposalPayload({
+      decision: "approved",
+      proposal: {
+        name: "Reference Panels (historic)",
+        description: "Already-approved proposal — populates the Approved filter.",
+        subject_id: ADMIN_SUBJECT_IDS.paintQa,
+      },
+    }),
+    created_at: ADMIN_PROPOSAL_ISO,
+  },
+];
+
+let mockAdminProposals: PillProposalResponseSchema[] = [...DEFAULT_ADMIN_PROPOSALS];
+
+export const setMockAdminProposals = (proposals: PillProposalResponseSchema[]): void => {
+  mockAdminProposals = [...proposals];
+};
+
+export const resetMockAdminProposals = (): void => {
+  mockAdminProposals = [...DEFAULT_ADMIN_PROPOSALS];
+};
+
+export const getMockAdminProposals = (): PillProposalResponseSchema[] => [
+  ...mockAdminProposals,
+];
+
+const adminPillProposalsListHandler = http.get(
+  `${API}/v1/pill-proposals`,
+  ({ request }) => {
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+    const start = cursor ? Number(cursor) : 0;
+    const slice = mockAdminProposals.slice(start, start + limit);
+    const nextStart = start + slice.length;
+    const next_cursor = nextStart < mockAdminProposals.length ? String(nextStart) : null;
+    return HttpResponse.json({ data: slice, meta: { next_cursor } });
+  },
+);
+
+const adminPillProposalApproveHandler = http.post(
+  `${API}/v1/pill-proposals/:proposal_id/approve`,
+  ({ params }) => {
+    const idx = mockAdminProposals.findIndex((p) => p.id === String(params.proposal_id));
+    const existing = idx >= 0 ? mockAdminProposals[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Proposal not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    if (existing.status !== "pending") {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "proposal_not_pending",
+            message: "This proposal is already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    // Flip the proposal to done/approved.
+    const payload = (existing.payload as Record<string, unknown>) ?? {};
+    const proposalPayload = (payload.proposal as Record<string, unknown>) ?? {};
+    const next: PillProposalResponseSchema = {
+      ...existing,
+      status: "done",
+      payload: asProposalPayload({ ...payload, decision: "approved" }),
+    };
+    mockAdminProposals = [
+      ...mockAdminProposals.slice(0, idx),
+      next,
+      ...mockAdminProposals.slice(idx + 1),
+    ];
+    // Cross-resource mutation: approved proposal becomes a real pill.
+    const subjectId =
+      typeof proposalPayload.subject_id === "string"
+        ? proposalPayload.subject_id
+        : ADMIN_SUBJECT_IDS.paintQa;
+    const newPillName =
+      typeof proposalPayload.name === "string"
+        ? proposalPayload.name
+        : "Untitled approved pill";
+    const minRaw = proposalPayload.available_difficulty_min;
+    const maxRaw = proposalPayload.available_difficulty_max;
+    const newPill: PillResponse = {
+      id: adminPillId(nextAdminPillSeq),
+      subject_id: subjectId,
+      name: newPillName,
+      description:
+        typeof proposalPayload.description === "string"
+          ? proposalPayload.description
+          : null,
+      available_difficulty_min: typeof minRaw === "number" ? minRaw : 1,
+      available_difficulty_max: typeof maxRaw === "number" ? maxRaw : 10,
+      discoverable: true,
+      safety_relevant: false,
+      safety_relevant_overridden_at: null,
+      estimated_minutes: null,
+      retired_at: null,
+      created_at: ADMIN_PROPOSAL_ISO,
+      updated_at: ADMIN_PROPOSAL_ISO,
+    };
+    nextAdminPillSeq += 1;
+    mockAdminPills = [newPill, ...mockAdminPills];
+    return HttpResponse.json(newPill, { status: 201 });
+  },
+);
+
+const adminPillProposalRejectHandler = http.post(
+  `${API}/v1/pill-proposals/:proposal_id/reject`,
+  ({ params }) => {
+    const idx = mockAdminProposals.findIndex((p) => p.id === String(params.proposal_id));
+    const existing = idx >= 0 ? mockAdminProposals[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Proposal not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    if (existing.status !== "pending") {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "proposal_not_pending",
+            message: "This proposal is already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const payload = (existing.payload as Record<string, unknown>) ?? {};
+    const next: PillProposalResponseSchema = {
+      ...existing,
+      status: "done",
+      payload: asProposalPayload({ ...payload, decision: "rejected" }),
+    };
+    mockAdminProposals = [
+      ...mockAdminProposals.slice(0, idx),
+      next,
+      ...mockAdminProposals.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminProposalsHandlers = [
+  adminPillProposalsListHandler,
+  adminPillProposalApproveHandler,
+  adminPillProposalRejectHandler,
+];
+
+// FE-8 Slice 6 — stateful Learning Paths CRUD (per §B.6). Replaces the
+// Slice-1 empty-page stub. Full CRUD shipped now even though the list
+// page only consumes list + delete + (CTA-navigates) so Slice 7 doesn't
+// need to revisit this file.
+
+type LearningPathResponseSchema = components["schemas"]["LearningPathResponse"];
+type LearningPathCreateSchema = components["schemas"]["LearningPathCreate"];
+type LearningPathUpdateSchema = components["schemas"]["LearningPathUpdate"];
+
+const ADMIN_PATH_ISO_CREATED = "2026-03-01T00:00:00Z";
+const ADMIN_PATH_ISO_UPDATED = "2026-04-15T00:00:00Z";
+
+const adminPathId = (n: number): string =>
+  `cccc1111-cccc-cccc-cccc-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_PATHS: LearningPathResponseSchema[] = [
+  {
+    id: adminPathId(1),
+    name: "Paint QA induction",
+    description: "Reference panels, batch tracking, DFT — the QA starter set.",
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(1), adminPillId(2)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+  {
+    id: adminPathId(2),
+    name: "Marine coatings refresher",
+    description: "Antifouling + cathodic protection deep dive.",
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(3), adminPillId(4)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+  {
+    id: adminPathId(3),
+    name: "Site safety primer",
+    description: null,
+    is_private: false,
+    owner_user_id: null,
+    pill_ids: [adminPillId(5)],
+    created_at: ADMIN_PATH_ISO_CREATED,
+    updated_at: ADMIN_PATH_ISO_UPDATED,
+  },
+];
+
+let mockAdminPaths: LearningPathResponseSchema[] = [...DEFAULT_ADMIN_PATHS];
+let nextAdminPathSeq = DEFAULT_ADMIN_PATHS.length + 1;
+
+export const setMockAdminPaths = (paths: LearningPathResponseSchema[]): void => {
+  mockAdminPaths = [...paths];
+};
+
+export const resetMockAdminPaths = (): void => {
+  mockAdminPaths = [...DEFAULT_ADMIN_PATHS];
+  nextAdminPathSeq = DEFAULT_ADMIN_PATHS.length + 1;
+};
+
+export const getMockAdminPaths = (): LearningPathResponseSchema[] => [...mockAdminPaths];
+
+const adminPathsListHandler = http.get(`${API}/v1/learning-paths`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminPaths.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminPaths.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminPathCreateHandler = http.post(
+  `${API}/v1/learning-paths`,
+  async ({ request }) => {
+    const body = (await request
+      .json()
+      .catch(() => null)) as LearningPathCreateSchema | null;
+    if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "name"], msg: "Path name is required.", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const created: LearningPathResponseSchema = {
+      id: adminPathId(nextAdminPathSeq),
+      name: body.name,
+      description: body.description ?? null,
+      is_private: false,
+      owner_user_id: null,
+      pill_ids: Array.isArray(body.pill_ids) ? body.pill_ids : [],
+      created_at: ADMIN_PATH_ISO_CREATED,
+      updated_at: ADMIN_PATH_ISO_CREATED,
+    };
+    nextAdminPathSeq += 1;
+    mockAdminPaths = [created, ...mockAdminPaths];
+    return HttpResponse.json(created, { status: 201 });
+  },
+);
+
+const adminPathGetHandler = http.get(
+  `${API}/v1/learning-paths/:path_id`,
+  ({ params }) => {
+    const path = mockAdminPaths.find((p) => p.id === String(params.path_id));
+    if (!path) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(path);
+  },
+);
+
+const adminPathUpdateHandler = http.patch(
+  `${API}/v1/learning-paths/:path_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminPaths.findIndex((p) => p.id === String(params.path_id));
+    const existing = idx >= 0 ? mockAdminPaths[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as LearningPathUpdateSchema | null;
+    const next: LearningPathResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      pill_ids: Array.isArray(body?.pill_ids) ? body.pill_ids : existing.pill_ids,
+      updated_at: ADMIN_PATH_ISO_UPDATED,
+    };
+    mockAdminPaths = [
+      ...mockAdminPaths.slice(0, idx),
+      next,
+      ...mockAdminPaths.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminPathDeleteHandler = http.delete(
+  `${API}/v1/learning-paths/:path_id`,
+  ({ params }) => {
+    const before = mockAdminPaths.length;
+    mockAdminPaths = mockAdminPaths.filter((p) => p.id !== String(params.path_id));
+    if (mockAdminPaths.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Path not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminPathsHandlers = [
+  adminPathsListHandler,
+  adminPathCreateHandler,
+  adminPathGetHandler,
+  adminPathUpdateHandler,
+  adminPathDeleteHandler,
+];
+
+// FE-8 Slice 8 — stateful Users CRUD (per admin-identity §B.1).
+// Replaces the Slice-1 empty-page stub.
+
+type UserResponseSchema = components["schemas"]["UserResponse"];
+type AdminCreateUserRequestSchema = components["schemas"]["AdminCreateUserRequest"];
+type UserUpdateSchema = components["schemas"]["UserUpdate"];
+
+const ADMIN_USER_ISO = "2026-03-15T00:00:00Z";
+
+const adminUserId = (n: number): string =>
+  `aaaa2222-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_USERS: UserResponseSchema[] = [
+  {
+    id: adminUserId(1),
+    email: "jay@sitemesh.co",
+    name: "Jay Phillips",
+    role: "admin",
+    status: "active",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+  {
+    id: adminUserId(2),
+    email: "lerato@sitemesh.co",
+    name: "Lerato Dlamini",
+    role: "testee",
+    status: "active",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+  // Invited heuristic: active + privacy_ack_at=null (§B.1 §7).
+  {
+    id: adminUserId(3),
+    email: "kabelo@sitemesh.co",
+    name: "Kabelo Mokoena",
+    role: "testee",
+    status: "active",
+    privacy_ack_at: null,
+    created_at: ADMIN_USER_ISO,
+  },
+  {
+    id: adminUserId(4),
+    email: "themba@sitemesh.co",
+    name: "Themba Nkosi",
+    role: "testee",
+    status: "deactivated",
+    privacy_ack_at: ADMIN_USER_ISO,
+    created_at: ADMIN_USER_ISO,
+  },
+];
+
+let mockAdminUsers: UserResponseSchema[] = [...DEFAULT_ADMIN_USERS];
+let nextAdminUserSeq = DEFAULT_ADMIN_USERS.length + 1;
+
+export const setMockAdminUsers = (users: UserResponseSchema[]): void => {
+  mockAdminUsers = [...users];
+};
+
+export const resetMockAdminUsers = (): void => {
+  mockAdminUsers = [...DEFAULT_ADMIN_USERS];
+  nextAdminUserSeq = DEFAULT_ADMIN_USERS.length + 1;
+};
+
+export const getMockAdminUsers = (): UserResponseSchema[] => [...mockAdminUsers];
+
+const adminUsersListHandler = http.get(`${API}/v1/users`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const role = url.searchParams.get("role");
+  const status = url.searchParams.get("status");
+  const filtered = mockAdminUsers.filter((u) => {
+    if (role && u.role !== role) return false;
+    if (status && u.status !== status) return false;
+    return true;
+  });
+  const start = cursor ? Number(cursor) : 0;
+  const slice = filtered.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < filtered.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminUserCreateHandler = http.post(`${API}/v1/users`, async ({ request }) => {
+  const body = (await request
+    .json()
+    .catch(() => null)) as AdminCreateUserRequestSchema | null;
+  const detail: { loc: (string | number)[]; msg: string; type: string }[] = [];
+  if (!body || typeof body.email !== "string" || !body.email.includes("@")) {
+    detail.push({
+      loc: ["body", "email"],
+      msg: "valid email required",
+      type: "value_error",
+    });
+  }
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    detail.push({ loc: ["body", "name"], msg: "name required", type: "missing" });
+  }
+  if (!body || (body.role !== "admin" && body.role !== "testee")) {
+    detail.push({
+      loc: ["body", "role"],
+      msg: "role must be admin or testee",
+      type: "value_error",
+    });
+  }
+  if (detail.length > 0) {
+    return HttpResponse.json({ detail }, { status: 422 });
+  }
+  if (mockAdminUsers.some((u) => u.email === body!.email)) {
+    return HttpResponse.json(
+      {
+        detail: [
+          {
+            loc: ["body", "email"],
+            msg: "email already exists",
+            type: "value_error",
+          },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: UserResponseSchema = {
+    id: adminUserId(nextAdminUserSeq),
+    email: body!.email,
+    name: body!.name,
+    role: body!.role,
+    status: "active",
+    privacy_ack_at: null,
+    created_at: ADMIN_USER_ISO,
+  };
+  nextAdminUserSeq += 1;
+  mockAdminUsers = [created, ...mockAdminUsers];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminUserGetHandler = http.get(`${API}/v1/users/:user_id`, ({ params }) => {
+  const u = mockAdminUsers.find((x) => x.id === String(params.user_id));
+  if (!u) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "User not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(u);
+});
+
+const adminUserUpdateHandler = http.patch(
+  `${API}/v1/users/:user_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as UserUpdateSchema | null;
+    const next: UserResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      role: body?.role ?? existing.role,
+    };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUserDeactivateHandler = http.post(
+  `${API}/v1/users/:user_id/deactivate`,
+  ({ params }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: UserResponseSchema = { ...existing, status: "deactivated" };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUserReactivateHandler = http.post(
+  `${API}/v1/users/:user_id/reactivate`,
+  ({ params }) => {
+    const idx = mockAdminUsers.findIndex((x) => x.id === String(params.user_id));
+    const existing = idx >= 0 ? mockAdminUsers[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "User not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: UserResponseSchema = { ...existing, status: "active" };
+    mockAdminUsers = [
+      ...mockAdminUsers.slice(0, idx),
+      next,
+      ...mockAdminUsers.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminUsersHandlers = [
+  adminUsersListHandler,
+  adminUserCreateHandler,
+  adminUserGetHandler,
+  adminUserUpdateHandler,
+  adminUserDeactivateHandler,
+  adminUserReactivateHandler,
+];
+
+// FE-8 Slice 9 — stateful Groups CRUD (per admin-identity §B.2 + §B.3).
+// Replaces the Slice-1 empty-page stubs. Includes 2 system groups +
+// 2 custom groups; `add member` POST is single-user per wire shape.
+
+type GroupResponseSchema = components["schemas"]["GroupResponse"];
+type GroupCreateSchema = components["schemas"]["GroupCreate"];
+type GroupUpdateSchema = components["schemas"]["GroupUpdate"];
+type GroupMemberRequestSchema = components["schemas"]["GroupMemberRequest"];
+
+const ADMIN_GROUP_ISO = "2026-03-01T00:00:00Z";
+
+const adminGroupId = (n: number): string =>
+  `bbbb3333-bbbb-bbbb-bbbb-${String(n).padStart(12, "0")}`;
+
+const DEFAULT_ADMIN_GROUPS: GroupResponseSchema[] = [
+  {
+    id: adminGroupId(1),
+    name: "All Users",
+    description: "Every user on the platform — managed automatically.",
+    is_system: true,
+    // Reference the seed admin users (Slice 8).
+    member_ids: [adminUserId(1), adminUserId(2), adminUserId(3), adminUserId(4)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(2),
+    name: "All Testees",
+    description: "Every testee user.",
+    is_system: true,
+    member_ids: [adminUserId(2), adminUserId(3), adminUserId(4)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(3),
+    name: "Q3 2026 induction",
+    description: "Onboarding cohort for the Q3 hiring wave.",
+    is_system: false,
+    member_ids: [adminUserId(2)],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+  {
+    id: adminGroupId(4),
+    name: "Seniors",
+    description: null,
+    is_system: false,
+    member_ids: [],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  },
+];
+
+// Deep-clone each group so tests that mutate `member_ids` in place
+// (via the resolver shape) don't leak across tests through the shared
+// fixture object identity.
+const cloneAdminGroups = (): GroupResponseSchema[] =>
+  DEFAULT_ADMIN_GROUPS.map((g) => ({ ...g, member_ids: [...g.member_ids] }));
+
+let mockAdminGroups: GroupResponseSchema[] = cloneAdminGroups();
+let nextAdminGroupSeq = DEFAULT_ADMIN_GROUPS.length + 1;
+
+export const setMockAdminGroups = (groups: GroupResponseSchema[]): void => {
+  mockAdminGroups = groups.map((g) => ({ ...g, member_ids: [...g.member_ids] }));
+};
+
+export const resetMockAdminGroups = (): void => {
+  mockAdminGroups = cloneAdminGroups();
+  nextAdminGroupSeq = DEFAULT_ADMIN_GROUPS.length + 1;
+};
+
+export const getMockAdminGroups = (): GroupResponseSchema[] => mockAdminGroups;
+
+const adminGroupsListHandler = http.get(`${API}/v1/groups`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminGroups.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminGroups.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminGroupGetHandler = http.get(`${API}/v1/groups/:group_id`, ({ params }) => {
+  const g = mockAdminGroups.find((x) => x.id === String(params.group_id));
+  if (!g) {
+    return HttpResponse.json(
+      {
+        error: { code: "not_found", message: "Group not found.", detail: null },
+      },
+      { status: 404 },
+    );
+  }
+  return HttpResponse.json(g);
+});
+
+const adminGroupCreateHandler = http.post(`${API}/v1/groups`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as GroupCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Group name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: GroupResponseSchema = {
+    id: adminGroupId(nextAdminGroupSeq),
+    name: body.name,
+    description: body.description ?? null,
+    is_system: false,
+    member_ids: [],
+    created_at: ADMIN_GROUP_ISO,
+    updated_at: ADMIN_GROUP_ISO,
+  };
+  nextAdminGroupSeq += 1;
+  mockAdminGroups = [created, ...mockAdminGroups];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminGroupUpdateHandler = http.patch(
+  `${API}/v1/groups/:group_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as GroupUpdateSchema | null;
+    const next: GroupResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      description:
+        body && "description" in body ? (body.description ?? null) : existing.description,
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminGroupAddMemberHandler = http.post(
+  `${API}/v1/groups/:group_id/members`,
+  async ({ params, request }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const body = (await request
+      .json()
+      .catch(() => null)) as GroupMemberRequestSchema | null;
+    if (!body || typeof body.user_id !== "string") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "user_id"], msg: "user_id required", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    if (existing.member_ids.includes(body.user_id)) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "member_already",
+            message: "User is already a member of this group.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const next: GroupResponseSchema = {
+      ...existing,
+      member_ids: [...existing.member_ids, body.user_id],
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return HttpResponse.json(next, { status: 201 });
+  },
+);
+
+const adminGroupRemoveMemberHandler = http.delete(
+  `${API}/v1/groups/:group_id/members/:user_id`,
+  ({ params }) => {
+    const idx = mockAdminGroups.findIndex((x) => x.id === String(params.group_id));
+    const existing = idx >= 0 ? mockAdminGroups[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Group not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    if (existing.is_system) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "system_group_immutable",
+            message: "System groups are immutable (AC-D15).",
+            detail: null,
+          },
+        },
+        { status: 422 },
+      );
+    }
+    const next: GroupResponseSchema = {
+      ...existing,
+      member_ids: existing.member_ids.filter((id) => id !== String(params.user_id)),
+      updated_at: ADMIN_GROUP_ISO,
+    };
+    mockAdminGroups = [
+      ...mockAdminGroups.slice(0, idx),
+      next,
+      ...mockAdminGroups.slice(idx + 1),
+    ];
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminGroupsHandlers = [
+  adminGroupsListHandler,
+  adminGroupGetHandler,
+  adminGroupCreateHandler,
+  adminGroupUpdateHandler,
+  adminGroupAddMemberHandler,
+  adminGroupRemoveMemberHandler,
+];
+// FE-8 Slice 10 — stateful Assignments CRUD (per admin-identity §B.4).
+// Replaces the Slice-1 empty-page stub. v1 LOCKED: create + delete
+// only (no PATCH on the wire; §E item 9 drops edit-flow from v1).
+// Also: thin stateful Tests list seed (Slice 11 extends with full CRUD).
+
+type AssignmentResponseSchema = components["schemas"]["AssignmentResponse"];
+type AssignmentCreateSchema = components["schemas"]["AssignmentCreate"];
+
+const ADMIN_ASSIGNMENT_ISO = "2026-04-20T00:00:00Z";
+const adminAssignmentId = (n: number): string =>
+  `eeee4444-eeee-eeee-eeee-${String(n).padStart(12, "0")}`;
+
+// Tests seed — Slice 10 shipped 2; Slice 11 extends to 4 covering
+// every display-status branch + every authored mode (per_testee
+// published, frozen draft, hand_authored published, per_testee
+// locked via lock_mode="campaign-locked"). Benchmark mode authoring
+// is deferred per §E.8; no benchmark seed.
+const adminTestId = (n: number): string =>
+  `ffff5555-ffff-ffff-ffff-${String(n).padStart(12, "0")}`;
+const DEFAULT_ADMIN_TESTS: TestResponseSchema[] = [
+  {
+    id: adminTestId(1),
+    name: "Antifouling — focus",
+    mode: "per_testee",
+    status: "published",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 30,
+    pause_allowance: 2,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.7,
+    target_difficulty: 6,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: adminPillId(3),
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminTestId(2),
+    name: "Reference Panels D5",
+    mode: "per_testee",
+    status: "published",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 30,
+    pause_allowance: 2,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.7,
+    target_difficulty: 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: adminPillId(1),
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  // Frozen-mode draft — exercises Slice 11 status filter "draft" + the
+  // em-dash pill column (frozen tests have no single pill_id).
+  {
+    id: adminTestId(3),
+    name: "Q1 Cohort baseline",
+    mode: "frozen",
+    status: "draft",
+    visibility: "library",
+    timed: true,
+    duration_minutes: 45,
+    pause_allowance: 1,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 5,
+    pass_threshold: 0.65,
+    target_difficulty: 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: true,
+    randomise_option_order: true,
+    pill_id: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  // Campaign-locked — exercises the deriveDisplayStatus 'locked' branch
+  // + the lock-icon prefix on the status pill (Slice 11 drift Finding #7).
+  {
+    id: adminTestId(4),
+    name: "ISO 9001 audit walk-through",
+    mode: "hand_authored",
+    status: "published",
+    visibility: "library",
+    timed: false,
+    duration_minutes: 60,
+    pause_allowance: 0,
+    timeout_behaviour: "auto_submit",
+    max_pause_duration_minutes: 0,
+    pass_threshold: 0.8,
+    target_difficulty: 7,
+    lock_mode: "campaign-locked",
+    campaign_id: "00000000-0000-0000-0000-000000000abc",
+    benchmark_scope: null,
+    benchmark_target_testee_id: null,
+    randomise_question_order: false,
+    randomise_option_order: false,
+    pill_id: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+let nextAdminTestSeq = DEFAULT_ADMIN_TESTS.length + 1;
+
+let mockAdminTests: TestResponseSchema[] = [...DEFAULT_ADMIN_TESTS];
+export const setMockAdminTests = (tests: TestResponseSchema[]): void => {
+  mockAdminTests = [...tests];
+};
+export const resetMockAdminTests = (): void => {
+  mockAdminTests = [...DEFAULT_ADMIN_TESTS];
+  nextAdminTestSeq = DEFAULT_ADMIN_TESTS.length + 1;
+};
+export const getMockAdminTests = (): TestResponseSchema[] => [...mockAdminTests];
+
+const DEFAULT_ADMIN_ASSIGNMENTS: AssignmentResponseSchema[] = [
+  {
+    id: adminAssignmentId(1),
+    assigner_id: adminUserId(1),
+    pill_id: adminPillId(3),
+    learning_path_id: null,
+    difficulty: 6,
+    deadline: "2026-06-12T17:00:00Z",
+    is_mandatory: false,
+    loop_mode: "autonomous",
+    assignee_ids: [adminUserId(2)],
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminAssignmentId(2),
+    assigner_id: adminUserId(1),
+    pill_id: null,
+    learning_path_id: adminPathId(1),
+    difficulty: 5,
+    deadline: null,
+    is_mandatory: true,
+    loop_mode: "admin_reviewed",
+    assignee_ids: [adminUserId(2), adminUserId(3)],
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+
+let mockAdminAssignments: AssignmentResponseSchema[] = [...DEFAULT_ADMIN_ASSIGNMENTS];
+let nextAdminAssignmentSeq = DEFAULT_ADMIN_ASSIGNMENTS.length + 1;
+
+export const setMockAdminAssignments = (
+  assignments: AssignmentResponseSchema[],
+): void => {
+  mockAdminAssignments = [...assignments];
+};
+
+export const resetMockAdminAssignments = (): void => {
+  mockAdminAssignments = [...DEFAULT_ADMIN_ASSIGNMENTS];
+  nextAdminAssignmentSeq = DEFAULT_ADMIN_ASSIGNMENTS.length + 1;
+};
+
+export const getMockAdminAssignments = (): AssignmentResponseSchema[] => [
+  ...mockAdminAssignments,
+];
+
+const adminAssignmentsListHandler = http.get(`${API}/v1/assignments`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const assignerId = url.searchParams.get("assigner_id");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const filtered = mockAdminAssignments.filter((a) => {
+    if (assignerId && a.assigner_id !== assignerId) return false;
+    return true;
+  });
+  const start = cursor ? Number(cursor) : 0;
+  const slice = filtered.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < filtered.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+const adminAssignmentCreateHandler = http.post(
+  `${API}/v1/assignments`,
+  async ({ request }) => {
+    const body = (await request
+      .json()
+      .catch(() => null)) as AssignmentCreateSchema | null;
+    if (!body || typeof body.difficulty !== "number") {
+      return HttpResponse.json(
+        {
+          detail: [
+            { loc: ["body", "difficulty"], msg: "difficulty required", type: "missing" },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    // Server-side dedup of testee+group expansion (matches the FE-side
+    // dedup contract; spec §H(b) item 16 LOCKED v1 behaviour).
+    const assigneeSet = new Set<string>(body.testee_ids ?? []);
+    for (const gid of body.group_ids ?? []) {
+      const g = mockAdminGroups.find((x) => x.id === gid);
+      if (g) for (const m of g.member_ids) assigneeSet.add(m);
+    }
+    const created: AssignmentResponseSchema = {
+      id: adminAssignmentId(nextAdminAssignmentSeq),
+      assigner_id: adminUserId(1),
+      pill_id: body.pill_id ?? null,
+      learning_path_id: body.learning_path_id ?? null,
+      difficulty: body.difficulty,
+      deadline: body.deadline ?? null,
+      is_mandatory: body.is_mandatory ?? false,
+      loop_mode: body.loop_mode ?? "autonomous",
+      assignee_ids: Array.from(assigneeSet),
+      created_at: ADMIN_ASSIGNMENT_ISO,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    nextAdminAssignmentSeq += 1;
+    mockAdminAssignments = [created, ...mockAdminAssignments];
+    return HttpResponse.json(created, { status: 201 });
+  },
+);
+
+const adminAssignmentGetHandler = http.get(
+  `${API}/v1/assignments/:assignment_id`,
+  ({ params }) => {
+    const a = mockAdminAssignments.find((x) => x.id === String(params.assignment_id));
+    if (!a) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Assignment not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(a);
+  },
+);
+
+const adminAssignmentDeleteHandler = http.delete(
+  `${API}/v1/assignments/:assignment_id`,
+  ({ params }) => {
+    const before = mockAdminAssignments.length;
+    mockAdminAssignments = mockAdminAssignments.filter(
+      (a) => a.id !== String(params.assignment_id),
+    );
+    if (mockAdminAssignments.length === before) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Assignment not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminAssignmentsHandlers = [
+  adminAssignmentsListHandler,
+  adminAssignmentCreateHandler,
+  adminAssignmentGetHandler,
+  adminAssignmentDeleteHandler,
+];
+
+type TestCreateSchema = components["schemas"]["TestCreate"];
+type TestUpdateSchema = components["schemas"]["TestUpdate"];
+
+const adminTestsListHandler = http.get(`${API}/v1/tests`, ({ request }) => {
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const limitRaw = url.searchParams.get("limit");
+  const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+  const start = cursor ? Number(cursor) : 0;
+  const slice = mockAdminTests.slice(start, start + limit);
+  const nextStart = start + slice.length;
+  const next_cursor = nextStart < mockAdminTests.length ? String(nextStart) : null;
+  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+});
+
+// `/v1/tests/:test_id` is owned by *both* the testee `getTestHandler`
+// (mockTests map, FE-4 attempt runner) and the admin editor. Slice 12
+// registers `adminTestGetHandler` *before* the testee handler in the
+// `handlers` array and returns `undefined` here on miss so MSW falls
+// through to the testee handler — that way admin seed IDs resolve to
+// the admin shape and any other ID resolves via the testee handler
+// (which 404s if absent, preserving existing FE-4 + Slice 11 behaviour).
+const adminTestGetHandler = http.get(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+  if (!t) return undefined;
+  return HttpResponse.json(t);
+});
+
+const adminTestCreateHandler = http.post(`${API}/v1/tests`, async ({ request }) => {
+  const body = (await request.json().catch(() => null)) as TestCreateSchema | null;
+  if (!body || typeof body.name !== "string" || body.name.trim() === "") {
+    return HttpResponse.json(
+      {
+        detail: [
+          { loc: ["body", "name"], msg: "Test name is required.", type: "missing" },
+        ],
+      },
+      { status: 422 },
+    );
+  }
+  const created: TestResponseSchema = {
+    id: adminTestId(nextAdminTestSeq),
+    name: body.name,
+    mode: body.mode ?? "per_testee",
+    status: "draft",
+    visibility: body.visibility ?? "library",
+    timed: body.timed ?? true,
+    duration_minutes: body.duration_minutes ?? 30,
+    pause_allowance: body.pause_allowance ?? 2,
+    timeout_behaviour: body.timeout_behaviour ?? "auto_submit",
+    max_pause_duration_minutes: body.max_pause_duration_minutes ?? 5,
+    pass_threshold: body.pass_threshold ?? 0.7,
+    target_difficulty: body.target_difficulty ?? 5,
+    lock_mode: "open",
+    campaign_id: null,
+    benchmark_scope: body.benchmark_scope ?? null,
+    benchmark_target_testee_id: body.benchmark_target_testee_id ?? null,
+    randomise_question_order: body.randomise_question_order ?? false,
+    randomise_option_order: body.randomise_option_order ?? false,
+    pill_id: body.pill_id ?? null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  };
+  nextAdminTestSeq += 1;
+  mockAdminTests = [created, ...mockAdminTests];
+  return HttpResponse.json(created, { status: 201 });
+});
+
+const adminTestUpdateHandler = http.patch(
+  `${API}/v1/tests/:test_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminTests.findIndex((x) => x.id === String(params.test_id));
+    const existing = idx >= 0 ? mockAdminTests[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as TestUpdateSchema | null;
+    // TestUpdate doesn't carry `mode` or `status` — those are immutable
+    // post-create on the wire. Only `name` + a handful of options are
+    // PATCH-able.
+    const next: TestResponseSchema = {
+      ...existing,
+      name: body?.name ?? existing.name,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    if (body && "pill_id" in body) {
+      next.pill_id = body.pill_id ?? null;
+    }
+    mockAdminTests = [
+      ...mockAdminTests.slice(0, idx),
+      next,
+      ...mockAdminTests.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminTestDeleteHandler = http.delete(`${API}/v1/tests/:test_id`, ({ params }) => {
+  const before = mockAdminTests.length;
+  mockAdminTests = mockAdminTests.filter((t) => t.id !== String(params.test_id));
+  if (mockAdminTests.length === before) {
+    return HttpResponse.json(
+      { error: { code: "not_found", message: "Test not found.", detail: null } },
+      { status: 404 },
+    );
+  }
+  return new HttpResponse(null, { status: 204 });
+});
+
+const replaceMockTest = (next: TestResponseSchema): void => {
+  const idx = mockAdminTests.findIndex((x) => x.id === next.id);
+  if (idx < 0) return;
+  mockAdminTests = [
+    ...mockAdminTests.slice(0, idx),
+    next,
+    ...mockAdminTests.slice(idx + 1),
+  ];
+};
+
+// `POST /v1/tests/{test_id}/publish` flips status draft → published.
+const adminTestPublishHandler = http.post(
+  `${API}/v1/tests/:test_id/publish`,
+  ({ params }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      status: "published",
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+// `POST /v1/tests/{test_id}/lock` — wire surface only; ships disabled
+// in v1 (Slice 12 drift Finding #1 — no `/v1/campaigns` endpoint to
+// feed `CampaignLockRequest.campaign_id`). The handler still records
+// the campaign-locked state so seed-based fixtures can exercise the
+// derived "locked" status without going through the UI button.
+const adminTestLockHandler = http.post(
+  `${API}/v1/tests/:test_id/lock`,
+  async ({ params, request }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as {
+      campaign_id?: string;
+    } | null;
+    if (!body || typeof body.campaign_id !== "string") {
+      return HttpResponse.json(
+        {
+          detail: [
+            {
+              loc: ["body", "campaign_id"],
+              msg: "campaign_id required",
+              type: "missing",
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      lock_mode: "campaign-locked",
+      campaign_id: body.campaign_id,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+const adminTestUnlockHandler = http.post(
+  `${API}/v1/tests/:test_id/unlock`,
+  ({ params }) => {
+    const t = mockAdminTests.find((x) => x.id === String(params.test_id));
+    if (!t) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Test not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const next: TestResponseSchema = {
+      ...t,
+      lock_mode: "open",
+      campaign_id: null,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    replaceMockTest(next);
+    return HttpResponse.json(next);
+  },
+);
+
+// `adminTestGetHandler` is registered separately in the `handlers`
+// array (before `getTestHandler`) so it has first-dibs on `/v1/tests/
+// :test_id` and falls through to the testee handler on a miss.
+const adminTestsHandlers = [
+  adminTestsListHandler,
+  adminTestCreateHandler,
+  adminTestUpdateHandler,
+  adminTestDeleteHandler,
+  adminTestPublishHandler,
+  adminTestLockHandler,
+  adminTestUnlockHandler,
+];
+// =============================================================
+// Admin questions (FE-8 Slice 13 — §B.3 question editor modal)
+// =============================================================
+//
+// `GET /v1/tests/{test_id}/questions` accepts no query params on the
+// wire (Slice 13 drift sweep Finding #2) — the handler returns the
+// whole pool in one call.
+//
+// The admin seed gives the frozen draft (id ...000000000003) two
+// pre-existing questions so list + edit flows have something to
+// exercise. Other seeded tests start with empty pools.
+
+type QuestionResponseSchema = components["schemas"]["QuestionResponse"];
+type QuestionCreateSchema = components["schemas"]["QuestionCreate"];
+type QuestionUpdateSchema = components["schemas"]["QuestionUpdate"];
+
+const adminQuestionId = (n: number): string =>
+  `aaaa6666-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
+
+const frozenDraftTestId = adminTestId(3);
+const DEFAULT_ADMIN_QUESTIONS: QuestionResponseSchema[] = [
+  {
+    id: adminQuestionId(1),
+    test_id: frozenDraftTestId,
+    type: "multiple_choice",
+    config: {
+      body: "Which mechanism best describes sacrificial anode cathodic protection?",
+      pill_id: adminPillId(1),
+      is_anchor: false,
+      choices: [
+        {
+          id: "A",
+          text: "Galvanic potential drives current from anode to cathode.",
+          correct: true,
+        },
+        {
+          id: "B",
+          text: "Hydrogen overvoltage shifts the corrosion potential cathodically.",
+          correct: false,
+        },
+        {
+          id: "C",
+          text: "Oxide film passivation eliminates anodic dissolution.",
+          correct: false,
+        },
+      ],
+    } as unknown as Record<string, never>,
+    assigned_difficulty: 6,
+    question_group_id: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminQuestionId(2),
+    test_id: frozenDraftTestId,
+    type: "true_false",
+    config: {
+      body: "Impressed current cathodic protection requires an external DC power source.",
+      pill_id: adminPillId(1),
+      is_anchor: true,
+      correct: true,
+    } as unknown as Record<string, never>,
+    assigned_difficulty: 4,
+    question_group_id: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+
+let mockAdminQuestions: QuestionResponseSchema[] = [...DEFAULT_ADMIN_QUESTIONS];
+let nextAdminQuestionSeq = DEFAULT_ADMIN_QUESTIONS.length + 1;
+
+export const setMockAdminQuestions = (qs: QuestionResponseSchema[]): void => {
+  mockAdminQuestions = [...qs];
+};
+export const resetMockAdminQuestions = (): void => {
+  mockAdminQuestions = [...DEFAULT_ADMIN_QUESTIONS];
+  nextAdminQuestionSeq = DEFAULT_ADMIN_QUESTIONS.length + 1;
+};
+export const getMockAdminQuestions = (): QuestionResponseSchema[] => [
+  ...mockAdminQuestions,
+];
+
+export const adminTestQuestionsListHandler = http.get(
+  `${API}/v1/tests/:test_id/questions`,
+  ({ params }) => {
+    const testId = String(params.test_id);
+    const data = mockAdminQuestions.filter((q) => q.test_id === testId);
+    return HttpResponse.json({ data, meta: { next_cursor: null } });
+  },
+);
+
+const adminQuestionCreateHandler = http.post(
+  `${API}/v1/tests/:test_id/questions`,
+  async ({ params, request }) => {
+    const testId = String(params.test_id);
+    const body = (await request.json().catch(() => null)) as QuestionCreateSchema | null;
+    if (!body || typeof body.type !== "string") {
+      return HttpResponse.json(
+        { detail: [{ loc: ["body", "type"], msg: "type required", type: "missing" }] },
+        { status: 422 },
+      );
+    }
+    const created: QuestionResponseSchema = {
+      id: adminQuestionId(nextAdminQuestionSeq),
+      test_id: testId,
+      type: body.type,
+      config: body.config ?? ({} as Record<string, never>),
+      assigned_difficulty: body.assigned_difficulty ?? 5,
+      question_group_id: body.question_group_id ?? null,
+      reference_image_url: null,
+      reference_image_caption: null,
+      created_at: ADMIN_ASSIGNMENT_ISO,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    nextAdminQuestionSeq += 1;
+    mockAdminQuestions = [...mockAdminQuestions, created];
+    return HttpResponse.json(created, { status: 201 });
+  },
+);
+
+const adminQuestionUpdateHandler = http.patch(
+  `${API}/v1/tests/:test_id/questions/:question_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminQuestions.findIndex((q) => q.id === String(params.question_id));
+    const existing = idx >= 0 ? mockAdminQuestions[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Question not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as QuestionUpdateSchema | null;
+    const next: QuestionResponseSchema = {
+      ...existing,
+      config: (body?.config ?? existing.config) as Record<string, never>,
+      assigned_difficulty: body?.assigned_difficulty ?? existing.assigned_difficulty,
+      question_group_id:
+        body && "question_group_id" in body
+          ? (body.question_group_id ?? null)
+          : existing.question_group_id,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    mockAdminQuestions = [
+      ...mockAdminQuestions.slice(0, idx),
+      next,
+      ...mockAdminQuestions.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminQuestionDeleteHandler = http.delete(
+  `${API}/v1/tests/:test_id/questions/:question_id`,
+  ({ params }) => {
+    const before = mockAdminQuestions.length;
+    mockAdminQuestions = mockAdminQuestions.filter(
+      (q) => q.id !== String(params.question_id),
+    );
+    if (mockAdminQuestions.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Question not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminQuestionsHandlers = [
+  adminTestQuestionsListHandler,
+  adminQuestionCreateHandler,
+  adminQuestionUpdateHandler,
+  adminQuestionDeleteHandler,
+];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -1187,6 +3160,13 @@ export const handlers = [
   // `resolve` as a `:test_id` path param). MSW dispatches in handler-
   // array order, so resolve-first preserves the literal route.
   resolveTestHandler,
+  // `adminTestGetHandler` (admin editor) shares `/v1/tests/:test_id`
+  // with `getTestHandler` (testee attempt runner). Slice 12 registers
+  // the admin variant first; it returns `undefined` on a miss against
+  // the admin seed, letting MSW fall through to the testee handler.
+  // Admin seed IDs are `ffff5555-…`; testee seed IDs are distinct, so
+  // both surfaces stay isolated.
+  adminTestGetHandler,
   getTestHandler,
   autosaveHandler,
   flagRealismHandler,
@@ -1205,4 +3185,18 @@ export const handlers = [
   startAttemptHandler,
   streamAttemptHandler,
   meCompetenceHandler,
+  // FE-8 admin stubs — order doesn't matter (no path collisions with
+  // the testee surfaces above; `/v1/pills` differs from
+  // `/v1/catalogue/pills`, etc.). `adminTestsListHandler` (`/v1/tests`)
+  // sits AFTER `resolveTestHandler` + `getTestHandler` for the same
+  // resolve-before-list discipline.
+  ...adminPillsHandlers,
+  ...adminSubjectsHandlers,
+  ...adminProposalsHandlers,
+  ...adminPathsHandlers,
+  ...adminUsersHandlers,
+  ...adminGroupsHandlers,
+  ...adminAssignmentsHandlers,
+  ...adminTestsHandlers,
+  ...adminQuestionsHandlers,
 ];

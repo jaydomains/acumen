@@ -70,15 +70,40 @@ describe("Rail", () => {
     ]);
   });
 
+  // Updated to the 11-item ADMIN_NAV locked in FE-8 catalogue spec §C.2
+  // (`fe-specs/FE-8-admin-catalogue.md:1162–1170`). FE-8 unbundles the
+  // historic single `users` row into `users` + `groups`, and adds
+  // `paths`, `tests`, `assignments` as top-level rail entries.
   it("locks the admin nav order + hrefs", () => {
     expect(ADMIN_NAV.map((n) => n.href)).toEqual([
       "/ops",
       "/review",
       "/engagement",
       "/admin/catalogue",
+      "/admin/paths",
+      "/admin/tests",
       "/admin/users",
+      "/admin/groups",
+      "/admin/assignments",
       "/cost",
       "/loop",
+    ]);
+  });
+
+  it("locks the admin nav ids + labels (FE-8 §C.2 lock)", () => {
+    expect(ADMIN_NAV.map((n) => ({ id: n.id, label: n.label }))).toEqual([
+      { id: "ops", label: "Operations" },
+      { id: "review", label: "Grade Review" },
+      { id: "engagement", label: "Engagement" },
+      { id: "catalogue-admin", label: "Catalogue" },
+      { id: "paths", label: "Paths" },
+      { id: "tests", label: "Tests" },
+      // Unbundled from the historic "Users & Groups" row.
+      { id: "users", label: "Users" },
+      { id: "groups", label: "Groups" },
+      { id: "assignments", label: "Assignments" },
+      { id: "cost", label: "AI Cost" },
+      { id: "loop", label: "Loops" },
     ]);
   });
 });
