@@ -346,8 +346,20 @@ export function TestEditor() {
             }}
           />
         ) : null}
-        {activeMode === "frozen" ? <FrozenSection /> : null}
-        {activeMode === "hand_authored" ? <HandAuthoredSection /> : null}
+        {activeMode === "frozen" ? (
+          <FrozenSection
+            testId={testId}
+            sectionLocked={fullyLocked}
+            poolLocked={partiallyLocked}
+          />
+        ) : null}
+        {activeMode === "hand_authored" ? (
+          <HandAuthoredSection
+            testId={testId}
+            sectionLocked={fullyLocked}
+            poolLocked={partiallyLocked}
+          />
+        ) : null}
         {activeMode === "benchmark" ? <BenchmarkSection /> : null}
 
         <div className="border border-line bg-bg-raised p-5">

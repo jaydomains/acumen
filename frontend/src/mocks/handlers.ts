@@ -1334,7 +1334,10 @@ const adminSubjectsHandlers = [
   adminSubjectDeleteHandler,
 ];
 
-const adminEmptyPage = () => HttpResponse.json({ data: [], meta: { next_cursor: null } });
+// Removed in Slice 13 — `adminTestQuestionsListHandler` no longer
+// stubs an empty page; it now reads from `mockAdminQuestions` so the
+// frozen pool table renders real rows. Kept the comment as a marker
+// in case another admin domain wants the helper back.
 
 // FE-8 Slice 3 — stateful Pills CRUD (per §B.2). Replaces the Slice-1
 // empty-page stub. Mirrors the Subjects pattern from Slice 2.
@@ -2959,10 +2962,185 @@ const adminTestsHandlers = [
   adminTestLockHandler,
   adminTestUnlockHandler,
 ];
+// =============================================================
+// Admin questions (FE-8 Slice 13 — §B.3 question editor modal)
+// =============================================================
+//
+// `GET /v1/tests/{test_id}/questions` accepts no query params on the
+// wire (Slice 13 drift sweep Finding #2) — the handler returns the
+// whole pool in one call.
+//
+// The admin seed gives the frozen draft (id ...000000000003) two
+// pre-existing questions so list + edit flows have something to
+// exercise. Other seeded tests start with empty pools.
+
+type QuestionResponseSchema = components["schemas"]["QuestionResponse"];
+type QuestionCreateSchema = components["schemas"]["QuestionCreate"];
+type QuestionUpdateSchema = components["schemas"]["QuestionUpdate"];
+
+const adminQuestionId = (n: number): string =>
+  `aaaa6666-aaaa-aaaa-aaaa-${String(n).padStart(12, "0")}`;
+
+const frozenDraftTestId = adminTestId(3);
+const DEFAULT_ADMIN_QUESTIONS: QuestionResponseSchema[] = [
+  {
+    id: adminQuestionId(1),
+    test_id: frozenDraftTestId,
+    type: "multiple_choice",
+    config: {
+      body: "Which mechanism best describes sacrificial anode cathodic protection?",
+      pill_id: adminPillId(1),
+      is_anchor: false,
+      choices: [
+        {
+          id: "A",
+          text: "Galvanic potential drives current from anode to cathode.",
+          correct: true,
+        },
+        {
+          id: "B",
+          text: "Hydrogen overvoltage shifts the corrosion potential cathodically.",
+          correct: false,
+        },
+        {
+          id: "C",
+          text: "Oxide film passivation eliminates anodic dissolution.",
+          correct: false,
+        },
+      ],
+    } as unknown as Record<string, never>,
+    assigned_difficulty: 6,
+    question_group_id: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+  {
+    id: adminQuestionId(2),
+    test_id: frozenDraftTestId,
+    type: "true_false",
+    config: {
+      body: "Impressed current cathodic protection requires an external DC power source.",
+      pill_id: adminPillId(1),
+      is_anchor: true,
+      correct: true,
+    } as unknown as Record<string, never>,
+    assigned_difficulty: 4,
+    question_group_id: null,
+    reference_image_url: null,
+    reference_image_caption: null,
+    created_at: ADMIN_ASSIGNMENT_ISO,
+    updated_at: ADMIN_ASSIGNMENT_ISO,
+  },
+];
+
+let mockAdminQuestions: QuestionResponseSchema[] = [...DEFAULT_ADMIN_QUESTIONS];
+let nextAdminQuestionSeq = DEFAULT_ADMIN_QUESTIONS.length + 1;
+
+export const setMockAdminQuestions = (qs: QuestionResponseSchema[]): void => {
+  mockAdminQuestions = [...qs];
+};
+export const resetMockAdminQuestions = (): void => {
+  mockAdminQuestions = [...DEFAULT_ADMIN_QUESTIONS];
+  nextAdminQuestionSeq = DEFAULT_ADMIN_QUESTIONS.length + 1;
+};
+export const getMockAdminQuestions = (): QuestionResponseSchema[] => [
+  ...mockAdminQuestions,
+];
+
 export const adminTestQuestionsListHandler = http.get(
   `${API}/v1/tests/:test_id/questions`,
-  adminEmptyPage,
+  ({ params }) => {
+    const testId = String(params.test_id);
+    const data = mockAdminQuestions.filter((q) => q.test_id === testId);
+    return HttpResponse.json({ data, meta: { next_cursor: null } });
+  },
 );
+
+const adminQuestionCreateHandler = http.post(
+  `${API}/v1/tests/:test_id/questions`,
+  async ({ params, request }) => {
+    const testId = String(params.test_id);
+    const body = (await request.json().catch(() => null)) as QuestionCreateSchema | null;
+    if (!body || typeof body.type !== "string") {
+      return HttpResponse.json(
+        { detail: [{ loc: ["body", "type"], msg: "type required", type: "missing" }] },
+        { status: 422 },
+      );
+    }
+    const created: QuestionResponseSchema = {
+      id: adminQuestionId(nextAdminQuestionSeq),
+      test_id: testId,
+      type: body.type,
+      config: body.config ?? ({} as Record<string, never>),
+      assigned_difficulty: body.assigned_difficulty ?? 5,
+      question_group_id: body.question_group_id ?? null,
+      reference_image_url: null,
+      reference_image_caption: null,
+      created_at: ADMIN_ASSIGNMENT_ISO,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    nextAdminQuestionSeq += 1;
+    mockAdminQuestions = [...mockAdminQuestions, created];
+    return HttpResponse.json(created, { status: 201 });
+  },
+);
+
+const adminQuestionUpdateHandler = http.patch(
+  `${API}/v1/tests/:test_id/questions/:question_id`,
+  async ({ params, request }) => {
+    const idx = mockAdminQuestions.findIndex((q) => q.id === String(params.question_id));
+    const existing = idx >= 0 ? mockAdminQuestions[idx] : undefined;
+    if (idx < 0 || !existing) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Question not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    const body = (await request.json().catch(() => null)) as QuestionUpdateSchema | null;
+    const next: QuestionResponseSchema = {
+      ...existing,
+      config: (body?.config ?? existing.config) as Record<string, never>,
+      assigned_difficulty: body?.assigned_difficulty ?? existing.assigned_difficulty,
+      question_group_id:
+        body && "question_group_id" in body
+          ? (body.question_group_id ?? null)
+          : existing.question_group_id,
+      updated_at: ADMIN_ASSIGNMENT_ISO,
+    };
+    mockAdminQuestions = [
+      ...mockAdminQuestions.slice(0, idx),
+      next,
+      ...mockAdminQuestions.slice(idx + 1),
+    ];
+    return HttpResponse.json(next);
+  },
+);
+
+const adminQuestionDeleteHandler = http.delete(
+  `${API}/v1/tests/:test_id/questions/:question_id`,
+  ({ params }) => {
+    const before = mockAdminQuestions.length;
+    mockAdminQuestions = mockAdminQuestions.filter(
+      (q) => q.id !== String(params.question_id),
+    );
+    if (mockAdminQuestions.length === before) {
+      return HttpResponse.json(
+        { error: { code: "not_found", message: "Question not found.", detail: null } },
+        { status: 404 },
+      );
+    }
+    return new HttpResponse(null, { status: 204 });
+  },
+);
+
+const adminQuestionsHandlers = [
+  adminTestQuestionsListHandler,
+  adminQuestionCreateHandler,
+  adminQuestionUpdateHandler,
+  adminQuestionDeleteHandler,
+];
 
 export const handlers = [
   meHandler,
@@ -3020,5 +3198,5 @@ export const handlers = [
   ...adminGroupsHandlers,
   ...adminAssignmentsHandlers,
   ...adminTestsHandlers,
-  adminTestQuestionsListHandler,
+  ...adminQuestionsHandlers,
 ];

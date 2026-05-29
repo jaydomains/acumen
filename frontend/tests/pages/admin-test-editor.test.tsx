@@ -316,8 +316,8 @@ describe("test editor — edit mode (frozen draft → published flow)", () => {
     );
     expect(screen.getByTestId("publish-controls-publish")).toHaveTextContent("Publish");
     expect(screen.getByTestId("publish-controls-save")).toHaveTextContent("Save draft");
-    // FrozenSection stub is rendered in Slice 12.
-    expect(screen.getByTestId("frozen-section-stub")).toBeInTheDocument();
+    // Slice 13: FrozenSection now renders the real pool table.
+    expect(screen.getByTestId("frozen-section")).toBeInTheDocument();
 
     await user.click(screen.getByTestId("publish-controls-publish"));
 
@@ -378,12 +378,14 @@ describe("test editor — edit mode (locked test → unlock flow)", () => {
     expect(screen.getByTestId("publish-controls-save")).toHaveTextContent("Save changes");
   });
 
-  it("renders the HandAuthoredSection stub for hand_authored seed", async () => {
+  it("renders the HandAuthoredSection info card + composed FrozenSection for hand_authored seed", async () => {
     render(mountTree(<TestEditorPage />));
     await waitFor(() =>
-      expect(screen.getByTestId("hand-authored-section-stub")).toBeInTheDocument(),
+      expect(screen.getByTestId("hand-authored-info")).toBeInTheDocument(),
     );
-    expect(screen.getByTestId("hand-authored-info")).toBeInTheDocument();
+    // Slice 13: hand-authored composes the real FrozenSection beneath
+    // the info card; both lock states inherited from the parent.
+    expect(screen.getByTestId("frozen-section")).toBeInTheDocument();
   });
 });
 

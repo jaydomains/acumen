@@ -1,13 +1,19 @@
 "use client";
 
 /**
- * HandAuthoredSection — v1 STUB per Slice 12. Same Slice 13 carve-out
- * as `FrozenSection`. Both modes share the question-pool table; the
- * hand_authored variant adds an info-card explaining the author-posture
- * difference (no AI invoked).
+ * HandAuthoredSection — info-card + composed FrozenSection per FE-8
+ * admin-tests §B.2 §2 (`fe-specs/FE-8-admin-tests.md:243`). Slice 13.
+ *
+ * Architectural lock C: composes `FrozenSection` and inherits both
+ * `sectionLocked` + `poolLocked` props. The author-posture difference
+ * is purely UX framing — the wire shape is identical to frozen tests.
  */
 
-export function HandAuthoredSection() {
+import { FrozenSection, type FrozenSectionProps } from "./frozen-section";
+
+export type HandAuthoredSectionProps = FrozenSectionProps;
+
+export function HandAuthoredSection(props: HandAuthoredSectionProps) {
   return (
     <div className="space-y-4">
       <div
@@ -21,18 +27,7 @@ export function HandAuthoredSection() {
           question is reviewed by a human author.
         </div>
       </div>
-      <div
-        className="border border-dashed border-line bg-bg-sunk p-6 text-center"
-        data-testid="hand-authored-section-stub"
-      >
-        <div className="eyebrow mb-2">Question pool</div>
-        <div className="font-serif text-[20px] text-ink mb-2">
-          Question authoring ships in the next slice.
-        </div>
-        <div className="text-[13px] text-ink-3 max-w-md mx-auto">
-          Save as draft now to reserve the title; the question editor lands in Slice 13.
-        </div>
-      </div>
+      <FrozenSection {...props} />
     </div>
   );
 }

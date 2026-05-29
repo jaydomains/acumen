@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { PillResponse } from "@/lib/queries/admin-pills";
 import type { TestEditorFormInput } from "@/lib/tests/test-editor-form";
+import { DifficultyPicker } from "./difficulty-picker";
 
 export type PerTesteeSectionProps = {
   control: Control<TestEditorFormInput>;
@@ -97,47 +98,6 @@ export function PerTesteeSection({
           error={errors.duration_minutes ?? null}
         />
       </FieldRow>
-    </div>
-  );
-}
-
-type DifficultyPickerProps = {
-  value: number | null;
-  onChange: (v: number) => void;
-  disabled: boolean;
-};
-
-export function DifficultyPicker({ value, onChange, disabled }: DifficultyPickerProps) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Target difficulty"
-      className="flex flex-wrap gap-1"
-      data-testid="difficulty-picker"
-    >
-      {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => {
-        const active = value === d;
-        return (
-          <button
-            key={d}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            disabled={disabled}
-            onClick={() => onChange(d)}
-            data-testid={`difficulty-picker-${d}`}
-            className={cn(
-              "h-9 w-9 border font-mono text-[12px] tabular-nums",
-              active
-                ? "bg-ink text-bg border-ink"
-                : "bg-bg-raised text-ink-2 border-line hover:bg-bg-sunk",
-              disabled && "opacity-60 cursor-not-allowed hover:bg-bg-raised",
-            )}
-          >
-            D{d}
-          </button>
-        );
-      })}
     </div>
   );
 }
