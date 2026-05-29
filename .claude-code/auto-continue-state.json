@@ -11,13 +11,20 @@
     },
     {
       "id": "slice-2-grade-review-queue",
+      "status": "green-stacked",
+      "prNumber": 66,
+      "fixRounds": 1,
+      "lastFinding": "FE-9 Slice 2 complete + stacked on PR #66 (NOT merged). admin-grade-reviews.ts (verdict-aware list + 3-action resolve); VerdictTile primitive (§B.2, reused by sibling calibration) + tests; /review route (server page + Pattern C error + client GradeReviewQueue with ?verdict=/?selected= URL state, auto-select, deep-link fallback via verdict=all since no single-row endpoint, QueueList, enriched DetailPane, OverrideDrawer); MSW handlers; 6 integration tests. Built to enriched/wired contract (verified: row enriched, ?verdict= wired). Fix round 1: 2 Gitar advisory nits — writeParams useCallback + superRefine co-located substitute validation. THREE-LAYER GREEN on commit feeabb6: all 11 checks (checks/e2e/migration-chain/docker-build x-runs) completed/success; Gitar APPROVED 3/3 resolved. Advanced to Slice 3."
+    },
+    {
+      "id": "slice-3-loop-queue",
       "status": "open",
       "prNumber": 66,
       "fixRounds": 0,
-      "lastFinding": "Slice 2 opened: Grade-review queue at /review (FE-9-admin-ops.md §B.2). Pre-build drift-sweep + plan next."
+      "lastFinding": "Slice 3 opened: Loop queue at /loops (FE-9-admin-ops.md §B.3). Pre-build contract verification + build next."
     }
   ],
-  "currentIndex": 1,
+  "currentIndex": 2,
   "lastPollAt": null,
   "haltReason": null,
   "notes": {

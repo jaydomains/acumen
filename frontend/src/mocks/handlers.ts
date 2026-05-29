@@ -3292,6 +3292,97 @@ const gradeReviewResolveHandler = http.post(
 
 const adminGradeReviewHandlers = [gradeReviewsFlaggedHandler, gradeReviewResolveHandler];
 
+// ── FE-9 loop queue (admin-ops §B.3) ──
+const mockLoopRows: components["schemas"]["LoopQueueItem"][] = [
+  {
+    weakness_report_id: "00000000-0000-0000-0000-0000000100a1",
+    attempt_id: "00000000-0000-0000-0000-0000000100b1",
+    testee_id: "00000000-0000-0000-0000-0000000100c1",
+    testee_name: "Naledi P.",
+    pill_id: "00000000-0000-0000-0000-0000000100d1",
+    pill_name: "Confined Space Entry",
+    overall_score: 0.42,
+    weak_pill_ids: [
+      "00000000-0000-0000-0000-0000000100d1",
+      "00000000-0000-0000-0000-0000000100d2",
+    ],
+    loop_mode: "admin_reviewed",
+    iteration: "1 of 1",
+    last_attempt_at: "2026-05-28T10:00:00Z",
+    status: "review",
+    created_at: "2026-05-28T10:05:00Z",
+  },
+  {
+    weakness_report_id: "00000000-0000-0000-0000-0000000100a2",
+    attempt_id: "00000000-0000-0000-0000-0000000100b2",
+    testee_id: "00000000-0000-0000-0000-0000000100c2",
+    testee_name: "Kabelo R.",
+    pill_id: "00000000-0000-0000-0000-0000000100d3",
+    pill_name: "Antifouling Systems",
+    overall_score: 0.55,
+    weak_pill_ids: ["00000000-0000-0000-0000-0000000100d3"],
+    loop_mode: "admin_reviewed",
+    iteration: "2 of ∞",
+    last_attempt_at: "2026-05-27T16:30:00Z",
+    status: "queued",
+    created_at: "2026-05-27T16:35:00Z",
+  },
+];
+
+const loopQueueHandler = http.get(`${API}/v1/admin/loop/queue`, ({ request }) => {
+  const status = new URL(request.url).searchParams.get("status");
+  const data = status ? mockLoopRows.filter((r) => r.status === status) : mockLoopRows;
+  return HttpResponse.json<components["schemas"]["LoopQueueListResponse"]>({ data });
+});
+
+const loopApproveHandler = http.post(
+  `${API}/v1/admin/loop/queue/:weakness_report_id/approve`,
+  ({ params }) => {
+    const id = String(params.weakness_report_id);
+    const row = mockLoopRows.find((r) => r.weakness_report_id === id);
+    if (!row) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "LOOP_ALREADY_RESOLVED",
+            message: "This loop was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json<components["schemas"]["LoopApproveResult"]>({
+      weakness_report_id: id,
+      follow_up_count: row.weak_pill_ids.length || 1,
+    });
+  },
+);
+
+const loopRejectHandler = http.post(
+  `${API}/v1/admin/loop/queue/:weakness_report_id/reject`,
+  ({ params }) => {
+    const id = String(params.weakness_report_id);
+    if (!mockLoopRows.some((r) => r.weakness_report_id === id)) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "LOOP_ALREADY_RESOLVED",
+            message: "This loop was already resolved.",
+            detail: null,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    return HttpResponse.json<components["schemas"]["LoopRejectResult"]>({
+      weakness_report_id: id,
+    });
+  },
+);
+
+const adminLoopHandlers = [loopQueueHandler, loopApproveHandler, loopRejectHandler];
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3351,4 +3442,5 @@ export const handlers = [
   ...adminQuestionsHandlers,
   ...adminEngagementHandlers,
   ...adminGradeReviewHandlers,
+  ...adminLoopHandlers,
 ];
