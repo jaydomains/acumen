@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import catalogue
+from app.domain import users as users_domain
 from app.models import AppUser, Group, get_db
 from app.permissions import ROLE_ADMINISTRATOR, APIError, require_role
 from app.schemas import (
@@ -25,6 +26,7 @@ from app.schemas import (
     GroupUpdate,
     Page,
     PageMeta,
+    UserResponse,
 )
 
 router = APIRouter(prefix="/v1/groups", tags=["groups"])
@@ -126,6 +128,27 @@ async def delete_group(
     await catalogue.delete_group(db, group)
     await db.commit()
     return Response(status_code=204)
+
+
+@router.get("/{group_id}/members")
+async def list_group_members(
+    group_id: uuid.UUID,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
+) -> Page[UserResponse]:
+    # Reads resolve membership for any group (system groups included);
+    # only mutation is gated by ``_guard_mutable``. ``_load`` 404s on an
+    # unknown group and hands us the resolved member ids.
+    _group, member_ids = await _load(db, group_id)
+    rows, next_cursor = await users_domain.list_group_members(
+        db, member_ids=member_ids, cursor=cursor, limit=limit
+    )
+    return Page[UserResponse](
+        data=[UserResponse.model_validate(u) for u in rows],
+        meta=PageMeta(next_cursor=next_cursor),
+    )
 
 
 @router.post("/{group_id}/members", status_code=201)
