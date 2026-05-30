@@ -24,6 +24,7 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
@@ -60,6 +61,21 @@ export function useAdminPills() {
 export function flattenPills(data: InfiniteData<PillsPage> | undefined): PillResponse[] {
   if (!data) return [];
   return data.pages.flatMap((p) => p.data);
+}
+
+/**
+ * Total pill count (FE-9 count meta). A `?limit=1` probe reads the full
+ * collection size from `PageMeta.count` without flattening every page —
+ * backs the System page Bootstrap card's "Pills" stat. Refreshed after a
+ * bootstrap run via the `pills.all()` invalidation in `useRunBootstrap`.
+ */
+export function useAdminPillsCount() {
+  return useQuery({
+    queryKey: adminKeys.pills.count(),
+    staleTime: 30_000,
+    queryFn: () => unwrap(client.GET("/v1/pills", { params: { query: { limit: 1 } } })),
+    select: (page: PillsPage) => page.meta.count ?? null,
+  });
 }
 
 export function useCreatePill() {

@@ -90,6 +90,16 @@ describe("system operations page", () => {
     );
   });
 
+  it("bootstrap card shows real pills + drive-file counts on load", async () => {
+    // FE-9 count meta: Pills reads PageMeta.count from the ?limit=1 probe
+    // (6 default admin pills); Drive files reads the drive-index status
+    // (412) — both populate before any bootstrap run (no more em-dash).
+    render(mountTree(<SystemOpsPage />));
+    const card = await screen.findByTestId("system-card-bootstrap");
+    await waitFor(() => expect(within(card).getByText("6")).toBeInTheDocument());
+    expect(within(card).getByText("412")).toBeInTheDocument();
+  });
+
   it("running bootstrap populates its session stats", async () => {
     const user = userEvent.setup();
     render(mountTree(<SystemOpsPage />));
@@ -98,9 +108,10 @@ describe("system operations page", () => {
     );
 
     await user.click(screen.getByTestId("system-bootstrap-run"));
+    // anchors_generated (2740) surfaces in the session-local "Anchors" stat.
     await waitFor(() =>
       expect(
-        within(screen.getByTestId("system-card-bootstrap")).getByText("137"),
+        within(screen.getByTestId("system-card-bootstrap")).getByText("2740"),
       ).toBeInTheDocument(),
     );
   });

@@ -27,6 +27,8 @@ export const adminKeys = {
       safety_relevant?: boolean;
       status?: "draft" | "published";
     }) => [...adminKeys.pills.all(), "list", filters] as const,
+    // ?limit=1 total-count probe (FE-9 count meta) — reads PageMeta.count.
+    count: () => [...adminKeys.pills.all(), "count"] as const,
     detail: (pillId: string) => [...adminKeys.pills.all(), "detail", pillId] as const,
   },
 

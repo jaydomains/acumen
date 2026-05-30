@@ -1456,7 +1456,9 @@ const adminPillsListHandler = http.get(`${API}/v1/pills`, ({ request }) => {
   const slice = mockAdminPills.slice(start, start + limit);
   const nextStart = start + slice.length;
   const next_cursor = nextStart < mockAdminPills.length ? String(nextStart) : null;
-  return HttpResponse.json({ data: slice, meta: { next_cursor } });
+  // FE-9 count meta: full collection size, independent of cursor/limit.
+  const count = mockAdminPills.length;
+  return HttpResponse.json({ data: slice, meta: { next_cursor, count } });
 });
 
 const adminPillCreateHandler = http.post(`${API}/v1/pills`, async ({ request }) => {
