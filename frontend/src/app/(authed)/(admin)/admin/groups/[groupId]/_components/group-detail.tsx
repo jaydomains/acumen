@@ -39,8 +39,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
+  flattenGroupMembers,
   useAdminGroup,
   useAddGroupMember,
+  useGroupMembers,
   useRemoveGroupMember,
   useUpdateGroup,
   type GroupResponse,
@@ -66,42 +68,29 @@ export function GroupDetail() {
   const groupId = params?.groupId ?? null;
 
   const groupQuery = useAdminGroup(groupId);
-  const usersQuery = useAdminUsers();
-  const usersCache = useMemo(() => flattenUsers(usersQuery.data), [usersQuery.data]);
-  const userById = useMemo(() => {
-    const m = new Map<string, UserResponse>();
-    for (const u of usersCache) m.set(u.id, u);
-    return m;
-  }, [usersCache]);
+  const membersQuery = useGroupMembers(groupId);
+  const members = useMemo(
+    () => flattenGroupMembers(membersQuery.data),
+    [membersQuery.data],
+  );
 
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [modal, setModal] = useState<ModalState>({ kind: "closed" });
   const [memberQ, setMemberQ] = useState("");
 
-  // Derive member rows from `group.member_ids` joined with the users
-  // cache. Must run before any conditional return per rules-of-hooks.
-  const memberRows = useMemo<MemberRow[]>(() => {
-    const group = groupQuery.data;
-    if (!group) return [];
+  // Members come from the single batched `GET /v1/groups/{id}/members`
+  // call (N2). Filter client-side, consistent with the rest of the
+  // admin suite. Must run before any conditional return per
+  // rules-of-hooks.
+  const memberRows = useMemo<UserResponse[]>(() => {
     const needle = memberQ.trim().toLowerCase();
-    return group.member_ids
-      .map<MemberRow>((id) => {
-        const u = userById.get(id) ?? null;
-        return {
-          id,
-          name: u?.name ?? null,
-          email: u?.email ?? null,
-          user: u,
-        };
-      })
-      .filter((row) => {
-        if (!needle) return true;
-        const inName = (row.name ?? "").toLowerCase().includes(needle);
-        const inEmail = (row.email ?? "").toLowerCase().includes(needle);
-        return inName || inEmail;
-      });
-  }, [groupQuery.data, userById, memberQ]);
+    if (!needle) return members;
+    return members.filter(
+      (u) =>
+        u.name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle),
+    );
+  }, [members, memberQ]);
 
   if (groupQuery.isPending) {
     return (
@@ -195,7 +184,23 @@ export function GroupDetail() {
           />
         </div>
 
-        {memberRows.length === 0 ? (
+        {membersQuery.isPending ? (
+          <div data-testid="members-loading" className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        ) : membersQuery.isError ? (
+          <div
+            className="border border-dashed border-line p-8 text-center"
+            data-testid="members-error"
+          >
+            <div className="font-serif text-[17px] text-ink mb-1">
+              Couldn&rsquo;t load members.
+            </div>
+            <div className="text-[12.5px] text-ink-3">Refresh the page to try again.</div>
+          </div>
+        ) : memberRows.length === 0 ? (
           <div
             className="border border-dashed border-line p-8 text-center"
             data-testid="members-empty"
@@ -236,11 +241,9 @@ export function GroupDetail() {
                   className="border-b border-line"
                   data-testid={`members-row-${row.id}`}
                 >
-                  <td className="py-2.5 px-2 font-medium text-ink">
-                    {row.name ?? "(member outside loaded users)"}
-                  </td>
+                  <td className="py-2.5 px-2 font-medium text-ink">{row.name}</td>
                   <td className="py-2.5 px-2 font-mono text-ink-2 text-[12px]">
-                    {row.email ?? "—"}
+                    {row.email}
                   </td>
                   <td
                     className="py-2.5 px-2 text-ink-3"
@@ -252,13 +255,9 @@ export function GroupDetail() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        row.user
-                          ? setModal({ kind: "remove", user: row.user })
-                          : undefined
-                      }
-                      disabled={isSystem || !row.user}
-                      aria-disabled={isSystem || !row.user}
+                      onClick={() => setModal({ kind: "remove", user: row })}
+                      disabled={isSystem}
+                      aria-disabled={isSystem}
                       data-testid={`members-remove-${row.id}`}
                     >
                       Remove
@@ -276,11 +275,7 @@ export function GroupDetail() {
       ) : null}
 
       {pickerOpen ? (
-        <MemberPickerModal
-          group={group}
-          usersCache={usersCache}
-          onClose={() => setPickerOpen(false)}
-        />
+        <MemberPickerModal group={group} onClose={() => setPickerOpen(false)} />
       ) : null}
 
       {modal.kind === "remove" ? (
@@ -293,13 +288,6 @@ export function GroupDetail() {
     </>
   );
 }
-
-type MemberRow = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  user: UserResponse | null;
-};
 
 function StatCard({
   label,
@@ -415,13 +403,15 @@ function EditGroupSheet({
 
 function MemberPickerModal({
   group,
-  usersCache,
   onClose,
 }: {
   group: GroupResponse;
-  usersCache: UserResponse[];
   onClose: () => void;
 }) {
+  // The full user directory is fetched lazily here — only when the
+  // picker opens — rather than eagerly on every group-detail load (N2).
+  const usersQuery = useAdminUsers();
+  const usersCache = useMemo(() => flattenUsers(usersQuery.data), [usersQuery.data]);
   const addMutation = useAddGroupMember();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickerQ, setPickerQ] = useState("");
@@ -508,7 +498,14 @@ function MemberPickerModal({
         className="max-h-[340px] overflow-y-auto border border-line"
         data-testid="picker-list"
       >
-        {candidates.length === 0 ? (
+        {usersQuery.isPending ? (
+          <div
+            className="p-6 text-center text-[13px] text-ink-3"
+            data-testid="picker-loading"
+          >
+            Loading users…
+          </div>
+        ) : candidates.length === 0 ? (
           <div className="p-6 text-center text-[13px] text-ink-3">
             No users match — try clearing the search.
           </div>

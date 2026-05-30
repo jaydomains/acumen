@@ -13,6 +13,7 @@ gate unaffected; matches the ``catalogue.py`` precedent).
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -41,6 +42,25 @@ async def list_users(
         rows = [u for u in rows if u.role == role]
     if status is not None:
         rows = [u for u in rows if u.status == status]
+    return paginate(rows, cursor, limit)
+
+
+async def list_group_members(
+    db: AsyncSession,
+    *,
+    member_ids: list[uuid.UUID],
+    cursor: str | None,
+    limit: int,
+) -> tuple[list[AppUser], str | None]:
+    """Resolve a group's member ids to ``AppUser`` rows, paginated.
+
+    Backs ``GET /v1/groups/{group_id}/members`` (N2): the router supplies
+    the membership ids already resolved by ``catalogue.get_group`` so this
+    stays a thin user-domain query that reuses the same in-Python
+    filter/paginate path as ``list_users``.
+    """
+    ids = set(member_ids)
+    rows = [u for u in await _tenant_users(db) if u.id in ids]
     return paginate(rows, cursor, limit)
 
 

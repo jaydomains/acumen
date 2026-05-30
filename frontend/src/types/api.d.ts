@@ -604,7 +604,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Group Members */
+        get: operations["list_group_members_v1_groups__group_id__members_get"];
         put?: never;
         /** Add Member */
         post: operations["add_member_v1_groups__group_id__members_post"];
@@ -5007,6 +5008,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_group_members_v1_groups__group_id__members_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                group_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UserResponse_"];
                 };
             };
             /** @description Validation Error */
