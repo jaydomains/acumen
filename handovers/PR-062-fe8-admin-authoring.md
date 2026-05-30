@@ -213,12 +213,12 @@ across all 15 slice drift sweeps):**
   negative values for future dates (clock skew). Simple `if (delta <
   0) return new Date(iso).toLocaleDateString()` would close. Low
   severity; dev/staging only in practice.
-- **Gitar #6 (Slice 9, performance — persistently open):**
-  `useAdminUsers()` fetched eagerly in `group-detail.tsx` line 70 to
-  join `member_ids` against user names/emails. No `/members`
-  endpoint exists; documented N+1 workaround (N2 tracker below).
-  Gitar itself classifies it as an "acknowledged architectural
-  decision."
+- **Gitar #6 (Slice 9, performance — CLOSED by N2, PR #68):**
+  `useAdminUsers()` was fetched eagerly in `group-detail.tsx` to join
+  `member_ids` against user names/emails because no `/members` endpoint
+  existed. N2 landed `GET /v1/groups/{id}/members` and rewired the view
+  to a single batched call; the eager directory fetch is now lazy
+  (picker-only). See N2 tracker below + `handovers/PR-068-n2-group-members.md`.
 - **Gitar #7 (Slice 9, edge case — fixed at `10d77d5`):**
   `MemberPickerModal` closed on partial `Promise.allSettled` failure
   without retaining failed selections. Fixed: modal stays open on
@@ -251,12 +251,12 @@ New v1.x trackers surfaced by FE-8:
   multiple pages will miss results beyond the first loaded page.
   Acceptable at pilot scale; revisit when catalogue grows beyond a
   few hundred rows.
-- **N2 — Members N+1 fetch.** `group-detail.tsx` calls
-  `useAdminUsers()` eagerly and joins `member_ids` client-side. Each
-  group detail load fetches the full users page. No
-  `/v1/groups/{id}/members` endpoint exists. Revisit for FE-9 or a
-  standalone identity endpoint PR. Gitar persistently flags this; it
-  is an acknowledged architectural decision.
+- **N2 — Members N+1 fetch. CLOSED (PR #68).** Landed
+  `GET /v1/groups/{group_id}/members` (`Page[UserResponse]`, admin-gated)
+  and rewired `group-detail.tsx` to a single batched `useGroupMembers`
+  call. The eager `useAdminUsers()` directory fetch was relocated into
+  `MemberPickerModal` (lazy, picker-only). FE-8 §B.3.3 corrected to the
+  real contract. See `handovers/PR-068-n2-group-members.md`.
 - **N3 — Benchmark mode authoring deferred to v1.x.**
   `benchmark-section.tsx` ships as a visible but disabled stub.
   `BenchmarkRunner` in FE-4 continues to work for benchmark
