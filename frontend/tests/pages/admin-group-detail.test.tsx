@@ -1,9 +1,10 @@
 /**
  * Admin group detail integration tests (FE-8 admin-identity §B.3 §6
  * Gherkin coverage). Mounts `/admin/groups/[groupId]` and exercises
- * MSW group GET/PATCH/add-member/remove-member, plus the client-side
- * member-list derivation from `member_ids` + cached users directory
- * (drift Finding #1).
+ * MSW group GET/PATCH/add-member/remove-member, plus the single batched
+ * `GET /v1/groups/{id}/members` call that replaced the prior N+1
+ * member-list derivation (N2). The user directory is fetched lazily by
+ * the add-member picker only.
  */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -75,6 +76,40 @@ describe("group detail — render", () => {
     // 1 member from the fixture (Lerato).
     await waitFor(() => expect(screen.getByTestId("members-table")).toBeInTheDocument());
     expect(screen.getByText("Lerato Dlamini")).toBeInTheDocument();
+  });
+
+  it("loads members via the batched endpoint with no eager /v1/users fetch", async () => {
+    const user = userEvent.setup();
+    let memberCalls = 0;
+    let usersCalls = 0;
+    server.use(
+      http.get(`${API}/v1/groups/:group_id/members`, ({ params }) => {
+        memberCalls += 1;
+        const group = getMockAdminGroups().find((g) => g.id === String(params.group_id))!;
+        const byId = new Map(getMockAdminUsers().map((u) => [u.id, u]));
+        const data = group.member_ids
+          .map((id) => byId.get(id))
+          .filter((u) => u !== undefined);
+        return HttpResponse.json({ data, meta: { next_cursor: null } });
+      }),
+      http.get(`${API}/v1/users`, () => {
+        usersCalls += 1;
+        return HttpResponse.json({
+          data: getMockAdminUsers(),
+          meta: { next_cursor: null },
+        });
+      }),
+    );
+    render(mountTree(<AdminGroupDetailPage />));
+    await waitFor(() => expect(screen.getByText("Lerato Dlamini")).toBeInTheDocument());
+    // Members came from the batched endpoint; the directory was NOT
+    // fetched eagerly on load (N2 — closes the Gitar N+1 finding).
+    expect(memberCalls).toBeGreaterThanOrEqual(1);
+    expect(usersCalls).toBe(0);
+
+    // The picker triggers the lazy directory fetch only when opened.
+    await user.click(screen.getByTestId("group-add-member-button"));
+    await waitFor(() => expect(usersCalls).toBeGreaterThanOrEqual(1));
   });
 
   it("renders 'group not found' when GET 404s", async () => {
@@ -159,9 +194,13 @@ describe("group detail — add member flow (drift Finding #2 fan-out)", () => {
     await user.click(screen.getByTestId("group-add-member-button"));
     await waitFor(() => expect(screen.getByTestId("picker-list")).toBeInTheDocument());
 
-    // Pick 2 users (Jay + Kabelo — Lerato is already a member).
+    // Pick 2 users (Jay + Kabelo — Lerato is already a member). The
+    // directory loads lazily, so wait for the candidate rows.
     const jay = getMockAdminUsers().find((u) => u.email === "jay@sitemesh.co")!;
     const kabelo = getMockAdminUsers().find((u) => u.email === "kabelo@sitemesh.co")!;
+    await waitFor(() =>
+      expect(screen.getByTestId(`picker-row-${jay.id}`)).toBeInTheDocument(),
+    );
     await user.click(screen.getByTestId(`picker-row-${jay.id}`));
     await user.click(screen.getByTestId(`picker-row-${kabelo.id}`));
     await user.click(screen.getByTestId("picker-add"));
@@ -180,6 +219,13 @@ describe("group detail — add member flow (drift Finding #2 fan-out)", () => {
     );
     await user.click(screen.getByTestId("group-add-member-button"));
     await waitFor(() => expect(screen.getByTestId("picker-list")).toBeInTheDocument());
+
+    // Wait for the lazily-loaded directory to render candidate rows
+    // (Jay is not a member, so he appears).
+    const jay = getMockAdminUsers().find((u) => u.email === "jay@sitemesh.co")!;
+    await waitFor(() =>
+      expect(screen.getByTestId(`picker-row-${jay.id}`)).toBeInTheDocument(),
+    );
 
     // Lerato is already a member → not in the picker.
     const lerato = getMockAdminUsers().find((u) => u.email === "lerato@sitemesh.co")!;

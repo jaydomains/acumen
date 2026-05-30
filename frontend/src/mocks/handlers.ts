@@ -2458,9 +2458,41 @@ const adminGroupRemoveMemberHandler = http.delete(
   },
 );
 
+// N2 — single batched members list. Resolves `member_ids` against the
+// mock users directory and cursor-paginates (index-based, like the other
+// admin list handlers). 404s on an unknown group, mirroring the backend.
+const adminGroupMembersListHandler = http.get(
+  `${API}/v1/groups/:group_id/members`,
+  ({ params, request }) => {
+    const group = mockAdminGroups.find((x) => x.id === String(params.group_id));
+    if (!group) {
+      return HttpResponse.json(
+        {
+          error: { code: "not_found", message: "Group not found.", detail: null },
+        },
+        { status: 404 },
+      );
+    }
+    const url = new URL(request.url);
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw))) : 50;
+    const byId = new Map(mockAdminUsers.map((u) => [u.id, u]));
+    const members = group.member_ids
+      .map((id) => byId.get(id))
+      .filter((u): u is UserResponseSchema => u !== undefined);
+    const start = cursor ? Number(cursor) : 0;
+    const slice = members.slice(start, start + limit);
+    const nextStart = start + slice.length;
+    const next_cursor = nextStart < members.length ? String(nextStart) : null;
+    return HttpResponse.json({ data: slice, meta: { next_cursor } });
+  },
+);
+
 const adminGroupsHandlers = [
   adminGroupsListHandler,
   adminGroupGetHandler,
+  adminGroupMembersListHandler,
   adminGroupCreateHandler,
   adminGroupUpdateHandler,
   adminGroupAddMemberHandler,
