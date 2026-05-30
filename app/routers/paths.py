@@ -77,10 +77,10 @@ async def list_paths(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[LearningPathResponse]:
-    rows, next_cursor = await catalogue.list_paths(db, cursor=cursor, limit=limit)
+    rows, next_cursor, count = await catalogue.list_paths(db, cursor=cursor, limit=limit)
     return Page[LearningPathResponse](
         data=[_response(p, ids) for p, ids in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 

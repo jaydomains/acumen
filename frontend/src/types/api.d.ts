@@ -2713,6 +2713,8 @@ export interface components {
         PageMeta: {
             /** Next Cursor */
             next_cursor?: string | null;
+            /** Count */
+            count?: number | null;
         };
         /** Page[AssignmentResponse] */
         Page_AssignmentResponse_: {

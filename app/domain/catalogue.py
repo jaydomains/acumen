@@ -79,11 +79,16 @@ def _sort_key(row: Any) -> tuple[Any, str]:
 
 def paginate(
     rows: Sequence[Any], cursor: str | None, limit: int
-) -> tuple[list[Any], str | None]:
+) -> tuple[list[Any], str | None, int]:
     """Stable (created_at, id) cursor pagination (CODE_SPEC §5).
 
     The cursor is the opaque id of the last row of the previous page.
+    Returns ``(page, next_cursor, total)`` where ``total`` is the full
+    collection size (pre-cursor, pre-limit) — surfaced as
+    ``PageMeta.count`` so callers can read a total from a ``?limit=1``
+    probe without walking every page (FE-9 count meta).
     """
+    total = len(rows)
     limit = max(1, min(limit, MAX_PAGE_LIMIT))
     ordered = sorted(rows, key=_sort_key)
     if cursor:
@@ -91,7 +96,7 @@ def paginate(
         ordered = ordered[start:]
     page = ordered[:limit]
     next_cursor = str(page[-1].id) if len(ordered) > limit else None
-    return page, next_cursor
+    return page, next_cursor, total
 
 
 async def _tenant_rows(db: AsyncSession, model: Any) -> list[Any]:
@@ -125,7 +130,7 @@ async def get_subject(db: AsyncSession, subject_id: uuid.UUID) -> Subject | None
 
 async def list_subjects(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[Subject], str | None]:
+) -> tuple[list[Subject], str | None, int]:
     return paginate(await _tenant_rows(db, Subject), cursor, limit)
 
 
@@ -183,7 +188,7 @@ async def get_pill(db: AsyncSession, pill_id: uuid.UUID) -> Pill | None:
 
 async def list_pills(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[Pill], str | None]:
+) -> tuple[list[Pill], str | None, int]:
     """Admin listing — includes retired and non-discoverable pills."""
     return paginate(await _tenant_rows(db, Pill), cursor, limit)
 
@@ -261,7 +266,7 @@ async def list_discoverable_pills(
     subject_id: uuid.UUID | None = None,
     difficulty: int | None = None,
     search: str | None = None,
-) -> tuple[list[Pill], str | None]:
+) -> tuple[list[Pill], str | None, int]:
     """Testee discovery (AC-D8): discoverable, non-retired pills only.
     Optional subject / difficulty-band / name-search filters."""
     rows = [
@@ -353,9 +358,11 @@ async def get_path(
 
 async def list_paths(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[tuple[LearningPath, list[uuid.UUID]]], str | None]:
-    page, next_cursor = paginate(await _tenant_rows(db, LearningPath), cursor, limit)
-    return [(p, await _path_pill_ids(db, p.id)) for p in page], next_cursor
+) -> tuple[list[tuple[LearningPath, list[uuid.UUID]]], str | None, int]:
+    page, next_cursor, total = paginate(
+        await _tenant_rows(db, LearningPath), cursor, limit
+    )
+    return [(p, await _path_pill_ids(db, p.id)) for p in page], next_cursor, total
 
 
 async def update_path(
@@ -417,9 +424,9 @@ async def get_group(
 
 async def list_groups(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[tuple[Group, list[uuid.UUID]]], str | None]:
-    page, next_cursor = paginate(await _tenant_rows(db, Group), cursor, limit)
-    return [(g, await _group_member_ids(db, g.id)) for g in page], next_cursor
+) -> tuple[list[tuple[Group, list[uuid.UUID]]], str | None, int]:
+    page, next_cursor, total = paginate(await _tenant_rows(db, Group), cursor, limit)
+    return [(g, await _group_member_ids(db, g.id)) for g in page], next_cursor, total
 
 
 async def update_group(
@@ -539,7 +546,7 @@ async def enqueue_pill_proposal(
 
 async def list_pill_proposals(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[ProcessingTask], str | None]:
+) -> tuple[list[ProcessingTask], str | None, int]:
     rows = [
         t
         for t in await _tenant_rows(db, ProcessingTask)

@@ -8501,6 +8501,17 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
           }
         },
         "additionalProperties": false,

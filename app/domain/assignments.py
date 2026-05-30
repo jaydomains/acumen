@@ -223,7 +223,7 @@ async def list_assignments(
     limit: int,
     assignee_id: uuid.UUID | None = None,
     assigner_id: uuid.UUID | None = None,
-) -> tuple[list[tuple[Assignment, list[uuid.UUID]]], str | None]:
+) -> tuple[list[tuple[Assignment, list[uuid.UUID]]], str | None, int]:
     """Admin lists all (optionally by assigner); a Testee lists only
     assignments they are a snapshotted assignee of.
 
@@ -238,8 +238,8 @@ async def list_assignments(
     amap = await _assignee_map(db)
     if assignee_id is not None:
         rows = [a for a in rows if assignee_id in amap.get(a.id, [])]
-    page, next_cursor = paginate(rows, cursor, limit)
-    return [(a, amap.get(a.id, [])) for a in page], next_cursor
+    page, next_cursor, total = paginate(rows, cursor, limit)
+    return [(a, amap.get(a.id, [])) for a in page], next_cursor, total
 
 
 async def withdraw_assignment(

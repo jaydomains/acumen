@@ -227,6 +227,8 @@ def test_cursor_pagination_round_trip(
     first = cat_client.get("/v1/subjects", headers=h, params={"limit": 2}).json()
     assert len(first["data"]) == 2
     assert first["meta"]["next_cursor"] is not None
+    # count is the full collection size, independent of cursor/limit.
+    assert first["meta"]["count"] == 3
 
     second = cat_client.get(
         "/v1/subjects",
@@ -235,8 +237,15 @@ def test_cursor_pagination_round_trip(
     ).json()
     assert len(second["data"]) == 1
     assert second["meta"]["next_cursor"] is None
+    assert second["meta"]["count"] == 3
     seen = {r["id"] for r in first["data"]} | {r["id"] for r in second["data"]}
     assert len(seen) == 3
+
+    # The FE-9 count-meta probe: a ?limit=1 query carries the full total
+    # in meta.count without walking every page.
+    probe = cat_client.get("/v1/subjects", headers=h, params={"limit": 1}).json()
+    assert len(probe["data"]) == 1
+    assert probe["meta"]["count"] == 3
 
 
 def test_get_missing_pill_is_404(

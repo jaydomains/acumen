@@ -84,10 +84,10 @@ async def list_groups(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[GroupResponse]:
-    rows, next_cursor = await catalogue.list_groups(db, cursor=cursor, limit=limit)
+    rows, next_cursor, count = await catalogue.list_groups(db, cursor=cursor, limit=limit)
     return Page[GroupResponse](
         data=[_response(g, ids) for g, ids in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
@@ -142,12 +142,12 @@ async def list_group_members(
     # only mutation is gated by ``_guard_mutable``. ``_load`` 404s on an
     # unknown group and hands us the resolved member ids.
     _group, member_ids = await _load(db, group_id)
-    rows, next_cursor = await users_domain.list_group_members(
+    rows, next_cursor, count = await users_domain.list_group_members(
         db, member_ids=member_ids, cursor=cursor, limit=limit
     )
     return Page[UserResponse](
         data=[UserResponse.model_validate(u) for u in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
