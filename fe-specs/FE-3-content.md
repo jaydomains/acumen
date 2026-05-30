@@ -165,7 +165,7 @@ Scenario: Hero renders a v1.x-pending placeholder when GET /v1/me/competence is 
   And no GET /v1/me/competence request fires
 
 Scenario: AssignmentsCard segmented control filters mandatory assignments
-  Given the Testee has 2 mandatory and 1 follow-up assignment loaded
+  Given the Testee has 2 mandatory and 1 optional assignment loaded
   When the Testee clicks the "Mandatory" tab
   Then exactly 2 AssignmentRows are visible
 

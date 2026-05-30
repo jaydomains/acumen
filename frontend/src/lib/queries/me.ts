@@ -24,6 +24,8 @@ export type MeCompetenceResponse = components["schemas"]["MeCompetenceResponse"]
 export type MeCompetencePill = components["schemas"]["MeCompetencePill"];
 export type AttemptListItem = components["schemas"]["AttemptListItem"];
 export type AttemptsPage = components["schemas"]["Page_AttemptListItem_"];
+export type AssignmentResponse = components["schemas"]["AssignmentResponse"];
+export type AssignmentsPage = components["schemas"]["Page_AssignmentResponse_"];
 
 const HISTORY_PAGE_SIZE = 50;
 /** Profile-page sparkline ceiling: enough recent attempts to derive
@@ -42,6 +44,20 @@ export function useMeCompetence() {
   return useQuery({
     queryKey: meQueryKeys.competence(),
     queryFn: () => unwrap(client.GET("/v1/me/competence")),
+  });
+}
+
+/**
+ * Testee's own assignments — every assignment they are a snapshotted
+ * assignee of (direct or via group; deduped at write time, AC-D15).
+ * Consumes the canonical `Page<AssignmentResponse>` envelope (N4); the
+ * AssignmentsCard reads `data.data` and filters in-memory. Single page
+ * at v1 — the card surfaces "up next", not a paginated history.
+ */
+export function useMeAssignments() {
+  return useQuery({
+    queryKey: meQueryKeys.assignments(),
+    queryFn: () => unwrap(client.GET("/v1/me/assignments")),
   });
 }
 

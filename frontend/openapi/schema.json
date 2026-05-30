@@ -5568,6 +5568,84 @@
         }
       }
     },
+    "/v1/me/assignments": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "summary": "List My Assignments",
+        "description": "The current Testee's own assignments \u2014 every assignment they are a\nsnapshotted assignee of, whether targeted directly or resolved through\na group at creation (``assignment_assignee`` deduplicates the two; see\n``app.domain.assignments.create_assignment``). Any authed,\nprivacy-acked user reads only their own assignments; this is the\ncanonical ``/v1/me/*`` surface mirroring the testee branch of\n``GET /v1/assignments`` (AC-D15).",
+        "operationId": "list_my_assignments_v1_me_assignments_get",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AssignmentResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/cost/summary": {
       "get": {
         "tags": [

@@ -1410,6 +1410,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Assignments
+         * @description The current Testee's own assignments — every assignment they are a
+         *     snapshotted assignee of, whether targeted directly or resolved through
+         *     a group at creation (``assignment_assignee`` deduplicates the two; see
+         *     ``app.domain.assignments.create_assignment``). Any authed,
+         *     privacy-acked user reads only their own assignments; this is the
+         *     canonical ``/v1/me/*`` surface mirroring the testee branch of
+         *     ``GET /v1/assignments`` (AC-D15).
+         */
+        get: operations["list_my_assignments_v1_me_assignments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/cost/summary": {
         parameters: {
             query?: never;
@@ -6503,6 +6529,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeCompetenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_assignments_v1_me_assignments_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AssignmentResponse_"];
                 };
             };
             /** @description Validation Error */

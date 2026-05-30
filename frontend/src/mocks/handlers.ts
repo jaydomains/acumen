@@ -3577,6 +3577,52 @@ const adminSystemHandlers = [
   bootstrapRunHandler,
 ];
 
+// --- N4: GET /v1/me/assignments (testee-scoped) ----------------------
+// Append-only. Default empty list; tests inject rows via
+// setMockMeAssignments / force errors via setMeAssignmentsStatus.
+// Inline import types so no top-of-file import edit is required.
+type MeAssignmentsPage =
+  import("@/lib/api/types").components["schemas"]["Page_AssignmentResponse_"];
+type MeAssignmentItem =
+  import("@/lib/api/types").components["schemas"]["AssignmentResponse"];
+
+let mockMeAssignments: MeAssignmentsPage = {
+  data: [],
+  meta: { next_cursor: null },
+};
+let meAssignmentsStatus = 200;
+
+export const setMockMeAssignments = (data: MeAssignmentItem[]): void => {
+  mockMeAssignments = { data, meta: { next_cursor: null } };
+};
+
+export const setMeAssignmentsStatus = (status: number): void => {
+  meAssignmentsStatus = status;
+};
+
+export const resetMockMeAssignments = (): void => {
+  mockMeAssignments = { data: [], meta: { next_cursor: null } };
+  meAssignmentsStatus = 200;
+};
+
+export const getMockMeAssignments = (): MeAssignmentsPage => mockMeAssignments;
+
+export const meAssignmentsHandler = http.get(`${API}/v1/me/assignments`, () => {
+  if (meAssignmentsStatus !== 200) {
+    return HttpResponse.json(
+      {
+        error: {
+          code: meAssignmentsStatus === 404 ? "not_found" : "internal",
+          message: "Me assignments unavailable.",
+          detail: null,
+        },
+      },
+      { status: meAssignmentsStatus },
+    );
+  }
+  return HttpResponse.json(mockMeAssignments);
+});
+
 export const handlers = [
   meHandler,
   loginHandler,
@@ -3620,6 +3666,7 @@ export const handlers = [
   startAttemptHandler,
   streamAttemptHandler,
   meCompetenceHandler,
+  meAssignmentsHandler,
   // FE-8 admin stubs — order doesn't matter (no path collisions with
   // the testee surfaces above; `/v1/pills` differs from
   // `/v1/catalogue/pills`, etc.). `adminTestsListHandler` (`/v1/tests`)
