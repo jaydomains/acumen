@@ -22,7 +22,6 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useMeAssignments, type AssignmentResponse } from "@/lib/queries/me";
 import { useCataloguePills, flattenPills } from "@/lib/queries/catalogue";
 
@@ -83,8 +82,11 @@ function Row({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {assignment.is_mandatory && (
-          <span data-testid="assignment-mandatory-tag">
-            <Badge tone="warn">Mandatory</Badge>
+          <span
+            data-testid="assignment-mandatory-tag"
+            className="border border-warn px-2 py-1 text-[11px] font-medium uppercase tracking-[0.04em] text-warn"
+          >
+            Mandatory
           </span>
         )}
         {href && (
