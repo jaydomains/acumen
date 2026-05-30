@@ -153,6 +153,11 @@ ItemT = TypeVar("ItemT")
 
 class PageMeta(_Base):
     next_cursor: str | None = None
+    # Full collection size (pre-cursor, pre-limit). Populated by the
+    # `paginate` helper so a caller can read a total from a `?limit=1`
+    # probe without walking every page (FE-9 count meta). `None` on
+    # endpoints that don't route through `paginate`.
+    count: int | None = None
 
 
 class Page(_Base, Generic[ItemT]):

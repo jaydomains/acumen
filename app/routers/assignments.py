@@ -91,16 +91,16 @@ async def list_assignments(
     assigner_id: uuid.UUID | None = Query(default=None),
 ) -> Page[AssignmentResponse]:
     if user.role == ROLE_ADMINISTRATOR:
-        rows, next_cursor = await assignment_domain.list_assignments(
+        rows, next_cursor, count = await assignment_domain.list_assignments(
             db, cursor=cursor, limit=limit, assigner_id=assigner_id
         )
     else:
-        rows, next_cursor = await assignment_domain.list_assignments(
+        rows, next_cursor, count = await assignment_domain.list_assignments(
             db, cursor=cursor, limit=limit, assignee_id=user.id
         )
     return Page[AssignmentResponse](
         data=[_response(a, ids) for a, ids in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 

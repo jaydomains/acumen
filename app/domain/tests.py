@@ -159,7 +159,7 @@ async def get_test(db: AsyncSession, test_id: uuid.UUID) -> Test | None:
 
 async def list_tests(
     db: AsyncSession, *, cursor: str | None, limit: int
-) -> tuple[list[Test], str | None]:
+) -> tuple[list[Test], str | None, int]:
     """Admin listing — includes draft and private tests."""
     return paginate(await _tenant_rows(db, Test), cursor, limit)
 

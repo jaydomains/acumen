@@ -36,7 +36,7 @@ async def list_users(
     status: UserStatus | None,
     cursor: str | None,
     limit: int,
-) -> tuple[list[AppUser], str | None]:
+) -> tuple[list[AppUser], str | None, int]:
     rows = await _tenant_users(db)
     if role is not None:
         rows = [u for u in rows if u.role == role]
@@ -51,7 +51,7 @@ async def list_group_members(
     member_ids: list[uuid.UUID],
     cursor: str | None,
     limit: int,
-) -> tuple[list[AppUser], str | None]:
+) -> tuple[list[AppUser], str | None, int]:
     """Resolve a group's member ids to ``AppUser`` rows, paginated.
 
     Backs ``GET /v1/groups/{group_id}/members`` (N2): the router supplies

@@ -85,12 +85,12 @@ async def list_users(
             "invalid_role",
             f"role must be one of {sorted(VALID_ROLES)}",
         )
-    rows, next_cursor = await users_domain.list_users(
+    rows, next_cursor, count = await users_domain.list_users(
         db, role=role, status=status, cursor=cursor, limit=limit
     )
     return Page[UserResponse](
         data=[UserResponse.model_validate(u) for u in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 

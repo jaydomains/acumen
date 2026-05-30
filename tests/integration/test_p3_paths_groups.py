@@ -217,7 +217,7 @@ def test_group_members_empty_group_returns_empty_page(
     gid = cat_client.post("/v1/groups", headers=h, json={"name": "Empty"}).json()["id"]
     r = cat_client.get(f"/v1/groups/{gid}/members", headers=h)
     assert r.status_code == 200
-    assert r.json() == {"data": [], "meta": {"next_cursor": None}}
+    assert r.json() == {"data": [], "meta": {"next_cursor": None, "count": 0}}
 
 
 def test_group_members_unknown_group_is_404(

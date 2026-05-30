@@ -18,6 +18,7 @@ import { ApiError } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SweepButton } from "@/components/admin/sweep-button";
+import { useAdminPillsCount } from "@/lib/queries/admin-pills";
 import {
   useDriveIndex,
   useRealismStatus,
@@ -46,6 +47,11 @@ const errMessage = (err: unknown, fallback: string) =>
 export function SystemPage() {
   const driveIndex = useDriveIndex();
   const realismStatus = useRealismStatus();
+  // FE-9 count meta: real on-load corpus totals for the Bootstrap card
+  // (Pills from the ?limit=1 count probe; Drive files from the drive-index
+  // status). Anchors + Safety links stay session-local — no corpus-total
+  // source exists for them.
+  const pillsCount = useAdminPillsCount();
 
   const bootstrap = useRunBootstrap();
   const driveIngest = useRunDriveIngest();
@@ -79,13 +85,13 @@ export function SystemPage() {
           title="Bootstrap"
           desc="Idempotent orchestrator — tops up anchors, self-review, safety links, and Drive ingest in one pass."
           stats={[
-            ["Pills", lastBootstrap ? String(lastBootstrap.pills_processed) : "—"],
+            ["Pills", pillsCount.data != null ? String(pillsCount.data) : "—"],
             ["Anchors", lastBootstrap ? String(lastBootstrap.anchors_generated) : "—"],
             [
               "Safety links",
               lastBootstrap ? String(lastBootstrap.safety_links_added) : "—",
             ],
-            ["Drive files", lastBootstrap ? String(lastBootstrap.drive_files_seen) : "—"],
+            ["Drive files", di ? String(di.files) : "—"],
           ]}
           cta={{
             label: "Run bootstrap",

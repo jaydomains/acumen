@@ -81,10 +81,10 @@ async def list_my_assignments(
     privacy-acked user reads only their own assignments; this is the
     canonical ``/v1/me/*`` surface mirroring the testee branch of
     ``GET /v1/assignments`` (AC-D15)."""
-    rows, next_cursor = await assignment_domain.list_assignments(
+    rows, next_cursor, count = await assignment_domain.list_assignments(
         db, cursor=cursor, limit=limit, assignee_id=user.id
     )
     return Page[AssignmentResponse](
         data=[_assignment_response(a, ids) for a, ids in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )

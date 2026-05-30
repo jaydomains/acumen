@@ -72,10 +72,12 @@ async def list_subjects(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[SubjectResponse]:
-    rows, next_cursor = await catalogue.list_subjects(db, cursor=cursor, limit=limit)
+    rows, next_cursor, count = await catalogue.list_subjects(
+        db, cursor=cursor, limit=limit
+    )
     return Page[SubjectResponse](
         data=[SubjectResponse.model_validate(r) for r in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
@@ -154,10 +156,10 @@ async def list_pills(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[PillResponse]:
-    rows, next_cursor = await catalogue.list_pills(db, cursor=cursor, limit=limit)
+    rows, next_cursor, count = await catalogue.list_pills(db, cursor=cursor, limit=limit)
     return Page[PillResponse](
         data=[PillResponse.model_validate(r) for r in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
@@ -293,7 +295,7 @@ async def discover_pills(
     difficulty: int | None = Query(default=None, ge=1, le=10),
     search: str | None = Query(default=None, max_length=255),
 ) -> Page[PillResponse]:
-    rows, next_cursor = await catalogue.list_discoverable_pills(
+    rows, next_cursor, count = await catalogue.list_discoverable_pills(
         db,
         cursor=cursor,
         limit=limit,
@@ -303,7 +305,7 @@ async def discover_pills(
     )
     return Page[PillResponse](
         data=[PillResponse.model_validate(r) for r in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
@@ -356,7 +358,7 @@ async def list_pill_proposals(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[PillProposalResponse]:
-    rows, next_cursor = await catalogue.list_pill_proposals(
+    rows, next_cursor, count = await catalogue.list_pill_proposals(
         db, cursor=cursor, limit=limit
     )
     return Page[PillProposalResponse](
@@ -369,7 +371,7 @@ async def list_pill_proposals(
             )
             for t in rows
         ],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 

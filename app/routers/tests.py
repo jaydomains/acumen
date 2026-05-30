@@ -95,10 +95,12 @@ async def list_tests(
     cursor: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_LIMIT, ge=1, le=_MAX_LIMIT),
 ) -> Page[TestResponse]:
-    rows, next_cursor = await test_domain.list_tests(db, cursor=cursor, limit=limit)
+    rows, next_cursor, count = await test_domain.list_tests(
+        db, cursor=cursor, limit=limit
+    )
     return Page[TestResponse](
         data=[TestResponse.model_validate(r) for r in rows],
-        meta=PageMeta(next_cursor=next_cursor),
+        meta=PageMeta(next_cursor=next_cursor, count=count),
     )
 
 
