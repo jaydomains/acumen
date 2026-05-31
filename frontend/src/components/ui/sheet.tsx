@@ -4,10 +4,11 @@
  * Sheet — slide-in side drawer, AC-CD-structural addition fold per
  * FE-8 catalogue §F.3 (`fe-specs/FE-8-admin-catalogue.md:552`).
  *
- * Minimal wrapper around Radix Dialog with a right-anchored slide-in
- * transform. Consumers control open state externally. First consumer
- * is the FE-8 proposals drawer; reused for any future right-side
- * detail surface (FE-9 review queue, etc.).
+ * Minimal wrapper around Radix Dialog with a slide-in transform.
+ * Consumers control open state externally. First consumer is the FE-8
+ * proposals drawer (right-anchored, the default); the responsive-shell
+ * mobile nav drawer reuses it left-anchored via `side="left"`. Radix
+ * supplies backdrop + Esc + outside-tap dismiss for both sides.
  *
  * Built on the already-installed `@radix-ui/react-dialog` (used by
  * Modal) so the dependency surface doesn't grow.
@@ -24,6 +25,8 @@ export type SheetProps = {
   ariaTitle: string;
   ariaDescription?: string;
   width?: number;
+  /** Anchor edge. Defaults to "right" so existing consumers are unchanged. */
+  side?: "left" | "right";
   className?: string;
 };
 
@@ -34,6 +37,7 @@ export function Sheet({
   ariaTitle,
   ariaDescription,
   width = 480,
+  side = "right",
   className,
 }: SheetProps) {
   return (
@@ -48,12 +52,14 @@ export function Sheet({
         />
         <DialogPrimitive.Content
           className={cn(
-            "fixed inset-y-0 right-0 z-50 h-full",
-            "bg-bg-raised border-l border-line shadow-[var(--shadow-2)]",
+            "fixed inset-y-0 z-50 h-full",
+            "bg-bg-raised shadow-[var(--shadow-2)]",
             "flex flex-col",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
-            "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
             "duration-200",
+            side === "left"
+              ? "left-0 border-r border-line data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
+              : "right-0 border-l border-line data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
             className,
           )}
           style={{ width: `min(100vw, ${width}px)` }}
