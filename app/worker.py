@@ -31,10 +31,65 @@ in :func:`~app.domain.grade_review.reconcile_pending_grade_reviews`).
 from __future__ import annotations
 
 import asyncio
+import logging
+from typing import Any
 
 from celery import Celery
+from celery.signals import task_failure, task_retry
 
 from app.config import get_settings
+
+# Structured failure surfacing for the seven §8.9 crons (audit-4 S3-H /
+# WS4 pre-deploy subset). The cron wrappers carry no autoretry and write no
+# audit row, so a task that fails every run is otherwise invisible — only
+# its downstream symptoms show. These signal handlers emit a loud,
+# structured log on every task failure / retry so a failing sweep is
+# diagnosable from logs alone. Decision D6: **structured-log only** — no
+# audit-row write (that overlaps WS2's transactional CRUD+audit service and
+# defers to post-deploy).
+_task_log = logging.getLogger("acumen.worker")
+
+
+@task_failure.connect
+def _on_task_failure(
+    sender: Any = None,
+    task_id: Any = None,
+    exception: Any = None,
+    args: Any = None,
+    kwargs: Any = None,
+    traceback: Any = None,
+    einfo: Any = None,
+    **_: Any,
+) -> None:
+    """Emit a structured ``logs.error`` for any failed Celery task."""
+    task_name = getattr(sender, "name", None) or "unknown"
+    exc_info = getattr(einfo, "exc_info", None)
+    _task_log.error(
+        "celery task failed: task=%s id=%s exc=%r",
+        task_name,
+        task_id,
+        exception,
+        exc_info=exc_info,
+    )
+
+
+@task_retry.connect
+def _on_task_retry(
+    sender: Any = None,
+    request: Any = None,
+    reason: Any = None,
+    einfo: Any = None,
+    **_: Any,
+) -> None:
+    """Emit a structured warning when a Celery task is retried."""
+    task_name = getattr(sender, "name", None) or "unknown"
+    task_id = getattr(request, "id", None)
+    _task_log.warning(
+        "celery task retrying: task=%s id=%s reason=%r",
+        task_name,
+        task_id,
+        reason,
+    )
 
 
 def make_celery() -> Celery:
