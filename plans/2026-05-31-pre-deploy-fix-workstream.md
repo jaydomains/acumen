@@ -242,8 +242,21 @@ exists, later fixes could be validated against silent stub output).
   `"administrator"→"admin"` (accept both during transition), `"testee"`
   passthrough, else `null`.
 - `frontend/src/app/(authed)/(admin)/admin/users/_components/users-list.tsx`
-  — wrap role on the **write** path (create/edit body `:441`, filter)
-  through a `toWireRole` helper so `"admin"→"administrator"` on the wire.
+  — wrap role on the **write** paths through a `toWireRole` helper so
+  `"admin"→"administrator"` on the wire. **Three write sites, not one**
+  (auditor round-1 inline finding, verified against source):
+  - `:441` — create-user body `role: values.role`.
+  - **`:525` — `UserEditModal` seed.** Currently
+    `role: user.role === "admin" ? "admin" : "testee"`; the wire value is
+    `"administrator"`, so `=== "admin"` is false and a real admin's edit
+    form seeds to **`"testee"`** (wrong role shown). Apply `fromWireRole`
+    at the seed.
+  - **`:536` — `UserEditModal` dirty-compare + send.** Currently
+    `if (values.role !== user.role) body.role = values.role` compares the
+    FE literal `"admin"` against the **wire** `"administrator"`, so it
+    never matches: every save treats role as changed and sends raw
+    `"admin"` → `422 invalid_role`. Make the comparison consistent
+    (`toWireRole(values.role) !== user.role`) and send `toWireRole(...)`.
 - `frontend/src/lib/queries/admin-users.ts:54` — map the role filter
   param to the wire literal.
 - `users-list.tsx:333` (`u.role === "admin"` display) — normalise the
@@ -257,10 +270,15 @@ exists, later fixes could be validated against silent stub output).
 - Update one MSW handler to emit the real enum `"administrator"`
   (`frontend/src/mocks/handlers.ts:1990`) and assert an admin-gated
   surface renders (not `/403`).
+- **Edit-modal case (auditor round-1 finding):** open `UserEditModal` on
+  an `"administrator"` user → the role field seeds to admin (not testee);
+  a no-op save sends no `role` (a 200, not 422); a role-change save posts
+  `"administrator"`.
 **Acceptance:** an admin `/me` with wire role `"administrator"` renders
 the admin shell (no `/403`); user-create with FE role `"admin"` posts
-`"administrator"` and 201s (no 422); `pnpm test` + `pnpm typecheck`
-green.
+`"administrator"` and 201s (no 422); editing an existing admin seeds the
+correct role and a no-op save does not 422; `pnpm test` + `pnpm
+typecheck` green.
 
 ### Slice 2 — Startup config validation (A4-S3-C + WS4 subset) + X2-#4 test
 **Gated on Decision D2.**
@@ -287,20 +305,30 @@ no longer silent); booting prod with a default secret fails fast;
 **Fix:**
 - `app/domain/attempts.py` — invert the presentation permutation at
   grade time so a submitted **presented** index maps back to the
-  **original** option/right index. The permutation is already stable and
-  re-derivable (`option_permutation` `:468-474`, `seed_for` `:461-464`);
-  re-derive it in `_grade_mcq`/`_grade_matching` (`:1201-1229`) and apply
-  `original_index = perm[presented_index]` before comparing to
-  `config.correct` (MCQ) / identity (matching). Mirror the same
+  **original** index. The permutation is already stable and re-derivable
+  (`option_permutation` `:468-474`, `seed_for` `:461-464`); re-derive it
+  in `_grade_mcq`/`_grade_matching` (`:1201-1229`), mirroring the exact
   derivation `_present_one` uses (`:533-546`) so the two stay in lockstep.
+  **Both graded types need inversion — spell each out** (rev-0 said
+  "identity (matching)", which was imprecise; matching needs inversion
+  too):
+  - **MCQ** (`_grade_mcq`): presentation shuffles `options` (`:535-536`).
+    Grade as `perm[submitted_choice] == config.correct`.
+  - **Matching** (`_grade_matching`): presentation shuffles **only the
+    `rights`**, lefts stay put (`:543-546`). `answer.matches[i]` is the
+    **presented**-right index picked for left `i`; today grading checks
+    `m == i` (`:1228`), wrong once rights are shuffled. Fix: score a pair
+    correct when `perm[matches[i]] == i` — same `perm[...]` inversion as
+    MCQ, applied element-wise to `answer.matches`.
 - Affects MCQ **and** matching (audit-2 H1, `audit-2:36`).
 **Test (X2-#1, `audit-5:78`):**
 - `tests/integration/test_p4_grading_shuffle.py` (new) — present→submit→
-  grade round-trip with a **non-identity** permutation: a correct
-  selection scores 1.0, a wrong one scores 0.0. (Existing
-  `test_p4_grading.py` autosaves original-order indices and bypasses the
-  presentation layer — it cannot catch this; the new test exercises the
-  presented→graded seam.)
+  grade round-trip with a **non-identity** permutation, **one case per
+  graded type (MCQ and matching)**: a correct selection scores 1.0, a
+  wrong one scores 0.0; matching with shuffled rights scores a correct
+  pairing 1.0. (Existing `test_p4_grading.py` autosaves original-order
+  indices and bypasses the presentation layer — it cannot catch this; the
+  new test exercises the presented→graded seam for both types.)
 **Acceptance:** with `randomise_option_order=True` and a non-identity
 permutation, grading scores correctly for MCQ and matching; existing
 grading tests stay green; `pytest --ignore=tests/e2e` green.
