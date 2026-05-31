@@ -79,6 +79,13 @@ const rubricConfigSchema = z.object({
     .string()
     .min(1, "AI grading rubric is required for this question type.")
     .max(4096, "Rubric is too long."),
+  // The backend's validate_question_config requires a model_answer for
+  // short_answer / scenario (FE-8 §H(a) item 2, amended 2026-05-31); without
+  // it those types are structurally un-authorable (422 on create).
+  model_answer: z
+    .string()
+    .min(1, "A model answer is required for AI grading.")
+    .max(4096, "Model answer is too long."),
 });
 
 export const questionSchema = z.discriminatedUnion("type", [
@@ -142,9 +149,13 @@ export function defaultsForType(type: QuestionType): QuestionFormInput {
         },
       };
     case "short_answer":
-      return { ...base, type: "short_answer", config: { rubric: "" } };
+      return {
+        ...base,
+        type: "short_answer",
+        config: { rubric: "", model_answer: "" },
+      };
     case "scenario":
-      return { ...base, type: "scenario", config: { rubric: "" } };
+      return { ...base, type: "scenario", config: { rubric: "", model_answer: "" } };
   }
 }
 

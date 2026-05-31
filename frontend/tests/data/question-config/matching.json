@@ -1,0 +1,9 @@
+{
+  "prompt": "Match each protection method to its energy source.",
+  "pill_id": "11111111-1111-1111-1111-111111111111",
+  "is_anchor": false,
+  "pairs": [
+    { "left": "Galvanic anode", "right": "Self-powered" },
+    { "left": "Impressed current", "right": "External DC" }
+  ]
+}

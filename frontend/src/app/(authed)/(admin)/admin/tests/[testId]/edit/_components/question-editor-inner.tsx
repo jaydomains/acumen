@@ -345,12 +345,15 @@ function TypeSubcomponent({ form, type, disabled }: SubcomponentProps) {
     }
     case "short_answer":
     case "scenario": {
-      const cfg = errors.config as { rubric?: { message?: string } } | undefined;
+      const cfg = errors.config as
+        | { rubric?: { message?: string }; model_answer?: { message?: string } }
+        | undefined;
       return (
         <SAGradingRubric
           register={form.register}
           disabled={disabled}
           error={cfg?.rubric?.message ?? null}
+          modelAnswerError={cfg?.model_answer?.message ?? null}
         />
       );
     }

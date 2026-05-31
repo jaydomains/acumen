@@ -3031,26 +3031,15 @@ const DEFAULT_ADMIN_QUESTIONS: QuestionResponseSchema[] = [
     test_id: frozenDraftTestId,
     type: "multiple_choice",
     config: {
-      body: "Which mechanism best describes sacrificial anode cathodic protection?",
+      prompt: "Which mechanism best describes sacrificial anode cathodic protection?",
       pill_id: adminPillId(1),
       is_anchor: false,
-      choices: [
-        {
-          id: "A",
-          text: "Galvanic potential drives current from anode to cathode.",
-          correct: true,
-        },
-        {
-          id: "B",
-          text: "Hydrogen overvoltage shifts the corrosion potential cathodically.",
-          correct: false,
-        },
-        {
-          id: "C",
-          text: "Oxide film passivation eliminates anodic dissolution.",
-          correct: false,
-        },
+      options: [
+        "Galvanic potential drives current from anode to cathode.",
+        "Hydrogen overvoltage shifts the corrosion potential cathodically.",
+        "Oxide film passivation eliminates anodic dissolution.",
       ],
+      correct: 0,
     } as unknown as Record<string, never>,
     assigned_difficulty: 6,
     question_group_id: null,
@@ -3064,7 +3053,8 @@ const DEFAULT_ADMIN_QUESTIONS: QuestionResponseSchema[] = [
     test_id: frozenDraftTestId,
     type: "true_false",
     config: {
-      body: "Impressed current cathodic protection requires an external DC power source.",
+      prompt:
+        "Impressed current cathodic protection requires an external DC power source.",
       pill_id: adminPillId(1),
       is_anchor: true,
       correct: true,

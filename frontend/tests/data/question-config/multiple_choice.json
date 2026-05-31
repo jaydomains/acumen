@@ -1,0 +1,7 @@
+{
+  "prompt": "Which cathodic-protection method uses an external DC source?",
+  "pill_id": "11111111-1111-1111-1111-111111111111",
+  "is_anchor": false,
+  "options": ["Galvanic anode", "Impressed current", "Barrier coating"],
+  "correct": 1
+}

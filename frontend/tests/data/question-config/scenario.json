@@ -1,0 +1,7 @@
+{
+  "prompt": "A buried pipeline shows accelerated corrosion near a rectifier. Diagnose and recommend.",
+  "pill_id": "11111111-1111-1111-1111-111111111111",
+  "is_anchor": false,
+  "rubric": "Full marks: identifies stray-current interference AND a mitigation. Half marks for either alone.",
+  "model_answer": "Stray-current interference from the rectifier; mitigate with bonding or a sacrificial drainage anode."
+}
