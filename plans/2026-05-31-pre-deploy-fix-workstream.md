@@ -471,3 +471,4 @@ of authoring. Decisions D1–D4 require spec-author ruling before the
 gated slices execute; D5 is optional/non-blocking.*
 
 Status: final — approved by auditor (rev-1 `cd60c9c`; all findings verified against source, no open threads).
+Status: final — approved by planner (rev-1 `cd60c9c`; auditor's edit-modal finding folded into Slice 1, Slice-3 matching self-corrected, set-diff gate clean, D1–D4 + D6 open for spec-author ruling). Planner role ends; draft→ready is the overseer's call.
