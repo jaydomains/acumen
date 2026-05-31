@@ -898,7 +898,64 @@ The cross-walk surfaced 12 candidate items. After review, they're classified int
 **Phase 0 spec-clarification PR (this PR) cleared the cross-spec drift on `applyApiErrorToForm` path (FE-1 already canonically cites `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` — no FE-1 amendment required) and LOCKED the `QuestionCreate.config` FE-owned typing contract for v1.**
 
 1. **`TestStatus` enum + `lock_mode` mapping drift.** Backend `TestStatus` enum is `draft|published` only (`frontend/openapi/schema.json:3273–3279`). Design's "Locked" state (`admin-test-authoring.jsx:124–129` + `:259` + `:585–600`) implies a 3rd status. **Resolution chosen:** spec body locks the derivation `displayStatus = lock_mode === "campaign-locked" ? 'locked' : status` via the helper at `frontend/src/lib/tests/derive-display-status.ts`. **Verification needed before build session opens:** confirm with backend that `lock_mode === "campaign-locked"` is the canonical signal (not e.g. a separate `is_locked` field). If the backend uses a different signal, spec body must update before code lands. Surfaced for user decision.
-2. **`QuestionCreate.config` FE-owned typing contract — LOCKED for v1.** Backend `QuestionCreate.config` is `object` per `frontend/openapi/schema.json:2488–2491`. v1 packs per-type config + `body` + `pill_id` + `is_anchor` into `config` via `frontend/src/lib/tests/compose-question-config.ts` (per §D.1 helper + §B.3 §4 step 2 schema). Backend typing of the per-type discriminated union is **deferred to v1.x**. Tests assert against the helper, not against backend schema.
+2. **`QuestionCreate.config` per-type key contract — backend-validated.**
+
+   > **Amended 2026-05-31 (pre-deploy fix workstream).** The original Phase 0
+   > lock declared the `config` shape **FE-owned** with per-type keys
+   > `{body, choices}` (MCQ `choices: [{id, text, correct: bool}]`,
+   > short_answer/scenario `{rubric}` only). The pre-deploy audit cycle
+   > (audit-5 capstone "Question-config wire divergence", verified against
+   > `app/domain/tests.py::validate_question_config` plus
+   > `app/domain/attempts.py::_present_one` / `_grade_mcq` /
+   > `_grade_matching`) established that the backend's **own presentation and
+   > grading already read a different key set** — `prompt`, `options`,
+   > `correct` (int) — so the FE-owned `{body, choices}` shape 422s on author
+   > (`config.prompt is required`) and would mis-present / mis-grade even if
+   > the validator were relaxed to accept it. **Direction is forced: the FE
+   > is the side that changes.** This item now locks the **backend-validated**
+   > contract; `compose-question-config.ts` must emit to match it. The
+   > illustrative zod schemas in §B.3 §4 (which still show `body` / `choices`)
+   > and the §B.3 §6/§7 Gherkin/notes that reference `config={body, …}` are
+   > **superseded by this item** and are realigned in the pre-deploy
+   > workstream's question-config reconciliation slice — where they disagree
+   > with this item, **this item wins** (in-body override pattern,
+   > `SESSION_START.md`).
+
+   Backend `QuestionCreate.config` stays typed as bare `object` in OpenAPI
+   (`frontend/openapi/schema.json:2488–2491` — no discriminated-union typing;
+   the per-type Pydantic / TypedDict union is **deferred to v1.x / WS1**). The
+   **runtime key contract** the `config` object must satisfy is the single
+   source of truth in `app/domain/tests.py::validate_question_config`, and is
+   read back by `_present_one` (presentation) and `_grade_mcq` /
+   `_grade_matching` (grading). The required keys per type:
+
+   | Type | Required `config` keys |
+   |---|---|
+   | (all types) | `prompt: str` (non-empty) — the question text |
+   | `multiple_choice` | `options: [str \| {text, image_url}]` (≥2) **+** `correct: int` (0-based index into `options`) |
+   | `true_false` | `correct: bool` |
+   | `matching` | `pairs: [{left: str, right: str}]` (≥2) |
+   | `short_answer` / `scenario` | `rubric: str` (non-empty) **+** `model_answer: str` |
+
+   Key mapping from the original (now-superseded) FE shape: `body → prompt`;
+   MCQ `choices: [{id, text, correct: bool}]` → `options: [text…]` +
+   `correct: <0-based index of the single true choice>`; **`model_answer` is
+   newly required** for `short_answer` / `scenario` (the original lock carried
+   only `rubric`, leaving those two types structurally un-authorable —
+   `validate_question_config` 422s without it). `true_false.correct` (bool)
+   and `matching.pairs` are unchanged.
+
+   `compose-question-config.ts` remains the FE packing layer (and
+   `unpack-question-config.ts` the edit-mode inverse); they emit / parse the
+   keys above instead of `{body, choices}`. FE-side editor metadata that the
+   authored-frozen-question endpoint does **not** read — `pill_id` (pill
+   linkage comes from the owning `Test`), `is_anchor` (anchor-pool membership
+   is the separate `pill_id`-owned path) — may ride along in `config` as
+   tolerated extra keys or be dropped; that is a build-slice detail, not part
+   of this locked key contract. Tests assert that the FE-compose output
+   deep-equals a golden fixture that **also** passes `validate_question_config`
+   on the backend (the honest FE-compose→BE-validate contract test the audit
+   found uncovered).
 
 ### (b) BUILD-SESSION VERIFICATION TASKS — front-loaded at the start of the FE-8 tests build session
 
