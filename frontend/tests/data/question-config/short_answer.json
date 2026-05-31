@@ -1,0 +1,7 @@
+{
+  "prompt": "Explain how impressed-current cathodic protection works.",
+  "pill_id": "11111111-1111-1111-1111-111111111111",
+  "is_anchor": false,
+  "rubric": "Full marks: names the external DC source AND a failure mode. Half marks for either alone.",
+  "model_answer": "An external DC source drives protective current onto the structure; anode depletion is a common failure mode."
+}

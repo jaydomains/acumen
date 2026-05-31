@@ -33,16 +33,28 @@ const asString = (v: unknown, fallback = ""): string =>
 const asBool = (v: unknown, fallback = false): boolean =>
   typeof v === "boolean" ? v : fallback;
 
-function unpackMcqChoices(raw: unknown): MCQChoice[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((c, i) => {
-    const row = (c ?? {}) as Record<string, unknown>;
-    return {
-      id: asString(row.id, mcqChoiceId(i)),
-      text: asString(row.text),
-      correct: asBool(row.correct),
-    };
-  });
+/** An option is a bare string or a `{ text, image_url }` object on the wire. */
+const optionText = (opt: unknown): string => {
+  if (typeof opt === "string") return opt;
+  if (opt && typeof opt === "object") {
+    return asString((opt as Record<string, unknown>).text);
+  }
+  return "";
+};
+
+/**
+ * Rebuild the editor's choice rows from the wire's `options` (string|object
+ * list) + `correct` (0-based index): the inverse of compose's
+ * choices → options/correct mapping (FE-8 §H(a) item 2, amended).
+ */
+function unpackMcqChoices(options: unknown, correct: unknown): MCQChoice[] {
+  if (!Array.isArray(options)) return [];
+  const correctIdx = typeof correct === "number" ? correct : -1;
+  return options.map((opt, i) => ({
+    id: mcqChoiceId(i),
+    text: optionText(opt),
+    correct: i === correctIdx,
+  }));
 }
 
 function unpackMatchPairs(raw: unknown): MatchPair[] {
@@ -65,12 +77,14 @@ export function unpackQuestionConfig(q: QuestionResponse): QuestionFormInput {
   const base = {
     pill_id: asString(cfg.pill_id),
     assigned_difficulty: q.assigned_difficulty,
-    body: asString(cfg.body),
+    // `prompt` is the wire key (amended); fall back to a legacy `body` key
+    // so any pre-amendment cached row still hydrates.
+    body: asString(cfg.prompt) || asString(cfg.body),
     is_anchor: asBool(cfg.is_anchor),
   };
   switch (type) {
     case "multiple_choice": {
-      const choices = unpackMcqChoices(cfg.choices);
+      const choices = unpackMcqChoices(cfg.options, cfg.correct);
       const fallback = defaultsForType("multiple_choice");
       const fallbackChoices =
         fallback.type === "multiple_choice"
@@ -97,7 +111,14 @@ export function unpackQuestionConfig(q: QuestionResponse): QuestionFormInput {
     }
     case "short_answer":
     case "scenario":
-      return { ...base, type, config: { rubric: asString(cfg.rubric) } };
+      return {
+        ...base,
+        type,
+        config: {
+          rubric: asString(cfg.rubric),
+          model_answer: asString(cfg.model_answer),
+        },
+      };
   }
 }
 
@@ -108,7 +129,7 @@ export function unpackQuestionConfig(q: QuestionResponse): QuestionFormInput {
  */
 export function previewQuestionBody(q: QuestionResponse): string {
   const cfg = (q.config ?? {}) as Record<string, unknown>;
-  return asString(cfg.body);
+  return asString(cfg.prompt) || asString(cfg.body);
 }
 
 /** Helper: the packed pill_id from a question (display join). */

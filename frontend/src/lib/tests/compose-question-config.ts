@@ -3,16 +3,20 @@
  * into the wire `QuestionCreate.config` / `QuestionUpdate.config`
  * object.
  *
- * LOCKED v1 contract per FE-8 admin-tests §H(a) item 2 (`fe-specs/
- * FE-8-admin-tests.md:738`). Backend types `config` as `object` /
- * generated openapi-typescript types render it as
- * `Record<string, never>` — uninhabitable. This helper returns a
- * populated object; the caller casts at the POST/PATCH boundary.
+ * Contract per FE-8 admin-tests §H(a) item 2 (amended 2026-05-31). The
+ * backend's `validate_question_config` + presentation (`_present_one`) +
+ * grading (`_grade_mcq`/`_grade_matching`) read a fixed key set, so the FE
+ * emits to match it: `prompt` (all types), `options` + `correct:int`
+ * (multiple_choice), `correct:bool` (true_false), `pairs` (matching),
+ * `rubric` + `model_answer` (short_answer / scenario). Backend types
+ * `config` as `object` / openapi-typescript renders it `Record<string,
+ * never>` (uninhabitable) — this helper returns a populated object the
+ * caller casts at the POST/PATCH boundary.
  *
- * `body`, `pill_id`, and `is_anchor` are NOT first-class wire fields
- * (per drift sweep Findings #6 and #7); they pack into `config`
- * alongside the per-type payload. Backend round-trip preserves the
- * extra keys as opaque metadata.
+ * The question text maps `body → prompt`. `pill_id` and `is_anchor` are
+ * NOT first-class wire fields and are not read by the authored-question
+ * endpoint; they ride along as tolerated extra keys so the pool display
+ * (`pillIdFromQuestion`) and edit-mode unpack can recover them.
  */
 
 import type { QuestionFormInput, QuestionType } from "./question-form";
@@ -34,20 +38,36 @@ export type ComposedQuestionUpdate = {
 
 function composeConfig(values: QuestionFormInput): ComposedConfig {
   const shared = {
-    body: values.body,
+    prompt: values.body,
     pill_id: values.pill_id,
     is_anchor: values.is_anchor,
   };
   switch (values.type) {
-    case "multiple_choice":
-      return { ...shared, choices: values.config.choices };
+    case "multiple_choice": {
+      const choices = values.config.choices;
+      return {
+        ...shared,
+        // The backend reads `options` (string list) + `correct` (0-based
+        // index into options). Exactly-one-correct is enforced by the zod
+        // refine; fall back to 0 defensively if none is flagged.
+        options: choices.map((c) => c.text),
+        correct: Math.max(
+          0,
+          choices.findIndex((c) => c.correct),
+        ),
+      };
+    }
     case "true_false":
       return { ...shared, correct: values.config.correct };
     case "matching":
       return { ...shared, pairs: values.config.pairs };
     case "short_answer":
     case "scenario":
-      return { ...shared, rubric: values.config.rubric };
+      return {
+        ...shared,
+        rubric: values.config.rubric,
+        model_answer: values.config.model_answer,
+      };
   }
 }
 
