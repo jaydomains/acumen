@@ -59,7 +59,12 @@ def _frozen_test(
         pass_threshold=pass_threshold,
         target_difficulty=5,
         randomise_question_order=True,
-        randomise_option_order=True,
+        # These tests autosave ORIGINAL-order indices directly (they bypass
+        # the presentation layer), so option-shuffle is disabled here — with
+        # it on, grading would (correctly, A2-H1) invert the presented index
+        # and these original-index answers would mis-score. The shuffle
+        # inversion seam is covered by tests/integration/test_p4_grading_shuffle.py.
+        randomise_option_order=False,
     )
     session.add(test)
     return test
