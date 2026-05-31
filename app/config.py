@@ -124,6 +124,13 @@ DEV_ENVS = frozenset({"development", "dev", "local", "test"})
 
 _DEFAULT_SECRET = "change-me"
 
+# Loopback markers matched against the ``scheme://host`` of each origin.
+# Anchored on ``://`` rather than a bare substring so a legitimate public
+# origin that merely *contains* a loopback name (e.g.
+# ``https://notlocalhost.example.com``) is not flagged, and so IPv6
+# loopback (``http://[::1]:3000``) is caught.
+_LOOPBACK_MARKERS = ("://localhost", "://127.0.0.1", "://[::1]")
+
 
 def _cors_is_insecure(origins: list[str]) -> bool:
     """True when the CORS allow-list is unsafe for a public deployment —
@@ -131,7 +138,9 @@ def _cors_is_insecure(origins: list[str]) -> bool:
     origin."""
     if not origins:
         return True
-    return any(o == "*" or "localhost" in o or "127.0.0.1" in o for o in origins)
+    return any(
+        o == "*" or any(marker in o for marker in _LOOPBACK_MARKERS) for o in origins
+    )
 
 
 def check_startup_config(settings: Settings) -> tuple[list[str], list[str]]:

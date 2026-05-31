@@ -131,6 +131,27 @@ def test_production_errors_on_localhost_cors() -> None:
     assert any("CORS_ALLOWED_ORIGINS" in e for e in errors)
 
 
+def test_production_errors_on_ipv6_loopback_cors() -> None:
+    # IPv6 loopback is still a loopback — must fail closed in prod.
+    _, errors = check_startup_config(
+        _settings(app_env="production", cors_allowed_origins="http://[::1]:3000")
+    )
+    assert any("CORS_ALLOWED_ORIGINS" in e for e in errors)
+
+
+def test_production_clean_on_origin_merely_containing_localhost() -> None:
+    # A legitimate public origin that only *contains* a loopback name as a
+    # substring (no `://localhost`) must NOT be flagged — the anchored
+    # marker match avoids that false positive (Gitar review on #74).
+    _, errors = check_startup_config(
+        _settings(
+            app_env="production",
+            cors_allowed_origins="https://notlocalhost.example.com",
+        )
+    )
+    assert errors == []
+
+
 def test_unknown_env_fails_closed_on_defaults() -> None:
     # "staging" is not in the dev-set → fail-closed on default secrets,
     # proving the gate fails closed rather than open for unrecognised envs.
