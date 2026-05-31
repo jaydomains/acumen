@@ -13,7 +13,12 @@
  * keep stable keys.
  */
 
-import { useFieldArray, type Control, type UseFormRegister } from "react-hook-form";
+import {
+  useFieldArray,
+  type Control,
+  type UseFormGetValues,
+  type UseFormRegister,
+} from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldError } from "@/components/admin/field";
@@ -23,6 +28,7 @@ import { mcqChoiceId, type QuestionFormInput } from "@/lib/tests/question-form";
 export type MCQChoicesProps = {
   control: Control<QuestionFormInput>;
   register: UseFormRegister<QuestionFormInput>;
+  getValues: UseFormGetValues<QuestionFormInput>;
   disabled?: boolean;
   error?: string | null;
   perRowError?: (i: number) => string | null;
@@ -31,6 +37,7 @@ export type MCQChoicesProps = {
 export function MCQChoices({
   control,
   register,
+  getValues,
   disabled = false,
   error,
   perRowError,
@@ -44,10 +51,15 @@ export function MCQChoices({
   });
 
   const setCorrect = (idx: number) => {
-    fields.forEach((f, i) => {
-      const next = { ...(f as unknown as Record<string, unknown>) };
-      next.correct = i === idx;
-      update(i, next as never);
+    // Read the LIVE values (including text typed into the uncontrolled,
+    // `register`ed inputs) before writing back — the `fields` snapshot
+    // carries stale/empty text, so updating from it clobbered the admin's
+    // un-committed choice text on every "mark correct" click (A2-H2).
+    const choices = (getValues("config.choices" as never) ?? []) as Array<
+      Record<string, unknown>
+    >;
+    choices.forEach((choice, i) => {
+      update(i, { ...choice, correct: i === idx } as never);
     });
   };
 

@@ -305,6 +305,7 @@ function TypeSubcomponent({ form, type, disabled }: SubcomponentProps) {
         <MCQChoices
           control={form.control}
           register={form.register}
+          getValues={form.getValues}
           disabled={disabled}
           error={typeof rootMsg === "string" ? rootMsg : null}
           perRowError={(i) =>

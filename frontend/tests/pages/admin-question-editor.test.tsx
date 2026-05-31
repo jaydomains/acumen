@@ -220,6 +220,53 @@ describe("question editor modal — create flow", () => {
     );
   });
 
+  it("marking a choice correct preserves typed choice text (A2-H2 / X2-#2)", async () => {
+    const user = userEvent.setup();
+    render(mountTree(<TestEditorPage />));
+    await waitFor(() =>
+      expect(screen.getByTestId("frozen-section-add")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId("frozen-section-add"));
+    await waitFor(() =>
+      expect(screen.getByTestId("question-editor-form")).toBeInTheDocument(),
+    );
+    const select = screen.getByTestId("question-pill-select") as HTMLSelectElement;
+    const firstPill = within(select).getAllByRole("option")[1] as HTMLOptionElement;
+    await user.selectOptions(select, firstPill.value);
+    await user.click(screen.getByTestId("question-difficulty-5"));
+    await user.type(screen.getByTestId("question-body"), "Pick the capital.");
+
+    // Type into the uncontrolled choice inputs, THEN mark one correct.
+    await user.type(screen.getByTestId("mcq-choice-text-0"), "Paris");
+    await user.type(screen.getByTestId("mcq-choice-text-1"), "Berlin");
+    await user.click(screen.getByTestId("mcq-choice-correct-0"));
+
+    // The "mark correct" click must NOT wipe the typed text (the A2-H2
+    // bug clobbered every choice's text with the stale snapshot).
+    expect(screen.getByTestId("mcq-choice-text-0")).toHaveValue("Paris");
+    expect(screen.getByTestId("mcq-choice-text-1")).toHaveValue("Berlin");
+
+    await user.click(screen.getByTestId("question-modal-save"));
+
+    // Save succeeds (no "Choice text is required" / refine error) and the
+    // typed text reaches the composed payload. Asserted compose-agnostically
+    // (JSON contains the text whether it lands under choices[].text or
+    // options[]) so this stays green across the question-config slice.
+    await waitFor(() => {
+      // The frozen-draft seed already carries one MCQ, so find the one we
+      // just authored by its content (compose-agnostic — the text lands in
+      // the config whether under choices[].text or options[]).
+      const mine = getMockAdminQuestions().find(
+        (q) =>
+          q.test_id === FROZEN_DRAFT_ID &&
+          q.type === "multiple_choice" &&
+          JSON.stringify(q.config).includes("Paris"),
+      );
+      expect(mine).toBeTruthy();
+      expect(JSON.stringify(mine!.config)).toContain("Berlin");
+    });
+  });
+
   it("adds and removes MCQ choices (min 2 / max 6 enforced)", async () => {
     const user = userEvent.setup();
     render(mountTree(<TestEditorPage />));
