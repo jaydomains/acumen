@@ -68,7 +68,7 @@ def _frozen_mixed_test(session: CatalogueFakeSession) -> Test:
         max_pause_duration_minutes=30,
         target_difficulty=5,
         randomise_question_order=True,
-        randomise_option_order=True,
+        randomise_option_order=False,
     )
     session.add(test)
     return test

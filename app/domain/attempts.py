@@ -1198,12 +1198,60 @@ async def submit_attempt(db: AsyncSession, attempt: Attempt, test: Test) -> Atte
 # --- deterministic grading (AC-D5 / AC-D17 / AC-D19) -----------------
 
 
-def _grade_mcq(answer: dict[str, Any] | None, config: dict[str, Any]) -> float:
-    """1.0 on exact match against ``config.correct``; else 0.0. Missing
-    or malformed answers score 0.0 (didn't answer)."""
+def _grade_permutation(
+    qid: uuid.UUID,
+    seed: int,
+    qtype: QuestionType,
+    config: dict[str, Any],
+    randomise_option_order: bool,
+) -> list[int] | None:
+    """Re-derive the EXACT presentation permutation ``_present_one`` applied
+    to this question's options (MCQ) / right column (matching), so grading
+    inverts the same shuffle (AC-D24 / A2-H1). Returns ``None`` when nothing
+    was shuffled — grading then treats a submitted index as the original
+    index. Kept in lockstep with ``_present_one``: the same
+    ``option_permutation(qid, seed, n)`` call, the same ``n`` (option count
+    for MCQ, pair count for matching). Drift between this and
+    ``_present_one`` silently re-introduces the mis-grade, so the two must
+    move together."""
+    if not randomise_option_order:
+        return None
+    if qtype == QuestionType.multiple_choice:
+        n = len(config.get("options") or [])
+    elif qtype == QuestionType.matching:
+        n = len(config.get("pairs") or [])
+    else:
+        return None
+    if n == 0:
+        return None
+    return option_permutation(qid, seed, n)
+
+
+def _grade_mcq(
+    answer: dict[str, Any] | None,
+    config: dict[str, Any],
+    perm: list[int] | None = None,
+) -> float:
+    """1.0 when the selected option matches ``config.correct``; else 0.0.
+    Missing or malformed answers score 0.0 (didn't answer).
+
+    ``answer.choice`` indexes the **presented** option order. When options
+    were shuffled for presentation (AC-D24 ``randomise_option_order``),
+    ``perm`` is the same permutation ``_present_one`` applied — presented
+    index ``j`` shows original option ``perm[j]`` — so the presented index
+    is inverted to the original index before comparing against
+    ``config.correct`` (which indexes the original, unshuffled order).
+    ``perm`` is ``None`` for an unshuffled attempt, where the submitted
+    index already is the original index (A2-H1)."""
     if not isinstance(answer, dict):
         return 0.0
     choice = answer.get("choice")
+    if not isinstance(choice, int) or isinstance(choice, bool):
+        return 0.0
+    if perm is not None:
+        if not (0 <= choice < len(perm)):
+            return 0.0
+        choice = perm[choice]
     return 1.0 if choice == config.get("correct") else 0.0
 
 
@@ -1213,10 +1261,22 @@ def _grade_true_false(answer: dict[str, Any] | None, config: dict[str, Any]) -> 
     return 1.0 if answer.get("answer") == config.get("correct") else 0.0
 
 
-def _grade_matching(answer: dict[str, Any] | None, config: dict[str, Any]) -> float:
-    """Score = fraction of correctly matched pairs. The canonical
-    encoding: ``answer.matches`` is a list of right indices, one per
-    left position (identity is the correct mapping in the snapshot)."""
+def _grade_matching(
+    answer: dict[str, Any] | None,
+    config: dict[str, Any],
+    perm: list[int] | None = None,
+) -> float:
+    """Score = fraction of correctly matched pairs. ``answer.matches`` is a
+    list of right-side indices, one per left position; the correct mapping
+    is identity in the **original** snapshot order (pair ``i``: left ``i`` ↔
+    right ``i``).
+
+    When the right column was shuffled for presentation (AC-D24
+    ``randomise_option_order``), ``perm`` is the same permutation
+    ``_present_one`` applied to the rights, so each submitted **presented**
+    right index ``m`` is inverted to its original index ``perm[m]`` before
+    the identity check ``perm[m] == i`` (A2-H1). ``perm`` is ``None`` for an
+    unshuffled attempt, where ``m`` already is the original index."""
     pairs = config.get("pairs") or []
     if not pairs:
         return 0.0
@@ -1225,7 +1285,18 @@ def _grade_matching(answer: dict[str, Any] | None, config: dict[str, Any]) -> fl
     matches = answer.get("matches")
     if not isinstance(matches, list):
         return 0.0
-    correct = sum(1 for i, m in enumerate(matches) if i < len(pairs) and m == i)
+    correct = 0
+    for i, m in enumerate(matches):
+        if i >= len(pairs):
+            break
+        if not isinstance(m, int) or isinstance(m, bool):
+            continue
+        if perm is not None:
+            if not (0 <= m < len(perm)):
+                continue
+            m = perm[m]
+        if m == i:
+            correct += 1
     return correct / len(pairs)
 
 
@@ -1238,14 +1309,17 @@ def _verdict_for(score: float) -> GradeVerdict:
 
 
 def _grade_response_score(
-    qtype: QuestionType, config: dict, answer: dict | None
+    qtype: QuestionType,
+    config: dict,
+    answer: dict | None,
+    perm: list[int] | None = None,
 ) -> float:
     if qtype == QuestionType.multiple_choice:
-        return _grade_mcq(answer, config)
+        return _grade_mcq(answer, config, perm)
     if qtype == QuestionType.true_false:
         return _grade_true_false(answer, config)
     if qtype == QuestionType.matching:
-        return _grade_matching(answer, config)
+        return _grade_matching(answer, config, perm)
     # AI-graded types fall through; the caller never invokes this for them.
     raise APIError(500, "ungradable_type", f"Type {qtype.value} is not auto-graded.")
 
@@ -1278,6 +1352,11 @@ async def _auto_grade_deterministic(
     types are skipped — no grade or grade_review row in P4 (F14)."""
     responses = {r.question_id: r for r in await _responses(db, attempt.id)}
     specs = await _gradable_question_specs(db, attempt)
+    # Same seed the presentation layer used (start_attempt stamps
+    # ``shuffle_seed``; the ``or`` mirrors the view's fallback at the
+    # presented_questions call site), so grading inverts the exact shuffle
+    # each question was presented under (AC-D24 / A2-H1).
+    seed = attempt.shuffle_seed or seed_for(attempt.id)
     graded_scores: list[float] = []
     for spec in specs:
         qid = uuid.UUID(str(spec["question_id"]))
@@ -1288,7 +1367,10 @@ async def _auto_grade_deterministic(
             continue
         response = responses.get(qid)
         answer = response.answer_payload if response is not None else None
-        score = _grade_response_score(qtype, spec["config"], answer)
+        perm = _grade_permutation(
+            qid, seed, qtype, spec["config"], test.randomise_option_order
+        )
+        score = _grade_response_score(qtype, spec["config"], answer, perm)
         if response is None:
             response = Response(
                 tenant_id=SEED_TENANT_ID,

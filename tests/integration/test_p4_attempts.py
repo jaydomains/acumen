@@ -74,7 +74,7 @@ def _new_test(session: CatalogueFakeSession, **kwargs: Any) -> Test:
         pass_threshold=None,
         target_difficulty=5,
         randomise_question_order=True,
-        randomise_option_order=True,
+        randomise_option_order=False,
     )
     defaults.update(kwargs)
     test = Test(**defaults)

@@ -587,6 +587,14 @@ The run is non-interactive — operator initiates with a single command, work pr
 
 ## AC-D24 — Shared-test integrity: content lock and presentation shuffle
 
+> **Amended 2026-05-31 (pre-deploy fix A2-H1).** Implications now pin the
+> **presentation↔grading permutation-inversion contract** — grading must
+> invert the same per-question shuffle the presentation applied, recovering
+> the original-order index before scoring. The audit (A2-H1) found grading
+> compared the *presented* index against the *original* `correct`/identity
+> mapping, so any non-identity `randomise_option_order` shuffle silently
+> mis-scored MCQ and matching. See the new Implications paragraph.
+
 **Decision:** Tests reused across multiple Testees (frozen mode and hand-authored mode per AC-D5) gain two layered integrity protections, both configurable per test:
 
 *Content lock during a campaign.* A frozen or hand-authored test carries a `lock_mode` flag. **Open** (default for general use) — admin can edit the test at any time; edits apply forward only per AC-D17. **Campaign-locked** — admin marks the test as locked for a defined campaign period; no edits permitted until the campaign is explicitly closed. Campaign-locked mode is the canonical setting for hiring screens and formal benchmarks where all candidates must sit identical instruments. The lock mode is independent of the snapshot-at-attempt mechanism in AC-D17.
@@ -598,6 +606,8 @@ Together: shared tests carry identical content (locked when needed), but each Te
 **Rationale:** AC-D5's frozen mode already supports same-test-across-Testees for comparability cases. What was missing: anti-collusion when Testees take the test in the same physical space, and content stability when the comparability use case spans a campaign rather than a single sitting.
 
 **Implications:** Test entity (frozen and hand-authored modes) gains: `lock_mode` (open / campaign-locked), `campaign_id` (optional), `randomise_question_order` (default true), `randomise_option_order` (default true). Question entity gains optional `question_group_id`. Attempt entity gains `shuffle_seed`. Shuffle logic runs at attempt start after the question set is resolved. Admin UI gains a "lock campaign" action on frozen tests with a confirmation prompt. Closing a campaign (unlocking) is an admin action logged in the audit trail. Campaign-locked tests cannot be deleted while locked. Anti-collusion shuffle becomes a seventh integrity layer in AC-D4's framing, specific to shared-test modes.
+
+**Presentation↔grading inversion contract (v1, A2-H1).** `randomise_option_order` shuffles the presented order of MCQ options and matching right-sides via a per-question permutation derived deterministically from `(attempt.shuffle_seed, question_id)` — the same permutation on every render and resume. The Testee therefore submits an index into the **presented** order. Grading is responsible for **inverting** that permutation: a submitted presented index is mapped back to its original-order index before it is compared against the stored answer key (MCQ `correct`, an original-order integer; matching's identity left↔right mapping). Concretely, with presented option `j` showing original option `perm[j]`, an MCQ answer is correct when `perm[submitted] == correct`, and a matching pair is correct when `perm[submitted_right] == left_index`. The grade-time permutation must be re-derived from the identical seed + question + element-count the presentation used, so the two stay in lockstep; when `randomise_option_order` is false (or no options/pairs), the permutation is identity and the submitted index is the original index. This contract makes shuffled shared-test presentations gradeable without a per-attempt answer-key rewrite.
 
 **Spec reference:** §3, §4.3, §4.7, §5.
 
