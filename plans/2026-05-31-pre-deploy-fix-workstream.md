@@ -542,3 +542,5 @@ literal + Slice-2 fix/test text + this note. Flagged for spec-author:
 dev-set vs strict single-`"development"` — say if you prefer the latter.
 
 Status: rev-3 — D2 blocker fixed; awaiting auditor re-review (rev-1 final-markers remain invalidated).
+
+Status: final — approved by auditor (rev-3 `eecf813`; D2 sentinel corrected to dev-set incl. real default "development" — verified vs config.py:29 + CI sets no APP_ENV; set-diff rev-2→rev-3 clean; all findings verified against source, no open blockers).
