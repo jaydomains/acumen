@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/api/errors";
 import { applyApiErrorToForm } from "@/lib/api/form-errors";
 import { useAuth } from "@/lib/auth/context";
+import { fromWireRole, toWireRole } from "@/lib/auth/role";
 import { PageHeader } from "@/components/shell/PageHeader";
 import { FilterBar } from "@/components/admin/filter-bar";
 import { Modal, ModalActions, ModalHeader } from "@/components/admin/modal";
@@ -330,10 +331,10 @@ function UsersBody({ list, users, hasFilter, onEdit, onDeactivate }: UsersBodyPr
                 <span
                   className={cn(
                     "font-mono text-[10.5px] uppercase tracking-[0.08em]",
-                    u.role === "admin" ? "text-accent" : "text-ink-3",
+                    fromWireRole(u.role) === "admin" ? "text-accent" : "text-ink-3",
                   )}
                 >
-                  {u.role}
+                  {fromWireRole(u.role) ?? u.role}
                 </span>
               </td>
               <td className="py-2.5 px-2 text-ink-3" data-testid="derived-count-pending">
@@ -438,7 +439,7 @@ function UserAddModal({ onClose }: { onClose: () => void }) {
       await mutation.mutateAsync({
         email: values.email,
         name: values.name,
-        role: values.role,
+        role: toWireRole(values.role),
       });
       toast(`Setup email sent to ${values.email}`);
       onClose();
@@ -522,7 +523,10 @@ function UserEditModal({ user, onClose }: { user: UserResponse; onClose: () => v
     mode: "onSubmit",
     defaultValues: {
       name: user.name,
-      role: (user.role === "admin" ? "admin" : "testee") as "admin" | "testee",
+      // Seed from the wire literal via the shared seam: a real admin's
+      // wire role is `"administrator"`, which the old `=== "admin"` check
+      // missed → the form seeded to `"testee"` (wrong role shown).
+      role: fromWireRole(user.role) ?? "testee",
     },
   });
   const mutation = useUpdateUser();
@@ -533,7 +537,11 @@ function UserEditModal({ user, onClose }: { user: UserResponse; onClose: () => v
       // more reliable than rhf's `dirtyFields`).
       const body: { name?: string; role?: string } = {};
       if (values.name !== user.name) body.name = values.name;
-      if (values.role !== user.role) body.role = values.role;
+      // Compare on the wire literal: `values.role` is the UI `"admin"`,
+      // `user.role` is the wire `"administrator"`. Comparing them raw
+      // never matched → every save resent the role as `"admin"` → 422.
+      const wireRole = toWireRole(values.role);
+      if (wireRole !== user.role) body.role = wireRole;
       if (Object.keys(body).length > 0) {
         await mutation.mutateAsync({ userId: user.id, body });
       }

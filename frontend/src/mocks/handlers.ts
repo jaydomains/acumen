@@ -1987,7 +1987,11 @@ const DEFAULT_ADMIN_USERS: UserResponseSchema[] = [
     id: adminUserId(1),
     email: "jay@sitemesh.co",
     name: "Jay Phillips",
-    role: "admin",
+    // Real backend enum (`app/permissions.py:65` ROLE_ADMINISTRATOR). The
+    // mock previously emitted the FE-only literal `"admin"`, leaving the
+    // whole FE cohort self-consistent on the wrong literal (audit A3-L1 /
+    // X2-#3) — flipped to the canon so the role seam is exercised honestly.
+    role: "administrator",
     status: "active",
     privacy_ack_at: ADMIN_USER_ISO,
     created_at: ADMIN_USER_ISO,
@@ -2070,10 +2074,15 @@ const adminUserCreateHandler = http.post(`${API}/v1/users`, async ({ request }) 
   if (!body || typeof body.name !== "string" || body.name.trim() === "") {
     detail.push({ loc: ["body", "name"], msg: "name required", type: "missing" });
   }
-  if (!body || (body.role !== "admin" && body.role !== "testee")) {
+  // Mirror the backend's VALID_ROLES (`app/permissions.py:67` —
+  // {"administrator", "testee"}). The mock previously accepted the FE-only
+  // literal `"admin"`; the role seam now posts the canonical
+  // `"administrator"`, so the mock validates the same literal the real
+  // server does (audit A3-L1 / X2-#3).
+  if (!body || (body.role !== "administrator" && body.role !== "testee")) {
     detail.push({
       loc: ["body", "role"],
-      msg: "role must be admin or testee",
+      msg: "role must be administrator or testee",
       type: "value_error",
     });
   }

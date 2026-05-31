@@ -25,6 +25,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { client, unwrap } from "@/lib/api/client";
+import { toWireRole } from "@/lib/auth/role";
 import { adminKeys } from "@/lib/queries/admin-keys";
 import type { components } from "@/lib/api/types";
 
@@ -51,7 +52,9 @@ export function useAdminUsers(filters: UserListFilters = {}) {
             query: {
               cursor: pageParam ?? null,
               limit: PAGE_SIZE,
-              role: filters.role ?? null,
+              // Map the UI literal to the wire literal: the backend's
+              // `?role=` filter matches on `"administrator"`, not `"admin"`.
+              role: filters.role ? toWireRole(filters.role) : null,
               status: filters.status ?? null,
             },
           },
