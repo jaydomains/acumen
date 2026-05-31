@@ -21,4 +21,9 @@ per PR, using `HANDOVER_TEMPLATE.md`.
 The frontend lives at `frontend/`; see `frontend/README.md` and
 `CODE_SPEC.md` AC-CD19 for the stack lock and dev workflow.
 
+For taking a build to production, see `docs/DEPLOYMENT.md` — the operator
+deploy-readiness checklist (required-in-prod env vars, the no-wildcard CORS
+rule, and the fail-closed boot checks) — paired with the annotated
+`.env.example`.
+
 This README is internal documentation, not a public-facing description.
