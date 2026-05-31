@@ -3,7 +3,7 @@
 **Date:** 2026-05-31
 **Branch:** `claude/zen-bell-VMa3b`
 **Authoritative source:** `audits/2026-05-30-audit-5-improvements.md` §"CROSS-AUDIT SYNTHESIS" §4 (fix-now tier) + §5 (deployment-readiness pass).
-**Status:** rev-2 — spec-author rulings D1–D6 folded; re-entering auditor review. rev-1's two final-markers are **invalidated** by this revision (halt-class) and re-apply only after the auditor re-reviews rev-2 HEAD.
+**Status:** rev-3 — spec-author rulings D1–D6 folded (rev-2); auditor's D2-sentinel blocker fixed (rev-3). Re-entering auditor review. rev-1's two final-markers remain **invalidated** (halt-class) and re-apply only after the auditor re-reviews rev-3 HEAD.
 
 > **What this package is.** The merge of this package is the production
 > deployment gate for KBC. Nothing else stands between the current
@@ -157,18 +157,34 @@ save on an `"administrator"` user must send no `role` and not 422).
 *(Rejected alt: backend remap at the schema boundary — diverges from
 internal `ROLE_ADMINISTRATOR`, not WS1-aligned, larger surface.)*
 
-### D2 — Startup-check severity + environment gating (gates Slice 2) — ✅ RULED (rev-2)
+### D2 — Startup-check severity + environment gating (gates Slice 2) — ✅ RULED (rev-2; literal corrected rev-3)
 **Ruling — default-strict, explicit relax-for-dev:**
 - **WARN** (structured log) on missing AI key(s), in **every** env — the
   A4-S3-C fix (the stub is no longer silently served as real).
-- **RAISE on boot** when `app_env != "dev"` **AND** any of:
+- **RAISE on boot** when the env is **not** in the dev-set **AND** any of:
   `app_secret_key == "change-me"`, `jwt_secret == "change-me"`,
   `cors_allowed_origins_list` is wildcard (`"*"`) or localhost.
-- **Sentinel is `!= "dev"`, not `== "production"`** — this fails *closed*:
-  an unknown/misconfigured `app_env` value fails strict (RAISE) rather
-  than fail-open. This **supersedes** the earlier "wildcard CORS → WARN"
-  softening considered during round-1; under this ruling wildcard/
-  localhost CORS in any non-dev env is a **RAISE**, not a warning.
+- **Dev-set = `{"development", "dev", "local", "test"}`** (corrected
+  rev-3 — see note). The ruling's intent is *fail-closed, relax-for-dev*:
+  an env value **outside** the dev-set fails strict (RAISE) rather than
+  fail-open. This **supersedes** the earlier "wildcard CORS → WARN"
+  softening from round-1; under this ruling wildcard/localhost CORS in any
+  non-dev env is a **RAISE**, not a warning.
+
+> **rev-3 code-grounding correction (auditor blocker, verified).** The
+> rev-2 fold wrote the sentinel as the literal `app_env != "dev"`, but the
+> **actual code default is `app_env: str = "development"`**
+> (`app/config.py:29`; `.env.example:8` `APP_ENV=development`; CI sets no
+> `APP_ENV` so it inherits the default; no `dev`/`development`
+> normalisation exists anywhere). Under the bare `"dev"` literal,
+> `"development" != "dev"` → True → the **stock dev + CI boot RAISEs** on
+> the default `change-me` secrets — exactly the fail-open-was-the-fear
+> inverted into fail-everywhere. The spec author's *ruling intent is
+> unchanged*; only the literal is corrected to the verified dev value(s).
+> **Flagged for spec-author awareness:** I chose the dev-**set** (not the
+> single literal `"development"`) so CI/local/test all boot while unknown
+> values still fail closed — say the word if you want the strict
+> single-`"development"` form instead.
 
 ### D3 — FE-8 §H(a) spec amendment (BLOCKS Slice 5) — ✅ RULED (rev-2)
 **Ruling:** the spec author authors a **separate, standalone**
@@ -278,10 +294,15 @@ typecheck` green.
 **Fix:**
 - `app/config.py` — add `check_startup_config(settings)` returning
   `(warnings, errors)` per the D2 ruling: (a) a **warning** per missing
-  AI key (every env); (b) an **error** when `app_env != "dev"` AND any of
+  AI key (every env); (b) an **error** when `app_env` is **not in the
+  dev-set `{"development", "dev", "local", "test"}`** AND any of
   `app_secret_key == "change-me"`, `jwt_secret == "change-me"`,
-  `cors_allowed_origins_list` wildcard (`"*"`) or localhost. Sentinel is
-  `!= "dev"` (fail-closed). Reads only `Settings` (G3).
+  `cors_allowed_origins_list` wildcard (`"*"`) or localhost. Define the
+  dev-set as a module constant. Fail-closed: an env value **outside** the
+  set RAISEs on default secrets. **The dev-set must include
+  `"development"` — the actual `app_env` default (`config.py:29`) — so the
+  stock dev + CI boot does not RAISE** (rev-3 correction). Reads only
+  `Settings` (G3).
 - `app/main.py` — add a FastAPI `lifespan` (stdlib `logging` only) that
   calls the helper, logs each warning loudly at startup, and **raises**
   on any error (boot fails closed). **No `app.ai`/`app.domain` import**
@@ -290,14 +311,17 @@ typecheck` green.
   reality — the warning now actually fires.
 **Test (X2-#4, `audit-5:77`):**
 - `tests/unit/test_startup_config.py` (new) — warns on empty AI key, no
-  warning when set; with `app_env != "dev"` **raises** on a `"change-me"`
-  secret **and** on wildcard/localhost CORS; with `app_env == "dev"` does
-  not raise on either; an unknown `app_env` value fails strict (raises),
-  proving the fail-closed sentinel.
+  warning when set; **`app_env="development"` (the default) does NOT
+  raise on the default-secret / localhost-CORS path** (proves stock dev +
+  CI boot clean — the rev-3 regression guard); a genuine non-dev env
+  (e.g. `app_env="production"`) **raises** on a `"change-me"` secret
+  **and** on wildcard/localhost CORS; an unknown env value (e.g.
+  `"staging"`) fails strict (raises), proving fail-closed.
 **Acceptance:** booting with an unset AI key emits a startup WARN (stub
-no longer silent); booting any non-`dev` env with a default secret or
-wildcard CORS fails fast; `dev` boots clean; `pytest --ignore=tests/e2e`
-+ `structure_gate` + `mypy` green.
+no longer silent); the default `development` env boots clean on stock
+secrets; a non-dev env (`production`/unknown) with a default secret or
+wildcard CORS fails fast; `pytest --ignore=tests/e2e` + `structure_gate`
++ `mypy` green.
 
 ### Slice 3 — Grading shuffle inversion (A2-H1) + X2-#1 test
 **Fix:**
@@ -481,9 +505,12 @@ of authoring. Decisions D1–D6 are now **all ruled by the spec author**
 The spec author ruled on every decision; rev-2 folds them in:
 - **D1** — backend `"administrator"` canonical; FE bidirectional seam;
   Slice 1 X2-#3 must include the edit-modal no-op-edit case.
-- **D2** — WARN missing AI keys (all envs); RAISE when `app_env != "dev"`
-  AND (`change-me` secret OR wildcard/localhost CORS). Fail-closed
-  sentinel. (Supersedes the round-1 "CORS → WARN" softening.)
+- **D2** — WARN missing AI keys (all envs); RAISE when `app_env` ∉
+  dev-set `{"development","dev","local","test"}` AND (`change-me` secret
+  OR wildcard/localhost CORS). Fail-closed sentinel. (Supersedes the
+  round-1 "CORS → WARN" softening. **rev-3:** literal corrected from the
+  ruling's `"dev"` to the dev-set incl. the real default `"development"`
+  — see the D2 §rev-3 note for the verified code grounding.)
 - **D3** — §H(a) amendment is a **separate standalone doc-only PR** by the
   spec author; Slice 5 gated on it landing on `main` first; this plan does
   not author it.
@@ -498,4 +525,20 @@ text only (D-sections + Slices 2/3/5/6/7 + matrix). Per the spec author,
 **rev-2 invalidates rev-1's two final-markers (halt-class)** — they
 re-apply only after the auditor re-reviews against rev-2 HEAD.
 
-Status: rev-2 — awaiting auditor re-review (rev-1 final-markers invalidated by this revision).
+## rev-3 — auditor D2-sentinel blocker fixed
+
+Auditor re-review of rev-2 (`e5443b0`) verified the set-diff gate clean
+and D1/D3/D4/D5/D6 folds accurate, with **one blocker on D2**: the
+sentinel literal `app_env != "dev"` is wrong against the code default
+`app_env = "development"` (`config.py:29`), so the stock dev + CI boot
+would RAISE on the default `change-me` secrets. Confirmed independently
+(CI sets no `APP_ENV`; `.env.example:8` = `development`; no
+normalisation). rev-3 corrects the literal to the dev-**set**
+`{"development","dev","local","test"}` (ruling intent — fail-closed,
+relax-for-dev — unchanged), and fixes the X2-#4 test so it guards the
+regression (`development` boots clean; `production`/unknown raise).
+**Set-diff gate (rev-2 → rev-3):** clean; the only change is the D2
+literal + Slice-2 fix/test text + this note. Flagged for spec-author:
+dev-set vs strict single-`"development"` — say if you prefer the latter.
+
+Status: rev-3 — D2 blocker fixed; awaiting auditor re-review (rev-1 final-markers remain invalidated).
