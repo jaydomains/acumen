@@ -45,16 +45,21 @@ function composeConfig(values: QuestionFormInput): ComposedConfig {
   switch (values.type) {
     case "multiple_choice": {
       const choices = values.config.choices;
+      // The backend reads `options` (string list) + `correct` (0-based
+      // index into options). Exactly-one-correct is enforced by the zod
+      // refine before compose runs; if that invariant is ever bypassed,
+      // fail LOUD rather than silently submitting choice 0 as the answer
+      // key (Gitar review on #77).
+      const correct = choices.findIndex((c) => c.correct);
+      if (correct === -1) {
+        throw new Error(
+          "composeQuestionConfig: multiple_choice has no choice marked correct.",
+        );
+      }
       return {
         ...shared,
-        // The backend reads `options` (string list) + `correct` (0-based
-        // index into options). Exactly-one-correct is enforced by the zod
-        // refine; fall back to 0 defensively if none is flagged.
         options: choices.map((c) => c.text),
-        correct: Math.max(
-          0,
-          choices.findIndex((c) => c.correct),
-        ),
+        correct,
       };
     }
     case "true_false":
