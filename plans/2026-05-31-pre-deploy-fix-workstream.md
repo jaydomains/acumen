@@ -3,7 +3,7 @@
 **Date:** 2026-05-31
 **Branch:** `claude/zen-bell-VMa3b`
 **Authoritative source:** `audits/2026-05-30-audit-5-improvements.md` §"CROSS-AUDIT SYNTHESIS" §4 (fix-now tier) + §5 (deployment-readiness pass).
-**Status:** draft — under planner/auditor review.
+**Status:** final — approved by planner & auditor (rev-1 `cd60c9c`; see the two final-marker lines at the end of this file). Draft→ready PR flip is the overseer's call.
 
 > **What this package is.** The merge of this package is the production
 > deployment gate for KBC. Nothing else stands between the current
