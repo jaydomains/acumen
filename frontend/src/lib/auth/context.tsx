@@ -36,6 +36,7 @@ import { ApiError, client, unwrap } from "@/lib/api/client";
 import type { UserResponse } from "@/lib/api/types";
 import { clearTokens, getAccessToken, getRefreshToken } from "@/lib/auth/storage";
 import { refreshAccessToken } from "@/lib/auth/refresh";
+import { fromWireRole } from "@/lib/auth/role";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 export type AuthRole = "testee" | "admin";
@@ -68,8 +69,12 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const narrowRole = (r: string | undefined | null): AuthRole | null =>
-  r === "admin" || r === "testee" ? r : null;
+// Wire→UI role narrowing lives in the shared role seam (`@/lib/auth/role`)
+// so the read path here and the users-list write paths agree on the
+// `"administrator"` ⇄ `"admin"` mapping. A wire `"administrator"` narrows
+// to `"admin"`; without this a real admin would narrow to `null` and the
+// admin route guard would bounce them to `/403` (audit A3-L1).
+const narrowRole = fromWireRole;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserResponse | null>(null);

@@ -246,9 +246,51 @@ describe("users list — Edit flow", () => {
     await user.click(screen.getByTestId("user-edit-submit"));
 
     await waitFor(() => expect(patchBody).not.toBeNull());
-    expect(patchBody!.role).toBe("admin");
+    // Wire literal, not the UI `"admin"` (audit A3-L1 / X2-#3) — the role
+    // seam maps the change to the backend's canonical `"administrator"`.
+    expect(patchBody!.role).toBe("administrator");
     // name unchanged → not in body.
     expect("name" in patchBody!).toBe(false);
+  });
+
+  it("seeds an administrator to admin and a no-op save fires no PATCH (audit A3-L1 / X2-#3)", async () => {
+    const user = userEvent.setup();
+    let patchCalls = 0;
+    server.use(
+      http.patch(`${API}/v1/users/:user_id`, async ({ request, params }) => {
+        patchCalls += 1;
+        const body = (await request.json()) as Record<string, unknown>;
+        const target = getMockAdminUsers().find((u) => u.id === String(params.user_id))!;
+        return HttpResponse.json({ ...target, ...body });
+      }),
+    );
+    render(mountTree(<AdminUsersPage />));
+    await waitFor(() => expect(screen.getByText("Jay Phillips")).toBeInTheDocument());
+
+    const jay = getMockAdminUsers().find((u) => u.email === "jay@sitemesh.co")!;
+    // Guards the MSW flip to the real backend enum.
+    expect(jay.role).toBe("administrator");
+    await user.click(screen.getByTestId(`users-edit-${jay.id}`));
+    await waitFor(() => expect(screen.getByTestId("user-edit-form")).toBeInTheDocument());
+
+    // Wire `"administrator"` seeds the form to the UI `"admin"`, not
+    // `"testee"` (the old `=== "admin"` seed bug).
+    expect(screen.getByTestId("role-choice-admin")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("role-choice-testee")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+
+    // Save with nothing changed → empty value-diff → no PATCH (so no 422
+    // from re-sending a role the dirty-compare used to think had changed).
+    await user.click(screen.getByTestId("user-edit-submit"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("user-edit-form")).not.toBeInTheDocument(),
+    );
+    expect(patchCalls).toBe(0);
   });
 });
 
