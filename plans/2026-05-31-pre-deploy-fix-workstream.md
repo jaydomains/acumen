@@ -469,3 +469,5 @@ S8-F1/S8-F2 flagged under Decision D4 but recommended deferred.
 *Plan grounded against HEAD `640ca14`. Citations are `file:line` at time
 of authoring. Decisions D1–D4 require spec-author ruling before the
 gated slices execute; D5 is optional/non-blocking.*
+
+Status: final — approved by auditor (rev-1 `cd60c9c`; all findings verified against source, no open threads).
