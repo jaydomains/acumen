@@ -110,3 +110,77 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# Environments where boot-critical config may stay at insecure dev defaults
+# (default ``change-me`` secrets / wildcard|localhost CORS). The boot check
+# fails CLOSED for any ``app_env`` value OUTSIDE this set, so an
+# unrecognised env (e.g. "staging", "production") carrying default secrets
+# refuses to start rather than fail open. ``"development"`` is the actual
+# ``app_env`` default (above) and is included so the stock dev container +
+# CI — which set no ``APP_ENV`` — boot clean (Decision D2; pre-deploy
+# A4-S3-C / WS4 subset).
+DEV_ENVS = frozenset({"development", "dev", "local", "test"})
+
+_DEFAULT_SECRET = "change-me"
+
+
+def _cors_is_insecure(origins: list[str]) -> bool:
+    """True when the CORS allow-list is unsafe for a public deployment —
+    empty (no origin set), a literal wildcard, or any localhost/loopback
+    origin."""
+    if not origins:
+        return True
+    return any(o == "*" or "localhost" in o or "127.0.0.1" in o for o in origins)
+
+
+def check_startup_config(settings: Settings) -> tuple[list[str], list[str]]:
+    """Validate boot-critical configuration. Returns ``(warnings, errors)``.
+
+    Reads only :class:`Settings` — never imports ``app.ai`` / ``app.domain``
+    — so ``app.main`` can call it from its lifespan without tripping the
+    structure-gate's setup-only rule (AC-CD2; pre-deploy grounding G3).
+
+    - **Warning** (every env) per missing AI key: an unset
+      ``anthropic_api_key`` / ``openai_api_key`` silently falls back to the
+      stub provider (``app/ai/provider.py``), so the warning makes the
+      "stub served as real" condition loud (A4-S3-C).
+    - **Error** (boot must fail closed) when ``app_env`` is NOT in
+      :data:`DEV_ENVS` AND any of: ``app_secret_key`` / ``jwt_secret`` is
+      the default ``"change-me"``, or the CORS allow-list is wildcard /
+      localhost. An env value outside the dev-set therefore RAISEs on these
+      rather than failing open (Decision D2).
+    """
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    if not settings.anthropic_api_key:
+        warnings.append(
+            "ANTHROPIC_API_KEY is unset — Anthropic operations (generation, "
+            "grading, weakness, material, pill-proposal) fall back to the stub "
+            "provider, not a real model."
+        )
+    if not settings.openai_api_key:
+        warnings.append(
+            "OPENAI_API_KEY is unset — OpenAI cross-family review and embeddings "
+            "fall back to the stub provider, not a real model."
+        )
+
+    if settings.app_env not in DEV_ENVS:
+        if settings.app_secret_key == _DEFAULT_SECRET:
+            errors.append(
+                "APP_SECRET_KEY is the default 'change-me' — set a real secret "
+                f"for app_env={settings.app_env!r}."
+            )
+        if settings.jwt_secret == _DEFAULT_SECRET:
+            errors.append(
+                "JWT_SECRET is the default 'change-me' — set a real secret for "
+                f"app_env={settings.app_env!r}."
+            )
+        if _cors_is_insecure(settings.cors_allowed_origins_list):
+            errors.append(
+                "CORS_ALLOWED_ORIGINS is wildcard or localhost — set the real "
+                f"production origin(s) for app_env={settings.app_env!r}."
+            )
+
+    return warnings, errors

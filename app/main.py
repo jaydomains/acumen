@@ -9,11 +9,15 @@ permitted — they are wired starting P2.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
-from app.config import get_settings
+from app.config import Settings, check_startup_config, get_settings
 from app.permissions import register_exception_handlers
 from app.routers import (
     admin,
@@ -32,15 +36,48 @@ from app.routers import (
 )
 from app.schemas import RuntimeConfigResponse
 
+_startup_log = logging.getLogger("acumen.startup")
+
+
+def run_startup_checks(settings: Settings) -> None:
+    """Log config warnings and fail the boot CLOSED on config errors.
+
+    Called from the FastAPI lifespan at uvicorn startup. Delegates to
+    ``app.config.check_startup_config`` (which reads only ``Settings`` — no
+    ``app.ai`` import — so the structure-gate stays green, grounding G3).
+    A missing AI key surfaces as a loud WARN in every env — making the
+    "stub served as real" condition visible (A4-S3-C) — and an insecure
+    non-dev config (default secrets / wildcard|localhost CORS) raises
+    :class:`RuntimeError`, which aborts startup so a misconfigured
+    production deployment never serves (Decision D2; WS4 pre-deploy subset).
+    """
+    warnings, errors = check_startup_config(settings)
+    for message in warnings:
+        _startup_log.warning("startup config: %s", message)
+    if errors:
+        for message in errors:
+            _startup_log.error("startup config: %s", message)
+        raise RuntimeError(
+            "Refusing to start — insecure configuration for "
+            f"app_env={settings.app_env!r}: " + "; ".join(errors)
+        )
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        run_startup_checks(settings)
+        yield
+
     app = FastAPI(
         title="Acumen",
         version="0.1.0",
         default_response_class=ORJSONResponse,
         docs_url="/docs",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     @app.get("/healthz", tags=["meta"])
