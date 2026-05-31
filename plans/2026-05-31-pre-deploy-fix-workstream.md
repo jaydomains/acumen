@@ -3,7 +3,7 @@
 **Date:** 2026-05-31
 **Branch:** `claude/zen-bell-VMa3b`
 **Authoritative source:** `audits/2026-05-30-audit-5-improvements.md` §"CROSS-AUDIT SYNTHESIS" §4 (fix-now tier) + §5 (deployment-readiness pass).
-**Status:** rev-3 — spec-author rulings D1–D6 folded (rev-2); auditor's D2-sentinel blocker fixed (rev-3). Re-entering auditor review. rev-1's two final-markers remain **invalidated** (halt-class) and re-apply only after the auditor re-reviews rev-3 HEAD.
+**Status:** final — approved by planner & auditor (rev-3 `eecf813`; D1–D6 rulings folded, D2-sentinel blocker fixed). See the two final-marker lines at the end of this file. Draft→ready PR flip is the overseer's call.
 
 > **What this package is.** The merge of this package is the production
 > deployment gate for KBC. Nothing else stands between the current
@@ -541,6 +541,7 @@ regression (`development` boots clean; `production`/unknown raise).
 literal + Slice-2 fix/test text + this note. Flagged for spec-author:
 dev-set vs strict single-`"development"` — say if you prefer the latter.
 
-Status: rev-3 — D2 blocker fixed; awaiting auditor re-review (rev-1 final-markers remain invalidated).
+Status (historical): rev-3 — D2 blocker fixed; was awaiting auditor re-review. Resolved — both final-markers below now apply on rev-3 `eecf813`.
 
 Status: final — approved by auditor (rev-3 `eecf813`; D2 sentinel corrected to dev-set incl. real default "development" — verified vs config.py:29 + CI sets no APP_ENV; set-diff rev-2→rev-3 clean; all findings verified against source, no open blockers).
+Status: final — approved by planner (rev-3 `eecf813`; spec-author rulings D1–D6 folded, auditor's D2-sentinel blocker fixed at the code-verified dev-set, set-diff rev-2→rev-3 clean). Planner role ends; draft→ready is the overseer's call.
