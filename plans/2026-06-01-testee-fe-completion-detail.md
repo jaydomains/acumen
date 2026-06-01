@@ -720,4 +720,20 @@ author confirms whether the FE-3 strike folds into the D5 PR — robust: the Sli
 none dropped. Awaiting the auditor's per-slice "Slice 2 approved" before Slice 3
 is pushed.
 
+**Status: final for Slice 2 — approved by auditor.** All 3 round-1 findings
+(S2-1/S2-2/S2-3, all worth-knowing — no gating defect) resolved and re-verified
+at source against `965ef67`: **S2-1** the negative `queryByTestId("todays-reading")`
+now follows an awaited `findByTestId("assignments-card")` barrier (no vacuous
+pre-paint pass); **S2-2** DEC-S2-A extended to FE-3 `:46` + `:193`, striking
+TodaysReading/READINGS while retaining GREETINGS; **S2-3** vertical-rhythm
+re-grounded on `HeroStats` `mb-8` (no gap regression). Grounding verified true
+against `main`: the deletion surface is fully bounded (only code consumers are
+`TodaysReading.tsx`, `page.tsx`, and the two test files; `daysSinceUtcEpoch` has
+no importer outside `readings.tsx`), no flag/stories, widget Not-anchored (FE-3
+§E `:108`) so no AC retires, `readings.test.ts` deletion correct-by-construction.
+**DEC-S2-A** remains the standing external *execution* gate — needs spec-author
+confirmation of the FE-3 scope expansion (fold into the D5 PR), robust: the Slice
+2 code is identical under (a)/(b)/(c). Set-diff round-0→round-1: 3 finding IDs,
+none dropped. No workflow-rule violations. Slice 2 sealed.
+
 ---
