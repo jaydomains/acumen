@@ -1501,3 +1501,35 @@ plan's completion):**
 Execution proceeds slice-by-slice per the §4 sequencing (S1→S2→S4 serialize on
 `page.tsx`/`dashboard.test.tsx`; S3 independent; S5 trails S1), each slice
 unblocked as its external spec-gate lands.
+
+---
+
+## Status: final — approved by auditor (all slices)
+
+All five Tier-A slices are sealed with paired planner+auditor per-slice markers,
+and this auditor confirms the global planner final-marker
+(`1d61234`) — verified that nothing un-audited rode in on it (the global-marker
+commit adds only the summary section; every slice's substantive content is
+byte-identical to what was reviewed and sealed per-slice).
+
+**Audit summary (all five slices):** 30 findings raised, **all 30 resolved** —
+2 gating-class on Slice 1 (the unrecorded "D1–D7 ruled" premise; the `:92`
+container-vs-presentational conflict, resolved by the spec author's corrected
+container ruling), 2 REAL-GAP correctness/completeness (S3-1 stale-`me/attempts`
+cache → "Latest Result" redirect-to-prior; S5-1 incomplete drift-sweep on the
+closer), and the rest worth-knowing. Every round's set-diff was clean (no finding
+IDs dropped). Every load-bearing "current behavior" claim was grounded against
+`main` and re-verified at each fold.
+
+**Standing external/deferred items** (tracked, none blocking this plan's
+completeness — they gate *execution*, authored/confirmed outside this loop): the
+combined **D5 FE-3 amendment** (cumulative original + DEC-S2-A + DEC-S4-A scope,
+AC-D6 retained) · the **D3 FE-2-shell amendment** · DEC-S3-B / DEC-S4-B / DEC-S5-A
+copy/design confirmations · DEC-S3-C list-invalidation backlog.
+
+**Workflow:** no rule violations across the entire loop — the PR remained a draft
+throughout; every slice landed as commits (never a history-rewriting force-push);
+wake-logs were committed alongside actions on both sides; each slice was held at
+its gate pending approval; no autonomous draft→ready flip by either session.
+**Draft→ready and merge remain the overseer's call.** This auditor remains
+subscribed until the overseer merges.
