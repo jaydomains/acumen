@@ -737,3 +737,195 @@ confirmation of the FE-3 scope expansion (fold into the D5 PR), robust: the Slic
 none dropped. No workflow-rule violations. Slice 2 sealed.
 
 ---
+
+## Slice 3 — Dead-nav resolution: remove In-Progress, redirect Latest Result
+
+**Spec-gate (execution):** BLOCKED until the **D3 `fe-specs/FE-2-shell.md`
+spec-amendment PR** (doc-only, authored by the spec author — `:323` nav-contract
++ `:344` Gherkin) lands on `main`. This slice is **code-only**; it does **not**
+edit `fe-specs/FE-2-shell.md` (resolves auditor F3; preamble `:40-41`).
+Detail-planning proceeds now — the nav-model direction is forced by ruling D3.
+
+**Implements:** no testee nav item 404s — remove the dead `In Progress`
+(`/attempts`) item, and make `Latest Result` (`/results`) land via a thin
+redirect to the most-recent submitted attempt's result page (closes smoke-test
+issue #3). Resulting v1 `TESTEE_NAV` = `Dashboard · Discover · Latest Result ·
+Competency · History`.
+
+### Grounding (verified against `main`)
+
+- **Current `TESTEE_NAV`** (`Rail.tsx:31-38`), 6 items: `dashboard "/"` ·
+  `attempt "In Progress" /attempts count:0` (`:33`) · `catalogue "Discover"
+  /catalogue` · `results "Latest Result" /results` (`:35`) · `profile
+  "Competency" /profile` · `history "History" /history`.
+- **Both dead hrefs 404 — confirmed by the route tree** (`find
+  src/app/(authed)/(testee)`): pages exist for `/`, `/catalogue`, `/profile`,
+  `/history`, `/attempts/[attemptId]`, `/attempts/[attemptId]/result`,
+  `/pills/[pillId]` — **no `/attempts` index, no `/results` page**. So `In
+  Progress`→`/attempts` and `Latest Result`→`/results` both 404 (workstream G3).
+- **Redirect target exists:**
+  `src/app/(authed)/(testee)/attempts/[attemptId]/result/page.tsx` (`"use
+  client"`, `useParams<{ attemptId: string }>()` at `:44`). The redirect URL is
+  `/attempts/${attemptId}/result`.
+- **Latest-attempt source:** `useMeAttemptsCapped(limit = PROFILE_ATTEMPTS_CAP)`
+  (`queries/me.ts:96-106`) returns the capped `AttemptsPage = { data:
+  AttemptListItem[], meta }`. `/v1/attempts` is **newest-first DESC**
+  (`attempts.py:2137`, "Newest submission first, tie-break by id" — verified by
+  the auditor during Slice 1), so `attempts.data?.data?.[0]` is the most-recent
+  submitted attempt; its `attempt_id` (`api.d.ts:1828`) is the redirect key.
+- **Client-redirect idiom:** `useRouter().replace(...)` from `next/navigation` —
+  the established pattern across the app (`profile/page.tsx:120,126`,
+  `catalogue/page.tsx:77`, + 8 admin list pages). Use `replace` (not `push`) so
+  the bouncing `/results` page leaves no back-button trap.
+- **Rail header comment** (`Rail.tsx:6-13`) documents the placeholder-404 model
+  ("Several href targets are placeholders that will 404 until later phases land
+  them") + "FE-4 wires in-progress" badge counts — stale once `/attempts` goes;
+  sweep.
+- **MSW:** `meAttemptsListHandler` already registered (FE-7); setters
+  `setMockMeAttempts` / `setMockMeAttemptsStatus` / `resetMockMeAttempts`.
+- **Rail tests** (`Rail.test.tsx`): the **href-lock** test (`:76-85`) asserts the
+  exact testee href array *including* `/attempts`; the **badge-hidden-when-0**
+  test (`:41-44`) queries `rail-badge-attempt` (the count-carrying item being
+  removed). Both need updates (see Tests).
+
+### Decisions to surface (recommended option first)
+
+- **DEC-S3-A — attempts-fetch cap for the redirect (implementation; minor).** The
+  redirect needs only the single newest `attempt_id`. The workstream plan's
+  file-list parenthetical said `useMeAttemptsCapped(1)`. **Recommendation: use
+  the *default* cap `useMeAttemptsCapped()` (200), not `(1)`** — it **shares the
+  cache key** `[...attempts(), "capped", {limit:200}]` with the hero (Slice 1)
+  and `/profile` (`profile/page.tsx:81`), so a testee arriving from the
+  dashboard/profile gets an **instant, warm-cache redirect** (no spinner, no
+  redundant fetch); newest-first DESC means `data[0]` is the latest regardless of
+  cap. `(1)` mints a 4th distinct cache entry and always cold-fetches. Trade-off:
+  `(1)` ships a 1-row payload on a cold direct visit vs 200 rows; for a transient
+  redirect the warm-cache win dominates. Flagged because it **diverges from the
+  workstream plan's `(1)` parenthetical** — confirm.
+- **DEC-S3-B — empty-state copy + CTA (no submitted attempts).** A testee who has
+  never submitted has `data.data == []`, so there is nothing to redirect to.
+  **Recommendation: render an honest empty state** — heading "No results yet",
+  body "Finish a test and your latest result lands here.", and a primary link to
+  **Discover** (`/catalogue`) to start one — **not** a redirect, not a fabricated
+  result. Surface the exact copy for confirmation.
+
+### Files touched (verified)
+
+1. **`frontend/src/components/shell/Rail.tsx`**
+   - **Remove** the `attempt` item (`:33`) from `TESTEE_NAV`. Keep the `results`
+     item (`:35`) as-is (`Latest Result` → `/results`) — its target becomes a
+     real page (file 2).
+   - **Sweep the header comment** (`:6-13`): drop the "placeholders that will
+     404" framing and the "FE-4 wires in-progress" badge line, now that no testee
+     nav item 404s or carries a count. Leave the `ADMIN_NAV` badge note intact
+     (admin `review`/`engagement` still carry counts).
+   - **No `ADMIN_NAV` change** — out of scope; admin nav is FE-8/FE-9-locked.
+2. **`frontend/src/app/(authed)/(testee)/results/page.tsx`** (new) — thin client
+   redirect:
+   - `"use client"`; `useMeAttemptsCapped()` (DEC-S3-A) + `useRouter()`.
+   - `const latest = attempts.data?.data?.[0] ?? null;`
+   - Redirect in an effect: `useEffect(() => { if (latest)
+     router.replace(\`/attempts/${latest.attempt_id}/result\`); }, [latest,
+     router]);`
+   - **Render states (mirror Slice 1's per-query honesty — error ≠ empty):**
+     **loading** (`attempts.isPending`) → centered "Loading your latest
+     result…" / skeleton; **has-latest** → render the same skeleton while the
+     effect navigates (no flash of empty); **empty** (`!isPending && !isError &&
+     latest == null`) → the DEC-S3-B empty state; **error** (`attempts.isError`)
+     → honest "Couldn't load your results" (not a redirect, not the empty copy).
+   - No new hook/endpoint; reuses the live `/v1/attempts`.
+
+### Tests (paired in the same commit)
+
+1. **`frontend/tests/components/shell/Rail.test.tsx`** — update for the new nav:
+   - **href-lock test** (`:76-85`): expected testee array becomes `["/",
+     "/catalogue", "/results", "/profile", "/history"]` (drop `/attempts`).
+   - The `"renders the testee nav for a testee"` test (`:6-13`) iterates
+     `TESTEE_NAV` — auto-adjusts (no edit), but it now also confirms "In
+     Progress" is gone.
+   - **badge-hidden-when-0 test** (`:41-44`): `rail-badge-attempt` no longer
+     exists (the only count-carrying testee item is removed). **Repoint** to keep
+     the behavior covered: render `role="admin"` and assert `rail-badge-review`
+     (admin `review`, `count:0`) is absent — the same "chip hidden when count 0"
+     guard against a still-present count item. (R4: the mechanism stays tested,
+     not silently dropped.)
+2. **`frontend/tests/pages/results-redirect.test.tsx`** (new) — mock
+   `next/navigation` `useRouter().replace` (`vi.fn`) + MSW:
+   - **latest → redirect:** default `setMockMeAttempts` (newest-first) → after an
+     awaited render barrier, assert `replace` called once with
+     `/attempts/${data[0].attempt_id}/result`.
+   - **empty → empty state, no redirect:** `setMockMeAttempts([])` → assert the
+     "No results yet" copy + Discover link render, and `replace` **not** called.
+   - **error → honest error, no redirect:** `setMockMeAttemptsStatus(500)` →
+     assert the error copy, `replace` not called, and **no** "No results yet"
+     copy (error ≠ empty).
+   - Await a barrier before asserting `replace` (the redirect fires post-fetch in
+     an effect) — mirror the Slice-2 S2-1 lesson (don't assert before paint).
+
+### Edge cases & corner cases
+
+- **`replace` vs `push`** — `replace`, so the back button from the result page
+  returns to where the testee came from, not the bouncing `/results`
+  (idiom-consistent with profile/catalogue).
+- **Active-route highlight** — `Rail` matches `activeRoute === href` exactly; on
+  `/results` "Latest Result" highlights; after the redirect to
+  `/attempts/{id}/result` no nav href matches exactly, so none highlights —
+  consistent with every other param route (`/attempts/[attemptId]`,
+  `/pills/[pillId]`). No special handling.
+- **Direct visit, cold cache** — a testee deep-linking `/results` with no warm
+  cache sees the loading state → redirect once attempts resolve. The loading copy
+  reads honestly ("Loading your latest result…"), never a fake result.
+- **Single vs many attempts** — `data[0]` is correct for both (DESC); no
+  off-by-one.
+- **Not a server redirect** — `/results` needs the authed testee's attempts
+  (bearer-token, client react-query); a server `redirect()` would need
+  server-side token fetching, which is not the app's pattern. Client redirect is
+  correct; state it in the component header.
+
+### Gotchas
+
+- **Code-only — do NOT touch `fe-specs/FE-2-shell.md`** (`:323`/`:344`). That
+  sweep is the **D3 spec-amendment PR**, authored by the spec author, and gates
+  Slice 3 *execution* (preamble `:40-41`; resolves auditor F3). The slice's
+  acceptance assumes that amendment has landed on `main` (the `:344` Gherkin
+  asserting the nav contains "In Progress"/"Latest Result" is corrected there,
+  not here).
+- **Independent slice** — S3 touches neither `page.tsx` nor `dashboard.test.tsx`;
+  it does **not** participate in the S1→S2→S4 `page.tsx` serialization (preamble
+  `:71`). No intra-PR upstream dependency; the only external gate is the D3 PR.
+- **`useMeAttemptsCapped()` cap** — pass **no** argument (default 200) per
+  DEC-S3-A to share the cache; passing `(1)` silently creates a separate,
+  always-cold entry.
+- **`rail-badge-attempt` is gone** — grep confirms it's referenced only at
+  `Rail.test.tsx:43` (updated above); no other test/reference breaks.
+
+### Acceptance assertions (executing session verifies)
+
+- Every testee nav item resolves with no 404: `In Progress` removed; `Latest
+  Result` (`/results`) redirects to the latest result (or shows the honest empty
+  state).
+- `TESTEE_NAV` = `["/", "/catalogue", "/results", "/profile", "/history"]`; the
+  href-lock test asserts it.
+- `/results` with attempts → `router.replace('/attempts/{newest_id}/result')`;
+  with none → "No results yet" + Discover link; on error → honest error copy
+  (never the empty copy).
+- The FE-2-shell `:344` nav Gherkin has been corrected by the **D3 amendment on
+  `main`** (external; not edited by this slice).
+- `pnpm test` + `pnpm typecheck` green; Playwright unaffected (the smoke nav
+  check now passes).
+
+### Dependencies
+
+- **External (execution-gating):** the D3 `fe-specs/FE-2-shell.md` amendment PR
+  (`:323`/`:344`) on `main`.
+- **Intra-PR:** **none** — S3 is independent of the S1→S2→S4 dashboard chain
+  (preamble `:71`); buildable in any order relative to those once its spec gate
+  clears.
+
+### Complexity estimate
+
+Small–medium. One nav-array line removed + a header-comment sweep in `Rail.tsx`;
+one new ~50-line redirect page; one Rail-test update + one new redirect test
+(~90 lines). Well under 250 lines; one commit.
+
+---
