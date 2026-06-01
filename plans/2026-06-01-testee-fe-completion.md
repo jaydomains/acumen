@@ -7,7 +7,8 @@ on its own fresh branch off latest `main` (precedent: `claude/pre-deploy-pr1…`
 + this session's read-only grounding against `main`. FE roadmap closed after
 FE-9; this workstream is a **post-roadmap completion pass** scoped strictly to
 the testee surface.
-**Status:** draft — decisions D1–D7 PENDING spec-author ruling.
+**Status:** draft (rev-2 — auditor round-1 findings F1–F7 folded; see the rev-2
+changelog at the end). Decisions D1–D7 PENDING spec-author ruling.
 
 > **What this package is.** The testee surface shipped with three classes of
 > defect that the first real use exposed: (a) dashboard widgets showing
@@ -232,8 +233,21 @@ v1.x).
 - **Alt 2:** build a real In-Progress page (defers to Tier B / D6 — needs
   backend).
 
+**Spec-contract routing (resolves auditor F3).** The v1 nav model is a canonical
+spec contract: `fe-specs/FE-2-shell.md:323` (nav description) and `:344`
+(Gherkin asserting the nav contains "In Progress"/"Latest Result"). For symmetry
+with D5's posture — spec/drift corrections are authored by the spec author, not
+the execution session (`SESSION_START.md:80-85`) — the FE-2-shell nav-contract
+sweep lands in the **D3 nav-model spec-amendment PR** (a standalone doc-only PR,
+mirroring D5) which **gates Slice 3**; Slice 3 is then **code-only**
+(`Rail.tsx` + `Rail.test.tsx` + `results/page.tsx`). *(The pre-deploy precedent
+did fold a ruled `DECISIONS.md` edit into a slice commit; the spec author may
+instead elect that here — but the default is the standalone PR so FE-2 and FE-3
+drift are routed identically.)*
+
 **Recommendation:** recommended option above (remove In-Progress, redirect
-Latest Result).
+Latest Result); route the FE-2-shell nav-contract sweep through the D3
+spec-amendment PR.
 
 ### D4 — Dashboard AdaptiveLoopCard disposition (gates Slice 4) — PENDING
 
@@ -251,19 +265,40 @@ dashboard loop surface to v1.x.
 
 Per `SESSION_START.md` spec-drift discipline (never silently reconciled), the
 spec author authors a **separate, standalone, doc-only** spec-clarification PR
-amending `fe-specs/FE-3-content.md`:
+amending `fe-specs/FE-3-content.md`. Per the mirror-sweep discipline
+(`SESSION_START.md:122-134`), the amendment sweeps the **full** competence
+**and** assignments mirror set — not just the headline rows — or the spec stays
+internally contradictory after D5 lands (this resolves auditor F2 + F5):
 
-- `:105` / §H(a) item 5 / §E item 1: `GET /v1/me/competence` is **live and
-  mounted**, not unmounted; the hero **wires** to it (drop the "v1.x-pending"
-  fallback as the default state).
-- Confirm the `HeroStats` prop contract (`:92`) is the build target.
-- Note day streak is client-derived from `/v1/attempts` (`:111`).
+- **Competence (`/v1/me/competence`) is live and mounted, not unmounted.** Mirror
+  set: `:92` (HeroStats prop row), `:105` (§3 endpoint table — falsely "DRIFT …
+  unmounted/empty"), `:111` (day-streak note), `:128` (§D edge-case table "Hero
+  placeholder (drift)"), `:160-164` (§E Gherkin "v1.x-pending placeholder"),
+  `:705` (acceptance row 1), `:814` (§H item 3), plus `§H (a) item 5` and
+  `§E item 1`. The hero **wires** to the endpoint; the "v1.x-pending" fallback
+  stops being the default state. Day streak is client-derived from `/v1/attempts`
+  (`:111`).
+- **Assignments (`/v1/me/assignments`) is live and consumed, not drift** (auditor
+  F2). Mirror set: `:106` (§3 endpoint table — falsely "DRIFT … no testee-scoped
+  equivalent"), `:706` (acceptance row 2), `:814` (§H item 3 names both
+  endpoints), plus `§H (a) item 6` and `§E item 2`. `AssignmentsCard` already
+  fires `useMeAssignments()` live (`AssignmentsCard.tsx:117`); only the docs are
+  stale.
+- **HeroStats prop-contract reconciliations Slice 1 must pin** (auditor F6): (a)
+  the spec's `greeting` vs the component's current `displayName` name — the
+  `page.tsx` call site and `dashboard.test.tsx` greeting assertions key off
+  `displayName` today, so the rename/reconcile is a real edit, not a no-op; (b)
+  the `summary?` field disposition (spec `:92` defines it; unused today); (c) the
+  `pillCount` semantics — `/v1/me/competence` excludes `competence_estimate IS
+  NULL` rows (LOCK-2, `me.ts:38-41`), so a payload-derived `pillCount` counts
+  **assessed** pills, not total assigned pills; state the intended meaning.
 
 **Hard gate:** Slice 1 waits for this amendment to land on `main` first (mirrors
 the pre-deploy plan's D3 spec-gate). Slices 2–5 are unblocked and proceed
 meanwhile. **This plan does not author the amendment.**
 
-**Recommendation:** author the amendment as described; gate Slice 1 on it.
+**Recommendation:** author the amendment with the full competence + assignments
+mirror set and the three prop-contract pins above; gate Slice 1 on it.
 
 ### D6 — Missing/enhancement backend endpoints — PENDING
 
@@ -288,9 +323,10 @@ deferred-to-backend-workstream so they aren't silently dropped.
   (covered by `AC-D9` competence, `AC-D20` confidence, `AC-CD20/21` FE
   routing/query patterns).
 - The v1 testee **nav model** (D3) is a product decision. Optionally mint
-  **`AC-D27`** to anchor it (next free number; current max `AC-D26`). Proposed
-  text:
-  > **AC-D27 — v1 testee navigation surface.** The v1 testee rail is
+  **`AC-D28`** to anchor it (next free number; **current max is `AC-D27`** —
+  "Anchor calibration mathematics", `DECISIONS.md:682` — corrected per auditor
+  F1; the original "AC-D27/max AC-D26" was wrong). Proposed text:
+  > **AC-D28 — v1 testee navigation surface.** The v1 testee rail is
   > `Dashboard · Discover · Latest Result · Competency · History`. "In Progress"
   > is dropped in v1 (resume is surfaced contextually on the dashboard; no
   > in-progress list endpoint exists). "Latest Result" resolves to the most
@@ -300,9 +336,9 @@ deferred-to-backend-workstream so they aren't silently dropped.
 - Today's Reading removal (D2): amend `AC-D8` framing or note in handover.
   Recommend **handover note**, not a heavyweight anchor.
 
-**Recommendation:** mint `AC-D27` only if the spec author wants the nav model
+**Recommendation:** mint `AC-D28` only if the spec author wants the nav model
 anchored; otherwise record decisions in the slice handovers. No `AC-CD` needed
-(next free `AC-CD25`, unused).
+(next free `AC-CD25`, unused — this AC-CD claim was already correct).
 
 ---
 
@@ -318,21 +354,32 @@ slice's diff.
 ### Dependency / execution graph
 
 ```
-D5 spec-amendment PR (external, spec-author) ── S1  (wire HeroStats)
-                                                  │
-S2 (Today's Reading) ─┐                           │
-S3 (dead nav)        ─┼─ independent, any order ──┤
-S4 (AdaptiveLoopCard)─┘                           │
-S5 (drift/dead-code hygiene) ── after S1 (folds Slice-1 comment cleanup)
+D5 spec-amendment PR (external) ── S1 (wire HeroStats) ─┐
+D3 spec-amendment PR (external) ── S3 (dead nav)        │  } all edit page.tsx
+S2 (Today's Reading) ──────────────────────────────────┤  } except S3 —
+S4 (AdaptiveLoopCard) ─────────────────────────────────┤  } serialize on it
+S5 (drift/dead-code hygiene) ── after S1 ──────────────┘
                                                   │
 [Tier B, backend-gated, deferred]                 │
 S6 (assignment names)  ── gated on backend enhancement PR
 S7 (in-progress page)  ── gated on new backend endpoint PR
 ```
 
-S2/S3/S4 have **no** inter-dependencies and may run in any order or in parallel
-(depth 2). S1 is the only spec-gated slice. S5 trails S1 only because it sweeps
-the same stale comments.
+**Shared-file coupling (corrects auditor F4 — the earlier "S2/S3/S4 no
+inter-dependencies / depth-2 parallel" framing was overstated).** S1, S2, and S4
+all mutate `frontend/src/app/(authed)/(testee)/page.tsx` (S1 passes derived
+data; S2 removes the `<TodaysReading/>` mount; S4 removes the
+`<AdaptiveLoopCard/>` mount **and reworks the right grid column**, which S2's
+removal also touches). Running them on fresh branches off `main` in parallel
+guarantees a `page.tsx` rebase/merge conflict for whichever lands second.
+**Therefore serialize the `page.tsx` slices: S1 → S2 → S4 (each rebased on the
+prior's `page.tsx` state; S4's grid rework explicitly rebased on S2's removal).**
+**S3 is the only genuinely independent slice** (touches `Rail.tsx`,
+`Rail.test.tsx`, new `results/page.tsx` — not `page.tsx`) and may run in parallel
+(depth 2) with any one `page.tsx` slice. S5 edits `profile/page.tsx` +
+`history/page.tsx` (not the dashboard `page.tsx`), so it is independent of the
+S1/S2/S4 chain except that it trails S1 to reuse the same stale-comment sweep
+context. S1 and S3 are each spec-gated (D5, D3 respectively).
 
 ---
 
@@ -348,7 +395,9 @@ pending"` placeholders (closes smoke-test issue #1).
 
 **Files touched (verified):**
 - `frontend/src/components/dashboard/HeroStats.tsx` — adopt the spec prop
-  contract (`FE-3-content.md:92`); call `useMeCompetence()` (`me.ts:43`) +
+  contract (`FE-3-content.md:92`) **with the three pins from D5** (the
+  `greeting`/`displayName` name, the `summary?` disposition, the `pillCount`
+  = assessed-pills semantics); call `useMeCompetence()` (`me.ts:43`) +
   `useMeAttemptsCapped()` (`me.ts:96`); derive `overallCompetence` (mean
   `competence_estimate`, 1 dp), `workingPlusCount` (count `band ≥ working`),
   `pillCount`, `streakDays`; render loading/empty/populated states; **delete the
@@ -356,15 +405,20 @@ pending"` placeholders (closes smoke-test issue #1).
 - `frontend/src/lib/competence/derive-streak.ts` (new) — pure helper:
   consecutive-UTC-day streak from `AttemptListItem[].submitted_at`
   (`FE-3-content.md:111`).
-- `frontend/src/app/(authed)/(testee)/page.tsx` — pass derived data / remove the
-  stale page-header drift comment.
+- `frontend/src/app/(authed)/(testee)/page.tsx` — pass derived data / **remove
+  the stale page-header drift comment at `:8-12`, which falsely calls BOTH
+  `/v1/me/competence` AND `/v1/me/assignments` "unmounted/absent" (auditor F2 —
+  the assignments half is already live via `AssignmentsCard`).**
 
 **Tests (paired):**
 - `frontend/tests/components/dashboard/HeroStats.test.tsx` — **rewrite** (G7):
   populated stats from a mocked competence payload; empty (new testee → `0`/`—`
   per spec); loading skeleton; the competence request **does** fire.
 - `frontend/tests/pages/dashboard.test.tsx` — **rewrite** the hero assertions to
-  the live path (drop "no request fires").
+  the live path (drop "no request fires"); **correct the stale `:3-9` invariant
+  comment** (which claims no `/v1/me/competence` **or** `/v1/me/assignments`
+  request fires) and assert that **both** now fire live (auditor F2 — assignments
+  already fires; the test passes only because the handler exists).
 - `frontend/tests/lib/competence/derive-streak.test.ts` (new) — streak edge
   cases (no attempts, single day, gap-breaks-streak, today-inclusive).
 
@@ -406,6 +460,11 @@ test; < 400 lines).
 
 **Implements:** no testee nav item 404s (closes smoke-test issue #3).
 
+**Gated on the D3 nav-model spec-amendment PR** (the FE-2-shell `:323`/`:344`
+nav-contract sweep — routed to the spec author for symmetry with D5, see D3).
+This slice is **code-only**; it does **not** edit `fe-specs/FE-2-shell.md`
+(resolves auditor F3).
+
 **Files touched (verified):**
 - `frontend/src/components/shell/Rail.tsx:31-38` — remove the `In Progress`
   (`/attempts`) item; update the `Latest Result` (`/results`) item per D3.
@@ -415,13 +474,15 @@ test; < 400 lines).
 - Sweep the `Rail.tsx:7-9` placeholder comment to reflect the now-resolved nav.
 
 **Tests:**
-- `frontend/tests/components/shell/Rail.test.tsx` (and the FE-2 nav assertion at
-  `FE-2-shell.md:344`) — update the expected `TESTEE_NAV` label set.
+- `frontend/tests/components/shell/Rail.test.tsx` — update the expected
+  `TESTEE_NAV` label set (test file, not a spec — stays in this slice).
 - `frontend/tests/pages/results-redirect.test.tsx` (new, if redirect) — latest
   attempt → redirect target; empty → empty state.
 
 **Acceptance:** clicking every testee nav item resolves (no 404); the
-`TESTEE_NAV` set matches the D3 ruling; `pnpm test` + `pnpm typecheck` green.
+`TESTEE_NAV` set matches the D3 ruling; the FE-2-shell nav Gherkin (`:344`) has
+been corrected by the D3 amendment on `main`; `pnpm test` + `pnpm typecheck`
+green.
 
 **Complexity:** small–medium (< 250 lines).
 
@@ -531,9 +592,19 @@ restore the `/attempts` nav item + page. Not in the Tier-A redeploy.
 
 **Spec drift (for spec-author resolution — feeds D5):**
 - `fe-specs/FE-3-content.md:105` / §H(a) item 5 / §E item 1 assert
-  `/v1/me/competence` is unmounted; it is live (G1, G6).
+  `/v1/me/competence` is unmounted; it is live (G1, G6). Full competence mirror
+  set in D5.
+- `FE-3-content.md:106` / §H(a) item 6 / §E item 2 assert `/v1/me/assignments`
+  has "no testee-scoped equivalent"; it is live and consumed (auditor F2). Full
+  assignments mirror set in D5.
 - `FE-3-content.md:92` defines a `HeroStats` prop contract the component never
-  implemented (G1) — implementation drift.
+  implemented (G1) — implementation drift (reconciliations pinned in D5).
+- **Related straggler, out of this workstream's dashboard+nav scope:**
+  `FE-3-content.md:231` / `:710` (§E item 7) mark `/v1/me/competence` as DRIFT
+  for the **catalogue `PillCard` per-Testee overlay** — same stale-endpoint
+  claim, different surface (catalogue, not dashboard). Flagged so the spec author
+  can fold it into the same FE-3 amendment if desired; this workstream does not
+  touch the catalogue PillCard.
 
 **Out-of-plan scope (found while grounding; NOT absorbed):**
 - Assignment learning-path names (G5) — backend enhancement; Tier B / D6.
@@ -554,7 +625,11 @@ restore the `/attempts` nav item + page. Not in the Tier-A redeploy.
    (Slice 3).
 3. **No fabricated-as-live content** on the dashboard (Today's Reading resolved,
    Slice 2; AdaptiveLoopCard resolved, Slice 4).
-4. **No testee-facing copy** claims a live endpoint is unbuilt (Slice 5).
+4. **No testee-facing copy** — component comments, test-invariant comments, or
+   rendered UI — claims a live endpoint is unbuilt, covering **both**
+   `/v1/me/competence` and `/v1/me/assignments` (Slice 1 sweeps the dashboard
+   `page.tsx` + `dashboard.test.tsx` comments; Slice 5 the profile/history pages;
+   the D5 amendment the FE-3 spec).
 5. All slices: CI green (vitest + `pnpm typecheck`; Playwright unaffected),
    fix+test paired, < 2500 lines each, one commit per slice on a fresh branch.
 6. Decisions D1–D7 are ruled by the spec author before the slices they gate
@@ -567,3 +642,43 @@ restore the `/attempts` nav item + page. Not in the Tier-A redeploy.
 *Plan grounded read-only against `main` at authoring time; citations are
 `file:line`. Decisions D1–D7 are PENDING spec-author ruling. The execution
 session opens after this plan PR merges.*
+
+---
+
+## rev-2 — auditor round-1 findings folded
+
+Auditor round-1 raised 7 findings (4 gating, 3 worth-knowing). All folded; no
+slice identities changed, no findings dropped.
+
+- **F1 (gate) — AC-D anchor-ID collision.** Corrected D7: `AC-D27` is occupied
+  ("Anchor calibration mathematics", `DECISIONS.md:682`); current max is
+  **AC-D27**, next free is **AC-D28**. Nav-model anchor renamed `AC-D27 →
+  AC-D28`. The `AC-CD25` claim was already correct (unchanged).
+- **F2 (gate) — assignments-side drift fell through.** `/v1/me/assignments` is in
+  the identical stale-doc state (`FE-3:106`, `page.tsx:8-12`,
+  `dashboard.test.tsx:3-9`) but was routed to no slice. Folded: D5's amendment
+  scope now names the assignments mirror set; Slice 1 sweeps the dashboard
+  `page.tsx:8-12` comment (both halves) and corrects the `dashboard.test.tsx:3-9`
+  invariant; §7 + acceptance #4 updated.
+- **F3 (gate) — Slice 3 bundled a canonical-spec edit.** The FE-2-shell
+  `:323`/`:344` nav-contract sweep is now routed to the **D3 nav-model
+  spec-amendment PR** (symmetric with D5); Slice 3 is code-only and gated on it.
+- **F4 (gate) — parallelism overstated.** S1/S2/S4 all mutate the dashboard
+  `page.tsx` (S2+S4 share the right grid column). §4 graph + framing corrected:
+  serialize S1 → S2 → S4 on `page.tsx`; only S3 is genuinely independent
+  (depth-2 parallel); S5 edits profile/history, not the dashboard page.
+- **F5 (worth-knowing) — D5 mirror-sweep incomplete.** D5 now names the full
+  FE-3 competence mirror set (`:92/:105/:111/:128/:160-164/:705/:814` + §H(a)
+  item 5 + §E item 1), not just three rows.
+- **F6 (worth-knowing) — "adopt the spec prop contract" hid reconciliations.** D5
+  + Slice 1 now pin (a) `greeting`/`displayName`, (b) `summary?` disposition,
+  (c) `pillCount` = assessed-pills (LOCK-2 null-exclusion) semantics.
+- **F7 (worth-knowing — minor) — citation drift.** Spot-rechecked against this
+  branch (even with `origin/main`): the flagged citations verify **as written** —
+  `useMeCompetence` at `me.ts:43`, `pickReading` at `readings.tsx:76`,
+  `daysSinceUtcEpoch` at `:67`. Kept as-is; the §4 `/drift-sweep` gate re-grounds
+  every citation at execution time regardless.
+
+**Set-diff gate (rev-1 → rev-2):** no slice or finding IDs dropped; rev-2 edits
+are finding-driven text only (Status, D3, D5, D7, §4 graph, Slice 1, Slice 3, §7,
+acceptance #4, this changelog).
