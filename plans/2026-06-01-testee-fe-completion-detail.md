@@ -1243,3 +1243,158 @@ correct-by-construction. Set-diff: 2 finding IDs, none dropped. No workflow-rule
 violations. Slice 4 sealed.
 
 ---
+
+## Slice 5 — Drift-comment + dead-code hygiene (honest profile/history error states)
+
+**Implements:** removes the now-false "endpoint absent / Coming in v1.x / arrives
+once we light up the endpoint" copy on `/profile` + `/history` (workstream G8) so
+no testee-facing copy claims a live endpoint is unbuilt; preserves the defensive
+404/405 guard but reframes it — copy **and** identifiers — into an honest error
+state. (G6 — the FE-3 spec drift — is the **D5 PR**, not a code edit here.) The
+**final slice**; runs after S1.
+
+**Spec/gate note:** **no spec edits** (the FE-3 correction is the D5 standalone
+PR). **Not execution-gated on any spec PR** — pure code hygiene against
+already-live endpoints (unlike S1/S3/S4). S5 can execute as soon as S1 has landed;
+it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
+
+### Grounding (verified against `main`)
+
+- **`profile/page.tsx:128-151`** — the 404/405 branch: `apiError =
+  competence.error instanceof ApiError`; `endpointAbsent = status 404||405`;
+  non-404/405 errors `throw` to the Pattern C boundary (`profile/error.tsx`). The
+  branch renders `data-testid="profile-endpoint-absent"`, eyebrow `"Your competency
+  · Coming in v1.x"` (`:144`), body `"Your competence profile arrives once we light
+  up the /v1/me/competence endpoint. No data yet."` (`:146-147`). **Both endpoints
+  are live (G1), so a 404/405 is now a genuine error, not an unbuilt-endpoint
+  state — the copy is false** (workstream acceptance #4).
+- **`history/page.tsx:22-43`** — identical pattern:
+  `data-testid="history-endpoint-absent"`, eyebrow `"Your attempt history · Coming
+  in v1.x"` (`:36`), body `"Your attempt history arrives once we light up the
+  /v1/attempts endpoint."` (`:38-39`).
+- **error ≠ empty already holds:** profile has a distinct `profile-empty`
+  (`pillsCount === 0`) branch — "Your constellation will appear after a few
+  attempts" (`:153-161`); history has `history-empty` — "No attempts yet"
+  (`:45-53`). The 404/405 branch `return`s before the empty check, so reframing it
+  to a neutral *error* keeps error and empty distinct (the Slice-1/2/3 honesty
+  discipline).
+- **Error boundaries** reference the page branch by name: `profile/error.tsx:7` +
+  `history/error.tsx:7` comments read "the page's `endpoint_absent` branch
+  intercepts 404/405 itself" — accurate (the guard stays), but the identifier in
+  the comment should track the rename.
+- **Tests:** `profile-page.test.tsx:222-233` ("Profile page · endpoint_absent")
+  mocks `setMockMeCompetenceStatus(404)` → asserts `getByTestId
+  ("profile-endpoint-absent")` + constellation/view-toggle hidden + `routerReplace`
+  not called; `history-page.test.tsx:186-197` ("History page · endpoint_absent")
+  mocks `setMockMeAttemptsStatus(404)` → asserts `getByTestId
+  ("history-endpoint-absent")` + no table/row.
+- **Out of S5 scope (owned elsewhere):** `page.tsx:10` ("unmounted/absent in v1"
+  dashboard docstring) is **S1's** sweep (Slice 1 Files-touched note 3);
+  `layout.tsx:11` ("future testee pages light up the correct item") is benign
+  nav-active prose, **not** endpoint drift — **leave it** (mirror-sweep discipline:
+  don't strike unrelated "light up"). grep-confirmed these are the only other
+  matches on the testee surface.
+
+### Decisions to surface (recommended first)
+
+- **DEC-S5-A — reframe *and rename* the 404/405 branch (recommended) vs copy-only.**
+  The copy is false and the identifiers (`endpointAbsent`, testid
+  `*-endpoint-absent`) are themselves drift. **Recommendation: rename to honest
+  error-state identifiers + neutral copy** — `endpointAbsent` → `loadError`;
+  testids `profile-endpoint-absent` → `profile-error`, `history-endpoint-absent` →
+  `history-error`; eyebrow → e.g. `"Your competency · Unavailable"` / `"Your
+  attempt history · Unavailable"`; body → neutral generic-error, e.g. `"We couldn't
+  load your competence profile right now — please try again shortly."` (no endpoint
+  name, no "Coming in v1.x", no "arrives once we light up"). The error-state tests
+  change regardless, so the testid rename is free. **Alt: copy-only** (keep the
+  `endpointAbsent`/`*-endpoint-absent` names) — smaller diff but leaves misleading
+  identifiers as residual drift. Recommend the rename (honest code is the slice's
+  whole point).
+- **DEC-S5-B — keep the inline 404/405 guard (recommended) vs unify all errors to
+  the boundary.** With the endpoints live a 404/405 is no different in kind from a
+  500. **Recommendation: keep the workstream's choice — preserve the inline
+  404/405 guard** (an inline neutral card is gentler than blanking the page via the
+  Pattern C boundary; non-404/405 still `throw` as today). Alt: drop the
+  special-case so all errors hit the boundary (uniform, less page code, but harsher
+  UX and changes 404/405 behavior). Recommend keep-guard (matches the workstream
+  instruction; minimal behavior change).
+
+### Files touched (verified)
+
+1. **`frontend/src/app/(authed)/(testee)/profile/page.tsx`** — reframe the 404/405
+   branch (`:128-151`): neutral eyebrow + body copy; rename `endpointAbsent` →
+   `loadError` and testid `profile-endpoint-absent` → `profile-error` (DEC-S5-A).
+   Keep the `instanceof ApiError` 404/405 predicate + the `throw` for other errors
+   (DEC-S5-B); empty/happy/pending branches untouched. **Does NOT touch the
+   dashboard `page.tsx` docstring (S1 owns it).**
+2. **`frontend/src/app/(authed)/(testee)/history/page.tsx`** — same reframe+rename
+   on the 404/405 branch (`:22-43`): neutral copy; `endpointAbsent` → `loadError`,
+   testid `history-endpoint-absent` → `history-error`.
+3. **`frontend/src/app/(authed)/(testee)/profile/error.tsx` +
+   `…/history/error.tsx`** — sweep the `:7` comment ("the page's `endpoint_absent`
+   branch intercepts 404/405 itself" → "the page's 404/405 error branch intercepts
+   those itself"); boundary behavior unchanged.
+4. No other residual stale comments on the testee surface (grep-confirmed; S1 owns
+   the page.tsx docstring, layout.tsx nav prose left intentionally).
+
+### Tests (paired in the same commit)
+
+1. **`frontend/tests/pages/profile-page.test.tsx`** — the "Profile page ·
+   endpoint_absent" block (`:222-233`): rename `describe` → "Profile page · load
+   error", testid → `profile-error`, keep the `setMockMeCompetenceStatus(404)`
+   trigger, and **assert the neutral copy** (`/unavailable|couldn't load/i`) +
+   **absence of the false copy** (no `/Coming in v1\.x/i`, no `/light up/i`). Keep
+   the constellation/view-toggle-hidden + `routerReplace`-not-called assertions.
+2. **`frontend/tests/pages/history-page.test.tsx`** — the "History page ·
+   endpoint_absent" block (`:186-197`): rename → "load error", testid →
+   `history-error`, keep the `setMockMeAttemptsStatus(404)` trigger, assert neutral
+   copy + absence of false copy; keep the no-table/no-row assertions.
+- **R4:** these are *reframes* of existing error-state tests (same 404 trigger,
+  asserting the corrected copy/testid), not deletions — coverage preserved.
+
+### Edge cases & corner cases
+
+- **error ≠ empty preserved** — the 404/405 branch `return`s before the empty
+  check; both pages keep their distinct empty branches and copy.
+- **non-404/405 errors still throw** to the Pattern C boundary unchanged (DEC-S5-B);
+  the boundary's own tests are unaffected.
+- **No "coming soon" claim** — the reframed copy names no endpoint and asserts no
+  unbuilt state → satisfies workstream acceptance #4.
+
+### Gotchas
+
+- **Don't re-sweep `page.tsx`** — its "unmounted/absent" docstring is S1's (Slice 1
+  note 3); S5 is profile/history-only. If S1 hasn't landed when S5 executes, leave
+  page.tsx to S1 (S5 trails S1).
+- **Leave `layout.tsx:11`** — "light up the correct item" is nav-active prose, not
+  endpoint drift; over-sweeping it would be the inverse mirror-sweep error.
+- **Independent of the dashboard chain** — S5 touches profile/history (+ their
+  `error.tsx` + tests), none of the S1→S2→S4 `page.tsx`/`dashboard.test.tsx`
+  files; no spec gate. Only ordering: trails S1 (preamble `:72-74`).
+
+### Acceptance assertions (executing session verifies)
+
+- A grep of the testee surface for "Coming in v1.x" / "light up the" / "arrives
+  once" / "unmounted" returns nothing (save S1's already-swept dashboard docstring
+  + the benign `layout.tsx` nav prose).
+- `/profile` + `/history` 404/405 still render an inline card (guard preserved) —
+  now neutral error copy + honest `*-error` testid; non-404/405 still escalate to
+  the boundary.
+- `pnpm test` green (reframed error-state tests), `pnpm typecheck` + `pnpm lint`
+  clean.
+
+### Dependencies
+
+- **External:** **none** — pure code hygiene against already-live endpoints (no
+  spec-PR gate, unlike S1/S3/S4).
+- **Intra-PR:** trails **S1** (stale-comment-sweep context; S1 owns the page.tsx
+  docstring). Independent of S2/S3/S4. **This is the final slice** — once sealed,
+  the global `Status: final — approved by planner (all slices)` line lands
+  (preamble `:55-56`).
+
+### Complexity estimate
+
+Small. Two ~6-line branch reframes (copy + rename) + two one-line `error.tsx`
+comment sweeps + two error-state test updates. < 150 lines; one commit.
+
+---
