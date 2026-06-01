@@ -1464,3 +1464,40 @@ guard) affirmed; error≠empty preserved. Set-diff: 2 finding IDs, none dropped.
 No workflow-rule violations. Slice 5 sealed — **all five slices now sealed.**
 
 ---
+
+## Status: final — approved by planner (all slices)
+
+All five Tier-A slices are detail-planned, reviewed, and **sealed** (planner +
+auditor per-slice markers above):
+
+1. **Slice 1** — Wire `HeroStats` to live competence + derived day streak
+   (container; DEC-S1-A..F2). Sealed.
+2. **Slice 2** — Remove Today's Reading (D2). Sealed.
+3. **Slice 3** — Dead-nav resolution: remove In-Progress, redirect Latest Result
+   (D3; `useMeAttemptsCapped(1)` + mount-fresh gate). Sealed.
+4. **Slice 4** — Remove the dashboard `AdaptiveLoopCard` (D4; real result-page
+   loop retained). Sealed.
+5. **Slice 5** — Drift-comment + dead-code hygiene: honest profile/history error
+   states + `PillMetaCard`/integration-test comment sweep (G8). Sealed.
+
+This detail-plan is **complete and execution-ready**. Per-slice grounding was
+verified against `main` at authoring time and re-verified at each fold; every
+round's auditor findings were folded with a clean set-diff (no IDs dropped).
+
+**Standing external/deferred items carried to the execution loop (none block this
+plan's completion):**
+- **D5 FE-3 amendment PR (spec author)** — one combined doc-only PR carrying the
+  *cumulative* scope: original ruling (`:105`/`:92`/`:111`) + DEC-S2-A
+  (Today's-Reading strike) + DEC-S4-A (AdaptiveLoopCard strike, AC-D6 retained).
+  Gates **S1 + S2 + S4 execution**. Spec author to confirm the cumulative scope.
+- **D3 FE-2-shell amendment PR (spec author)** (`:323`/`:344`) — gates **S3
+  execution**.
+- **DEC-S3-B** (results empty-state copy) + **DEC-S4-B** (dashboard wide-viewport
+  layout) — product/design copy/visual confirmations; non-blocking.
+- **DEC-S3-C** — invalidate `meQueryKeys.attempts()` on submit (also fixes
+  hero-streak / `/profile` / `/history` post-submit staleness) — deferred
+  out-of-nav-scope backlog item; sealed Slice 1 not reopened.
+
+Execution proceeds slice-by-slice per the §4 sequencing (S1→S2→S4 serialize on
+`page.tsx`/`dashboard.test.tsx`; S3 independent; S5 trails S1), each slice
+unblocked as its external spec-gate lands.
