@@ -555,13 +555,20 @@ ruled out, so this slice is a clean removal, not a reframe.
 
 **DEC-S2-A — FE-3 spec-amendment routing for the Today's-Reading removal
 (execution-gating; mirrors D5).** Removing the widget makes the FE-3 spec text
-describe a v1 surface that no longer exists — drift across **§B.1** (`:22`
-dashboard-widget list), **§C.1** (`:93` component spec — which *additionally*
-mis-cites the path as `components/dashboard/readings.tsx`; the actual file is
-`data/readings.tsx`), **§E** (`:108` anchor-table row), **§F Gherkin**
-(`:147-158`, *two* scenarios: day-stability + cross-day rotation), **§H(a)**
-initial-load (`:126`) + **§H render-states** (`:136`), the **§notes** (`:184`),
-and the test-plan refs (`:594`, `:670`, `:810`). Per the D5/D3 posture —
+describe a v1 surface that no longer exists — drift across **§A source-mapping
+table** (`:46` row 1 — *"`testee.jsx:7–68` (TodaysReading / GREETINGS /
+READINGS)"*), **§B.1** (`:22` dashboard-widget list), **§C.1** (`:93` component
+spec — which *additionally* mis-cites the path as
+`components/dashboard/readings.tsx`; the actual file is `data/readings.tsx`),
+**§E** (`:108` anchor-table row), **§F Gherkin** (`:147-158`, *two* scenarios:
+day-stability + cross-day rotation), **§H(a)** initial-load (`:126`) + **§H
+render-states** (`:136`), the **§notes** (`:184`), the **prototype-provenance
+line** (`:193` — *"`testee.jsx:21–68` (TodaysReading + GREETINGS + READINGS) ·
+same"*), and the test-plan refs (`:594`, `:670`, `:810`). **Mirror-sweep note
+(resolves auditor S2-2, same lesson as PR #84 F5):** at `:46` and `:193` the
+amendment strikes the **TodaysReading / READINGS** portion only and **retains
+GREETINGS** — the greeting copy is not removed (the hero greeting stays), so a
+blanket delete of those rows would over-sweep. Per the D5/D3 posture —
 spec/drift corrections are authored by the spec author, not the execution
 session (`SESSION_START.md:80-85`) — this removal must ride a spec amendment.
 
@@ -592,12 +599,16 @@ regardless — the removal direction is forced by ruling D2.
    version** of this file (S1 rewrote the `:9-12` docstring and explicitly left
    the TodaysReading mount to S2 — Slice 1 note `:310-311`). After removal,
    `<HeroStats/>` is followed directly by the two-column grid `<div>`.
-   - **Vertical rhythm:** the removed `<Card>` carried `my-6`
-     (`TodaysReading.tsx:22`), which supplied the gap between the hero and the
-     grid. The grid `<div>` has internal `gap-6` but no top margin. Confirm the
-     layout still breathes; if a visible gap regression appears, add the spacing
-     to the existing grid wrapper — **keep this a deletion, not a re-layout** (the
-     two-column → one-column collapse is S4's concern when `AdaptiveLoopCard` goes).
+   - **Vertical rhythm — gap is preserved, no spacing addition needed
+     (grounded, resolves auditor S2-3):** the removed `<Card>` carried `my-6`
+     (24px; `TodaysReading.tsx:22`), but the hero→grid gap does **not** depend on
+     it — `HeroStats`' own wrapper `<div data-testid="dashboard-hero">` carries
+     **`mb-8`** (32px; `HeroStats.tsx:26`, preserved through the Slice-1 rewrite).
+     After removing `<TodaysReading/>`, the hero→grid gap is `mb-8` (32px) —
+     *more* than the removed `my-6` (24px), so there is **no gap regression** and
+     **no spacing addition is expected**. Keep this a clean deletion, not a
+     re-layout (the two-column → one-column collapse is S4's concern when
+     `AdaptiveLoopCard` goes).
 2. **`frontend/src/components/dashboard/TodaysReading.tsx`** — **delete** (whole
    file). Sole `<TodaysReading/>` consumer (`page.tsx`) is updated above.
 3. **`frontend/src/data/readings.tsx`** — **delete** (whole file). Sole non-test
@@ -621,11 +632,23 @@ regardless — the removal direction is forced by ruling D2.
    the test to `"renders AssignmentsCard + AdaptiveLoopCard"`, and **add a
    negative assertion** —
    `expect(screen.queryByTestId("todays-reading")).not.toBeInTheDocument();` —
-   so the removal is asserted, not merely un-asserted. Builds on the **Slice-1
-   version** of this file (S1 rewrote the hero-request invariant + the "hero
-   placeholders" test; this card-presence test was untouched by S1). **Rebase
-   note:** S4 will later drop the `adaptive-loop-card` assertion from this *same*
-   test — leave that to S4 (preamble `:75`).
+   so the removal is asserted, not merely un-asserted.
+   - **Ordering — the negative query needs an awaited render barrier or it
+     passes vacuously (resolves auditor S2-1).** The dashboard paints behind
+     async auth (`mountTree`'s `AuthProvider`) — that is *why* the original test's
+     only `await` is the `findByTestId("todays-reading")` barrier (`:88`). Since
+     that barrier is the line being removed, **convert a persistent-card
+     assertion to an awaited barrier first** — e.g.
+     `expect(await screen.findByTestId("assignments-card")).toBeInTheDocument();`
+     — *then* assert `queryByTestId("todays-reading")` is absent. Without the
+     `findBy` barrier the negative query runs **before paint** and passes even if
+     `TodaysReading` were still mounted (and the existing synchronous
+     `getByTestId("assignments-card")`/`"adaptive-loop-card"` lines would throw
+     pre-auth anyway — at least one must become `findBy`).
+   - Builds on the **Slice-1 version** of this file (S1 rewrote the hero-request
+     invariant + the "hero placeholders" test; this card-presence test was
+     untouched by S1). **Rebase note:** S4 will later drop the `adaptive-loop-card`
+     assertion from this *same* test — leave that to S4 (preamble `:75`).
 
 ### Edge cases & corner cases
 
@@ -682,5 +705,19 @@ regardless — the removal direction is forced by ruling D2.
 Small. Two source-file deletions + one test-file deletion + a 2-line `page.tsx`
 edit + a ~3-line `dashboard.test.tsx` edit. Net mostly deletions (~150 lines
 removed, ~3 added); one commit.
+
+**Status: final for Slice 2 — approved by planner.** Round-1 auditor findings
+(all 3 worth-knowing, none gating) folded: **S2-1** test-ordering — the negative
+`queryByTestId` now requires an awaited `findByTestId("assignments-card")`
+barrier first (else vacuous pre-paint); **S2-2** mirror-sweep — DEC-S2-A scope
+extended to FE-3 `:46` (§A source-map) + `:193` (provenance), striking
+TodaysReading/READINGS while **retaining GREETINGS**; **S2-3** grounding —
+vertical-rhythm note corrected: the hero→grid gap is preserved by `HeroStats`'
+`mb-8` (`:26`, 32px > the removed `my-6` 24px), so no regression / no spacing
+addition. **DEC-S2-A** remains the standing external *execution* gate (spec
+author confirms whether the FE-3 strike folds into the D5 PR — robust: the Slice
+2 code is identical under (a)/(b)/(c)). Set-diff round-0→round-1: 3 finding IDs,
+none dropped. Awaiting the auditor's per-slice "Slice 2 approved" before Slice 3
+is pushed.
 
 ---
