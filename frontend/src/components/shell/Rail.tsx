@@ -75,23 +75,34 @@ export const ADMIN_NAV: NavItem[] = [
 export type RailProps = {
   role: RailRole;
   activeRoute: string;
+  /**
+   * "sidebar" (default) — sticky full-height desktop sidebar.
+   * "drawer" — fills a mobile nav Sheet (which supplies its own
+   * full-height frame); sticky/h-screen are dropped and tap targets
+   * grow to ≥44px for touch.
+   */
+  variant?: "sidebar" | "drawer";
   className?: string;
 };
 
-export function Rail({ role, activeRoute, className }: RailProps) {
+export function Rail({ role, activeRoute, variant = "sidebar", className }: RailProps) {
   const nav = role === "admin" ? ADMIN_NAV : TESTEE_NAV;
   const sectionLabel = role === "admin" ? "Operate" : "Learn";
   const tag = role === "admin" ? "Administrator" : "Testee";
+  const isDrawer = variant === "drawer";
 
   return (
     <aside
       className={cn(
-        "bg-bg-sunk border-r border-line px-3.5 py-[18px]",
+        "bg-bg-sunk px-3.5 py-[18px]",
         "flex flex-col gap-1",
-        "sticky top-0 h-screen overflow-y-auto",
+        isDrawer
+          ? "h-full overflow-y-auto"
+          : "border-r border-line sticky top-0 h-screen overflow-y-auto",
         className,
       )}
       data-role={role}
+      data-variant={variant}
       aria-label={`${tag} navigation`}
     >
       <div className="flex items-center gap-2.5 px-2 pb-[18px] mb-3.5 border-b border-line">
@@ -120,7 +131,9 @@ export function Rail({ role, activeRoute, className }: RailProps) {
             href={item.href}
             data-active={active}
             className={cn(
-              "flex items-center gap-2.5 px-2.5 py-2 rounded-none",
+              "flex items-center gap-2.5 px-2.5 rounded-none",
+              // ≥44px touch target in the mobile drawer; denser on desktop.
+              isDrawer ? "py-3 min-h-11" : "py-2",
               "text-[13px] font-medium",
               "transition-colors duration-150",
               active

@@ -39,10 +39,16 @@ function deriveTitle(pathname: string | null | undefined): string {
 export type TopBarProps = {
   crumb?: CrumbItem[];
   rightSlot?: ReactNode;
+  /**
+   * When provided, renders a mobile-only hamburger (lg:hidden) as the
+   * leading control that opens the nav drawer. Omitted on surfaces with
+   * no drawer (keeps existing consumers/tests unchanged).
+   */
+  onMenuClick?: () => void;
   className?: string;
 };
 
-export function TopBar({ crumb, rightSlot, className }: TopBarProps) {
+export function TopBar({ crumb, rightSlot, onMenuClick, className }: TopBarProps) {
   const pathname = usePathname();
   const { role } = useAuth();
 
@@ -64,6 +70,21 @@ export function TopBar({ crumb, rightSlot, className }: TopBarProps) {
       )}
       data-testid="topbar"
     >
+      {onMenuClick ? (
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Open navigation"
+          data-testid="topbar-menu"
+          className={cn(
+            "lg:hidden -ml-1.5 grid place-items-center shrink-0",
+            "h-11 w-11 text-ink-2 hover:text-ink transition-colors",
+          )}
+        >
+          <Icon name="menu" size={20} />
+        </button>
+      ) : null}
+
       <nav
         aria-label="Breadcrumb"
         className="flex items-center gap-2 text-[13px] min-w-0"

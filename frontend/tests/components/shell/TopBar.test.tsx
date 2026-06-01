@@ -118,6 +118,22 @@ describe("TopBar", () => {
     expect(screen.queryByText(/admin/i)).not.toBeInTheDocument();
   });
 
+  it("does NOT render a hamburger when onMenuClick is omitted", () => {
+    mockUseAuth.mockReturnValue(FIXTURE_TESTEE);
+    render(<TopBar />);
+    expect(screen.queryByTestId("topbar-menu")).not.toBeInTheDocument();
+  });
+
+  it("renders a hamburger that fires onMenuClick when provided", async () => {
+    const onMenuClick = vi.fn();
+    mockUseAuth.mockReturnValue(FIXTURE_TESTEE);
+    render(<TopBar onMenuClick={onMenuClick} />);
+    const menu = screen.getByTestId("topbar-menu");
+    expect(menu).toHaveAttribute("aria-label", "Open navigation");
+    menu.click();
+    expect(onMenuClick).toHaveBeenCalledTimes(1);
+  });
+
   it("renders an avatar skeleton when auth is loading", () => {
     mockUseAuth.mockReturnValue({
       status: "loading",

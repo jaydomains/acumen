@@ -59,6 +59,20 @@ describe("Rail", () => {
     expect(screen.getByText(/SiteMesh · v1\.8/)).toBeInTheDocument();
   });
 
+  it("defaults to the sticky sidebar variant", () => {
+    render(<Rail role="testee" activeRoute="/" />);
+    const aside = screen.getByLabelText("Testee navigation");
+    expect(aside.getAttribute("data-variant")).toBe("sidebar");
+    expect(aside.className).toContain("sticky");
+  });
+
+  it("drops sticky framing in the drawer variant (Sheet supplies it)", () => {
+    render(<Rail role="testee" activeRoute="/" variant="drawer" />);
+    const aside = screen.getByLabelText("Testee navigation");
+    expect(aside.getAttribute("data-variant")).toBe("drawer");
+    expect(aside.className).not.toContain("sticky");
+  });
+
   it("locks the testee nav order + hrefs", () => {
     expect(TESTEE_NAV.map((n) => n.href)).toEqual([
       "/",
