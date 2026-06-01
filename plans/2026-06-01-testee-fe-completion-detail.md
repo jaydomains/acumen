@@ -3,16 +3,36 @@
 **Date:** 2026-06-01
 **Branch:** `claude/testee-fe-completion-plan-51fvj` (this detail-plan PR).
 **Authoritative source:** the merged workstream plan
-`plans/2026-06-01-testee-fe-completion.md` (PR #84, squashed at `682fbd0`),
-Decisions D1–D7 **ruled** by the spec author:
+`plans/2026-06-01-testee-fe-completion.md` (PR #84, squashed at `682fbd0`).
 
-- **D1 = Tier A** (honest surface; zero new backend). Slices 1–5 only.
-- **D2 = remove** Today's Reading.
-- **D3 = remove In-Progress, redirect Latest Result** (nav model approved).
+**Decisions D1–D7 — ruled by the spec author** in the on-record ruling
+artifact **PR #85 comment
+[`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727)**
+(2026-06-01). That comment is the authoritative ruling; it postdates PR #84
+and **explicitly supersedes** the "PENDING spec-author ruling" labels still in
+the merged workstream-plan body (`:10-12`, `:638`, `:646`, `:691-692`) and the
+two #84 final-approval comments — the merged plan is the historical record, the
+comment is the ruling. (Grounding note added to resolve auditor F1, which
+correctly flagged that the earlier draft asserted "ruled" with no citable
+source while the repo record still read PENDING.) The rulings:
+
+- **D1 = Tier A** (honest surface; zero new backend). Slices 1–5 only; Tier B
+  (6–7) + Tier C deferred to the post-deploy backlog.
+- **D2 = remove** Today's Reading (option (a)).
+- **D3 = remove In-Progress, redirect Latest Result** → v1 `TESTEE_NAV` =
+  `Dashboard · Discover · Latest Result · Competency · History`.
 - **D4 = remove** dashboard `AdaptiveLoopCard`.
-- **D5 = standalone FE-3 spec-amendment PR** (gates Slice 1 execution).
-- **D6 = zero new backend** for Tier A.
-- **D7 = handover note, not a heavyweight anchor** (nav-model anchor optional).
+- **D5 = standalone doc-only FE-3 spec-amendment PR** (authored separately by
+  the spec author; gates Slice 1 **execution**). Ruling scope: drop the
+  "unmounted"/"v1.x-pending" default (`:105`/§H(a) item 5/§E item 1), **confirm
+  the `:92` HeroStats prop contract as the build target**, note day-streak is
+  client-derived from `/v1/attempts` (`:111`). *(The `:92` line interacts with
+  DEC-S1-A — see the note there.)*
+- **D6 = zero new backend** for Tier A (three gaps deferred, surfaced not dropped).
+- **D7 = handover note; do NOT mint `AC-D28`.** Nav model captured in the
+  Slice 3 handover + workstream plan.
+- **D3 spec companion:** a parallel doc-only `fe-specs/FE-2-shell.md` amendment
+  (`:323` nav-contract, `:344` test assertion) gates Slice 3 **execution**.
 
 > **What this document is.** A slice-iterative detail-plan. The workstream
 > plan converged the *structure* (slice identities, scope, dependency graph)
@@ -138,9 +158,27 @@ implemented). The detail-planning itself is not gated; only execution waits.
   the test-pairing implies. **The D5 amendment should reconcile `:92` to drop
   the four data props** (`overallCompetence`/`pillCount`/`workingPlusCount`/
   `streakDays`) and keep only `{ displayName, dateLabel }` (+ the `summary?`
-  ruling, DEC-S1-D). *If the spec author instead wants HeroStats presentational
-  (props passed from `page.tsx`), that is a different `page.tsx` diff and a
-  different test shape — flag before execution.*
+  ruling, DEC-S1-D).
+  - **⚠ Conditional on D5 — explicit (resolves auditor F3).** This entire
+    Slice-1 file list, the *"`page.tsx:44` call site unchanged"* claim, and the
+    **paired test shapes below presuppose the container outcome.** They are
+    **not yet ruled.** The spec author's D1–D7 ruling
+    ([`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727))
+    D5 bullet says *"`:92`: confirm HeroStats prop contract as the build
+    target"* — read literally, `:92`'s contract lists the four **data props**,
+    which points at **presentational** (page.tsx owns the hooks + derives +
+    passes props), the *opposite* of this recommendation. **The architecture is
+    pinned by the actual text of the D5 FE-3 amendment, not by this plan.** If
+    D5 lands presentational, then: HeroStats keeps `:92`'s data props;
+    `page.tsx:44` **changes** (passes 6 derived props; the "call site unchanged"
+    line is **invalidated, not adjusted**); the hooks + `derive-streak` call
+    move to `page.tsx`; `HeroStats.test.tsx` reverts to **prop-based** rendering
+    (the request-fires assertion moves to `dashboard.test.tsx`); and the
+    error/empty distinction (DEC-S1-F / F2) needs the query *status* threaded
+    through a prop (a small extension to `:92`). **Surfaced for the spec author
+    to pin in the D5 amendment** — the executing session must read the merged
+    D5 text first and take the container *or* presentational branch accordingly;
+    do not start Slice 1 before D5 lands.
 - **DEC-S1-B — Day-streak semantics (load-bearing).** "Day streak" is
   undefined in the spec beyond "derivable from `/v1/attempts`" (`:111`); the
   prototype hardcodes `14`. The correctness traps (R3) are timezone,
@@ -184,6 +222,11 @@ implemented). The detail-planning itself is not gated; only execution waits.
   streak still derived independently from `/v1/attempts` (which may be
   non-zero for a self-initiated attempt even when no competence profile
   exists). Recommended copy pinned in Changes below; surface for confirmation.
+  **Scope: this covers the *empty* case only.** The *error* case (a fetch
+  failure, e.g. a 500) is a distinct concern with distinct copy — see
+  **DEC-S1-F2** in the Error-handling bullet (added to resolve auditor F2):
+  error must never reuse the empty copy ("No attempts yet" / "0/0" / "0"),
+  which would misrepresent a returning testee's real state.
 
 ### Files touched (verified)
 
@@ -213,25 +256,37 @@ implemented). The detail-planning itself is not gated; only execution waits.
        `"v1.x · pending"`. (Streak/competence share the hero; gate the
        competence-derived two stats on `competence.isPending`, the streak stat
        on `attempts.isPending`.)
-     - **Empty** (`pills.length === 0`): overall `"—"` + hint `"No attempts
-       yet"`; working+ `"0/0"`; streak from attempts (DEC-S1-F).
+     - **Empty** (`!isError && pills.length === 0`): overall `"—"` + hint
+       `"No attempts yet"`; working+ `"0/0"`; streak from attempts (DEC-S1-F).
+     - **Error** (`competence.isError`): overall `"—"` + hint **`"Unavailable"`**
+       (neutral, distinct from the empty "No attempts yet"); working+ `"—"`
+       (**not** `"0/0"`); see the error-handling bullet (DEC-S1-F2). The streak
+       stat takes its own error branch: on `attempts.isError` render `"—"`
+       (**not** `"0"`).
      - **Populated:** overall `"{overallCompetence.toFixed(1)}"` + hint
        `across {pillCount} pill{s}`; working+ `"{workingPlusCount}/{pillCount}"`;
        streak `"{streakDays}"`, tone `accent` (DEC-S1-C).
-   - **Error handling:** mirror the `AssignmentsCard` posture — competence is a
-     non-fatal per-card concern; on `competence.isError` render the empty/`"—"`
-     hero rather than throwing (the dashboard has no error boundary wrapping
-     the hero, and a hard throw would blank the whole dashboard). Keep this
-     deliberately simple: treat error like empty. *(Note: this differs from the
+   - **Error handling (DEC-S1-F2 — resolves auditor F2):** competence is a
+     non-fatal per-card concern; on `competence.isError` render the hero rather
+     than throwing (the dashboard has no error boundary around the hero, and a
+     hard throw would blank the whole dashboard). **The error state must be
+     copy-distinct from the empty state** — rendering "No attempts yet" / "0/0"
+     / "0" on a transient `/v1/me/competence` 500 for a returning testee who
+     *does* have pills is actively false and violates workstream acceptance #4
+     (no copy claims a state that isn't true). So: error → `"—"` +
+     `"Unavailable"` (or "Couldn't load") across the two competence stats;
+     streak error (`attempts.isError`) → `"—"`, never `"0"`. The empty vs error
+     branches are evaluated **independently per query** (competence may error
+     while attempts succeed, or vice-versa). *(This differs from the
      `profile/page.tsx` 404-as-drift branch — the hero is a summary widget, not
-     the primary surface; do not import the `ApiError` 404/405 drift dance
-     here. Slice 5 covers the profile/history drift copy separately.)*
+     the primary surface; do not import the `ApiError` 404/405 drift dance here.
+     Slice 5 covers the profile/history drift copy separately.)*
    - No `"v1.x · pending"` string remains anywhere in the file.
 
 2. **`frontend/src/lib/competence/derive-streak.ts`** (new) — pure helper:
    - `export function deriveDayStreak(submittedAtIsoList: ReadonlyArray<string |
      null | undefined>, now: Date = new Date()): number`.
-   - Reuse the UTC-day primitive pattern from `data/readings.ts:64-69`
+   - Reuse the UTC-day primitive pattern from `data/readings.tsx:64-69`
      (`Math.floor(t / 86_400_000)`); build a `Set<number>` of distinct UTC
      day-numbers from valid `submitted_at` values (skip `null`/unparseable —
      `Number.isNaN(Date.parse(x))`).
@@ -285,10 +340,20 @@ implemented). The detail-planning itself is not gated; only execution waits.
      attempts yet`, WORKING+ is `"0/0"`, and **no `"v1.x"` / `"pending"`
      substring** appears (`expect(screen.queryByText(/v1\.x|pending/i)).toBe
      Null()`).
-   - `test: loading renders skeletons, not pending copy` — hold the competence
-     handler (or assert during `isPending`); assert no `"pending"` copy. (If
-     holding the handler is awkward in MSW, assert the populated/empty path and
-     drop this as a lower-value case — note for executing session.)
+   - `test: error competence renders a neutral error state (not empty copy)`
+     (DEC-S1-F2 / auditor F2) — `setMockMeCompetenceStatus(500)`, assert OVERALL
+     is `"—"` with hint `Unavailable` (**not** "No attempts yet"), WORKING+ is
+     `"—"` (**not** "0/0"). Separately `setMockMeAttemptsStatus(500)` and assert
+     DAY STREAK is `"—"` (**not** "0"). This is the guard that a fetch failure
+     never masquerades as an honest empty/zero state.
+   - `test: loading renders a skeleton, not pending copy` (**KEEP — resolves
+     auditor F4; the self-permitted drop is removed**). `isPending` is
+     assertable without MSW timing games: render and assert the skeleton node +
+     **absence of any `/pending/i` copy** in the same synchronous tick, *before*
+     awaiting resolution / flushing microtasks (the query is `pending` on first
+     paint); or register a `server.use(...)` handler that never resolves within
+     the test tick. This is the only automated guard that the loading path does
+     not regress to `"v1.x · pending"`, so it stays — do not drop it.
    - `test: the competence request fires` — assert via a request spy on the
      handler (increment a counter inside a one-off `server.use(...)` override)
      **or** by asserting real derived values render (which is only possible if
