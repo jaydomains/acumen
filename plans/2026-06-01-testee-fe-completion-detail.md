@@ -484,4 +484,21 @@ F2 error/empty render-states split (DEC-S1-F2); F3 HeroStats architecture RULED
 round-0→round-1: 5 finding IDs, none dropped. Awaiting the auditor's per-slice
 "Slice 1 approved" before Slice 2 is pushed.
 
+**Status: final for Slice 1 — approved by auditor.** All five round-1 findings
+(F1–F5) resolved and re-verified at source against `decc7f4`: F1 grounded to the
+on-record ruling artifact
+[`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727);
+F2 Error/Empty render-states split (DEC-S1-F2 — error never reuses empty/zero
+copy); **F3 (the gating finding)** — HeroStats architecture RULED **container**
+by the spec author's clarification
+[`4596639182`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596639182),
+DEC-S1-A rewritten conditional→ruled and the preamble D5 bullet reconciled so the
+plan is internally consistent (no residual `:92`↔implementation drift); F4 loading
+test kept; F5 `readings.tsx` citation. Every load-bearing code citation was
+grounded against `main` and verified true (stale comments, `me.ts` hooks, LOCK-2,
+band threshold working ≥ 5, the 5/6 default working+ mix + 6.45 mean, `:92`
+contract, `/v1/attempts` newest-first DESC). Set-diff round-0→round-1: 5 finding
+IDs, none dropped. No workflow-rule violations (PR draft; slices via commits not
+force-push; wake-logs alongside actions; Slice 2 correctly held). Slice 1 sealed.
+
 ---
