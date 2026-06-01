@@ -993,4 +993,22 @@ out-of-nav-scope, not silently dropped; sealed Slice 1 not reopened).
 confirmation (not gating). Set-diff round-0→round-1: 2 finding IDs, none dropped.
 Awaiting the auditor's per-slice "Slice 3 approved" before Slice 4 is pushed.
 
+**Status: final for Slice 3 — approved by auditor.** Both round-1 findings
+resolved and re-verified at source against `301bb63`. **S3-1 (REAL GAP — the
+catch of this slice):** DEC-S3-A's default-200 shared cache would have redirected
+"Latest Result" to the *prior* result — the `me/attempts` list is never
+invalidated on submit (verified exhaustively: every attempt-flow
+`invalidateQueries` targets `attemptQueryKeys.detail` only; zero on
+`meQueryKeys.attempts()`). Fixed: reverted to `useMeAttemptsCapped(1)` **+** a
+mount-fresh redirect gate (`isSuccess && isFetchedAfterMount`) — closing even the
+re-visit-within-`staleTime` window — with a freshness regression test. Root cause
+carried forward as **DEC-S3-C** (invalidate `meQueryKeys.attempts()` on submit —
+also resolves hero-streak/`/profile`/`/history` staleness — deferred out-of-nav-
+scope; sealed Slice 1 correctly not reopened). **S3-2:** DEC-S3-B empty-state copy
+surfaced for product confirmation (not gating). Grounding verified true against
+`main`: nav/route-tree/redirect-idiom, and the **deletion surface fully bounded**
+(no e2e/test touches the removed nav item beyond the two cited Rail tests). The
+D3 FE-2-shell amendment gate was already ruled (no scope expansion). Set-diff: 2
+finding IDs, none dropped. No workflow-rule violations. Slice 3 sealed.
+
 ---
