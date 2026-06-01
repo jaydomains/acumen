@@ -137,8 +137,8 @@ export function Rail({ role, activeRoute, variant = "sidebar", className }: Rail
               "text-[13px] font-medium",
               "transition-colors duration-150",
               active
-                ? "bg-ink text-bg-raised"
-                : "text-ink-2 hover:bg-bg-deep hover:text-ink",
+                ? "bg-accent-soft text-accent-ink border-l-2 border-accent pl-2"
+                : "text-ink-2 hover:bg-bg-deep hover:text-ink border-l-2 border-transparent", 
             )}
           >
             <Icon name={item.icon} size={16} className="shrink-0 opacity-75" />
@@ -148,8 +148,8 @@ export function Rail({ role, activeRoute, variant = "sidebar", className }: Rail
                 className={cn(
                   "font-mono text-[10px] px-1.5 py-px",
                   active
-                    ? "bg-bg-raised/15 text-bg-raised"
-                    : "bg-accent-soft text-accent-ink",
+                    ? "bg-accent text-bg-raised"
+                    : "bg-accent-soft text-accent-ink", 
                 )}
                 data-testid={`rail-badge-${item.id}`}
               >

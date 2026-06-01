@@ -56,8 +56,8 @@ export function BoundaryFrame({
       </div>
 
       <div className="eyebrow mb-3">{eyebrow}</div>
-      <h1 className="h-1 mb-3">{title}</h1>
-      <div className="text-ink-2 text-[14px] leading-relaxed max-w-[44ch]">{body}</div>
+      <h1 className="font-serif text-[26px] leading-[1.18] tracking-[-0.018em] sm:text-[30px] lg:text-[36px] mb-3 break-words">{title}</h1>
+      <div className="text-ink-2 text-[14px] leading-[1.6] max-w-[44ch] break-words">{body}</div>
 
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         {actions}
