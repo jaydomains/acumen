@@ -1082,6 +1082,16 @@ loop state. (D4's "wire" alternative is **not** taken — ruled remove.)
   drift); Slice 4 *execution* then gates on that PR. Like DEC-S2-A this **expands
   D5's stated scope** (`4596569727` listed only `:105`/`:92`/`:111`) — flagged for
   the spec author. Not anchored, so no `DECISIONS.md` AC moves.
+  - **Cumulative D5 scope (resolves auditor S4-1; track for the global gate).**
+    DEC-S4-A is the *second* expansion onto the D5 FE-3 PR, so that one combined
+    doc-only PR now carries **three** scopes: the original ruling
+    (`:105`/`:92`/`:111`), **DEC-S2-A** (Today's-Reading), and **DEC-S4-A**
+    (AdaptiveLoopCard) — materially larger than the spec author's original D5
+    description. The spec author should confirm the **cumulative** expansion, and
+    **S1 + S2 + S4 execution all wait on that single combined PR**. Tracked
+    alongside DEC-S2-A on the global-gate list. The DEC-S4-A enumeration was
+    mirror-sweep-verified complete by the auditor (refs `:22/:79/:97/:109/:126/
+    :187/:196/:597/:707`; `:6` is the **AC-D6 anchor**, correctly *retained*).
 - **DEC-S4-B — dashboard grid collapse (implementation; minor).** With the right
   column's sole occupant gone, **recommendation: collapse to a single column** —
   drop the `grid lg:grid-cols-[…]` wrapper **and both** inner column `<div>`s, and
@@ -1090,6 +1100,15 @@ loop state. (D4's "wire" alternative is **not** taken — ruled remove.)
   Alt: keep a centered max-width container so the cards don't run full-bleed on
   wide viewports — a lighter design call. Surface for confirmation; defaulting to
   the straight single-column collapse.
+  - **Wide-viewport appearance (resolves auditor S4-2; surfaced for design,
+    not gating).** Below `lg` the dashboard is *already* single-column (the
+    `lg:grid-cols-[…]` only splits at `lg`+), so **mobile is unchanged** by the
+    collapse and the `@375px` e2e overflow check is unaffected. At `lg`+ the
+    straight collapse renders the two cards **full-width** (vs the prior `1fr` +
+    `360px`), which can read as stretched — exactly what the max-width Alt
+    addresses. **Flag the wide-screen choice (full-width stack vs max-width) for
+    product/design confirmation.** Purely visual — no correctness or test impact
+    (no test asserts the grid structure).
 
 ### Files touched (verified)
 
@@ -1196,5 +1215,16 @@ These two files are mutated by three slices; execution serializes **S1 → S2 �
 Small. One file deletion + a ~6-line `page.tsx` edit (mount/import removal + grid
 collapse) + a `dashboard.test.tsx` edit (one assertion flip, one test + mock
 removal). Net mostly deletions (~90 lines removed, ~3 added); one commit.
+
+**Status: final for Slice 4 — approved by planner.** Round-1 auditor findings
+(both worth-knowing, no gating defect) folded: **S4-1** — DEC-S4-A is the *second*
+FE-3 scope expansion onto the D5 PR; added the **cumulative-D5-scope** note (one
+combined doc-only PR now carries the original ruling + DEC-S2-A + DEC-S4-A; S1+S2+S4
+execution all gate on it; spec author confirms the cumulative expansion; tracked on
+the global gate). Auditor mirror-sweep-verified the enumeration complete with AC-D6
+correctly retained. **S4-2** — DEC-S4-B wide-viewport appearance surfaced for
+product/design confirmation (full-width vs max-width; mobile unchanged, no
+correctness/test impact). Set-diff round-0→round-1: 2 finding IDs, none dropped.
+Awaiting the auditor's per-slice "Slice 4 approved" before Slice 5 is pushed.
 
 ---
