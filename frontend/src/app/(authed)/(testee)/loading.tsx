@@ -12,8 +12,8 @@ export default function TesteeLoading() {
       {/* PageHeader skeleton */}
       <div className="space-y-2">
         <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-4 w-96" />
+        <Skeleton className="h-8 w-full max-w-72" />
+        <Skeleton className="h-4 w-full max-w-96" />
       </div>
 
       {/* 4-stat grid */}

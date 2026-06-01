@@ -90,6 +90,16 @@ describe("TopBar", () => {
     expect(screen.getByTestId("topbar-crumbs")).toHaveTextContent("Operations");
   });
 
+  it("hides leading crumb segments on mobile, keeps the trailing one", () => {
+    mockUseAuth.mockReturnValue(FIXTURE_TESTEE);
+    mockPathname = "/";
+    render(<TopBar />);
+    // Leading low-value segments collapse below sm; the current page stays.
+    expect(screen.getByText("SiteMesh").className).toContain("hidden");
+    expect(screen.getByText("Acumen").className).toContain("hidden");
+    expect(screen.getByText("Dashboard").className).not.toContain("hidden");
+  });
+
   it("renders the ⌘K hint chip in the search stub", () => {
     mockUseAuth.mockReturnValue(FIXTURE_TESTEE);
     render(<TopBar />);

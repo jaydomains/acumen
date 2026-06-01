@@ -28,7 +28,10 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "mb-6 flex flex-wrap items-baseline justify-between gap-4",
+        // Stack vertically on small screens (title block, then actions
+        // below); only at lg do title + actions sit on one baseline row.
+        "mb-6 flex flex-col items-start gap-4",
+        "lg:flex-row lg:flex-wrap lg:items-baseline lg:justify-between",
         className,
       )}
     >

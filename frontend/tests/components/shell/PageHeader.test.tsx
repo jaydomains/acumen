@@ -43,6 +43,13 @@ describe("PageHeader", () => {
     expect(container.querySelector("button")).toBeNull();
   });
 
+  it("stacks vertically by default and only rows at lg (responsive)", () => {
+    const { container } = render(<PageHeader title="t" actions={<button>New</button>} />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain("flex-col");
+    expect(root.className).toContain("lg:flex-row");
+  });
+
   it("accepts a ReactNode subtitle (composition with chips)", () => {
     render(
       <PageHeader

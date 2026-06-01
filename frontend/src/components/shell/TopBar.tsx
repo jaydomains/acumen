@@ -95,7 +95,13 @@ export function TopBar({ crumb, rightSlot, onMenuClick, className }: TopBarProps
           return (
             <span
               key={`${i}-${c.label}`}
-              className={cn("shrink-0", isLast ? "font-semibold text-ink" : "text-ink-3")}
+              className={cn(
+                "shrink-0",
+                // Mobile shows only the trailing (current-page) crumb;
+                // leading low-value segments appear at sm+ where there's
+                // room beside the hamburger + controls.
+                isLast ? "font-semibold text-ink" : "hidden sm:inline text-ink-3",
+              )}
             >
               {c.label}
               {!isLast && <span className="text-ink-4 mx-2">/</span>}
