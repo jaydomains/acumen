@@ -1012,3 +1012,189 @@ D3 FE-2-shell amendment gate was already ruled (no scope expansion). Set-diff: 2
 finding IDs, none dropped. No workflow-rule violations. Slice 3 sealed.
 
 ---
+
+## Slice 4 — Remove the dashboard AdaptiveLoopCard (hardcoded-narrative widget)
+
+**Implements:** removes the dashboard `AdaptiveLoopCard` (workstream G4) per ruling
+**D4 = remove for v1** — on-record artifact
+[`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727).
+The card renders a hardcoded "Two weak areas surfaced from your last attempt"
+narrative with two no-op `toast` CTAs; the **real** adaptive loop already renders
+per-attempt on the result page. Removing it leaves no dashboard widget faking
+loop state. (D4's "wire" alternative is **not** taken — ruled remove.)
+
+### Grounding (verified against `main`)
+
+- **The dashboard card is hardcoded + no-op.** `AdaptiveLoopCard.tsx:30-36` —
+  hardcoded `"Two weak areas surfaced from your last attempt."` + `"queued a
+  targeted re-test five days out."`; two CTAs `adaptive-loop-explainer` (`:41`)
+  and `adaptive-loop-defer` (`:54`) are **`toast` no-ops** tagged `TODO(v1.x)`
+  (`:43`, `:56`). No API call. `data-testid="adaptive-loop-card"` (`:21`); the
+  eyebrow even prints `"Adaptive loop · AC-D6"` (`:27`) though it carries no real
+  AC-D6 data.
+- **It is distinct from the REAL result-page card — do not touch that one.** The
+  grep surfaces **two different components** sharing the export name: the
+  dashboard one (`src/components/dashboard/AdaptiveLoopCard.tsx`, hardcoded — the
+  delete target) vs the **real** `components/result/…` card rendered at
+  `attempts/[attemptId]/result/page.tsx:144` as `<AdaptiveLoopCard
+  steps={result.adaptive_loop} status={result.status} />` (props-driven, **keep**).
+  `src/lib/result/adaptive-loop-format.ts` belongs to the *result* card — **keep**.
+  Different module paths, so deleting the dashboard module leaves the result
+  import untouched (the key safety check).
+- **Deletion surface is fully bounded** (repo-wide grep): the only consumers of
+  the dashboard card are `page.tsx:24` (import) + `page.tsx:52` (mount) and the
+  `dashboard.test.tsx` blocks below. **No feature flag** (`flags.ts` has no
+  AdaptiveLoop entry — unflagged static card), no stories.
+- **Mount + grid** (`page.tsx:48-54`): the card is the **sole occupant of the
+  right grid column** —
+  `<div className="grid … lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">` with a
+  left column (`AssignmentsCard` + `RecentAttemptsCard`) and a right column whose
+  only child is `<AdaptiveLoopCard />`. Removing it empties the right column →
+  the two-column grid must collapse (DEC-S4-B).
+- **Not anchored — no AC retires.** FE-3 §E (`fe-specs/FE-3-content.md:109`):
+  `(none) | Adaptive-loop card | Static copy in v1` — anchor column `(none)`, like
+  Today's Reading. **AC-D6 itself is NOT retired** — it is the *real* adaptive
+  loop satisfied by the result page; the dashboard card only borrowed the label.
+- **`dashboard.test.tsx` blocks:** the card-presence test (`:86-91`, which Slice 2
+  already rewrites to "renders AssignmentsCard + AdaptiveLoopCard" + the negative
+  todays-reading assertion) still asserts `adaptive-loop-card` present (`:90`);
+  and a dedicated **`"adaptive-loop CTAs toast (placeholder until v1.x wiring)"`**
+  test (`:109-117`) clicks both CTAs and asserts `toast` was called. The `sonner`
+  mock + `toast` import + `mockClear` (`:38-41`, `:69`) exist **only** to serve
+  that CTA test (grep-confirmed: no other `toast` use in the file).
+
+### Decisions to surface (recommended option first)
+
+- **DEC-S4-A — FE-3 spec-amendment scope for the dashboard-card removal
+  (execution-gating; mirrors D5 / DEC-S2-A).** Removing the widget drifts FE-3
+  across **§B.1** (`:22` dashboard-widget list — "Adaptive-loop accent card"),
+  **§B.4** (`:79` "Read the explainer on AdaptiveLoopCard → static placeholder"),
+  **§C** (`:97` component spec — which *also* mis-cites the path as
+  `components/dashboard/adaptive-loop-card.tsx`; the actual file is
+  `AdaptiveLoopCard.tsx`), **§E** (`:109` anchor-table row), **§H(a)** initial-load
+  (`:126` "AdaptiveLoopCard rendered (static)"), the **§notes** (`:187` CTA note),
+  the **provenance** line (`:196`), the **component table** (`:597`), and the
+  **CTA-wire backlog row** (`:707` item 4). **Mirror-sweep guard (same lesson as
+  DEC-S2-A / PR #84 F5):** strike only the **dashboard `AdaptiveLoopCard`** refs
+  and **retain AC-D6 + every result-page adaptive-loop reference** (the real
+  per-attempt loop is not removed). **Recommendation: fold into the existing D5
+  FE-3 amendment PR** (same file already opened for the HeroStats + Today's-Reading
+  drift); Slice 4 *execution* then gates on that PR. Like DEC-S2-A this **expands
+  D5's stated scope** (`4596569727` listed only `:105`/`:92`/`:111`) — flagged for
+  the spec author. Not anchored, so no `DECISIONS.md` AC moves.
+- **DEC-S4-B — dashboard grid collapse (implementation; minor).** With the right
+  column's sole occupant gone, **recommendation: collapse to a single column** —
+  drop the `grid lg:grid-cols-[…]` wrapper **and both** inner column `<div>`s, and
+  render `<AssignmentsCard />` + `<RecentAttemptsCard />` directly in the existing
+  `flex flex-col gap-6` stack. Cleanest; no empty column, no dangling grid track.
+  Alt: keep a centered max-width container so the cards don't run full-bleed on
+  wide viewports — a lighter design call. Surface for confirmation; defaulting to
+  the straight single-column collapse.
+
+### Files touched (verified)
+
+1. **`frontend/src/app/(authed)/(testee)/page.tsx`** — remove the `import {
+   AdaptiveLoopCard } from "@/components/dashboard/AdaptiveLoopCard";` (`:24`) and
+   the `<AdaptiveLoopCard />` mount (`:52`); **collapse the grid** per DEC-S4-B
+   (remove the `grid`/`lg:grid-cols-[…]` wrapper + both column `<div>`s; the two
+   surviving cards stack in one `flex flex-col gap-6`). Builds on the **S2 version**
+   of this file (S1 rewrote the docstring; S2 removed `<TodaysReading/>`); S4 is the
+   last of the S1→S2→S4 `page.tsx` chain (preamble `:70-71`).
+2. **`frontend/src/components/dashboard/AdaptiveLoopCard.tsx`** — **delete** (whole
+   file). Sole consumer (`page.tsx`) updated above. **Do NOT** touch the result-page
+   card (`components/result/…`) or `lib/result/adaptive-loop-format.ts`.
+
+### Tests (paired in the same commit)
+
+1. **`frontend/tests/pages/dashboard.test.tsx`** — building on the **S2 version**:
+   - **Card-presence test** (the S2-renamed "renders AssignmentsCard +
+     AdaptiveLoopCard"): drop the `adaptive-loop-card` assertion, rename to
+     `"renders AssignmentsCard + RecentAttemptsCard"`, and **add a negative
+     assertion** `expect(screen.queryByTestId("adaptive-loop-card")).not.to
+     BeInTheDocument();` — *after* the existing awaited `findByTestId
+     ("assignments-card")` barrier (S2-1 lesson; no vacuous pre-paint pass).
+   - **Remove** the `"adaptive-loop CTAs toast (placeholder until v1.x wiring)"`
+     test (`:109-117`) entirely — its subject (the two CTAs) no longer exists.
+     This is correct-by-construction removal (the widget is ruled out), **not** an
+     R4 stub-drop; there is no live behavior left to cover (the *real* loop CTAs,
+     if any, live on the result page and are out of this file's scope).
+   - **Remove the now-dead `sonner` scaffolding** that only served that test: the
+     `vi.mock("sonner", …)` block (`:38-40`), the `import { toast }` (`:41`), and
+     the `vi.mocked(toast).mockClear()` in `beforeEach` (`:69`) — grep-confirmed no
+     other `toast` use in the file (leaving them would be dead mock state; `tsc`/
+     lint would flag the unused import).
+
+### Edge cases & corner cases
+
+- **Wrong-card deletion** — the single most important check: delete
+  `components/dashboard/AdaptiveLoopCard.tsx`, **never** `components/result/…`.
+  `result/page.tsx:144` must still import and render its card with
+  `steps`/`status` props after this slice; `pnpm typecheck` + the result-page
+  tests are the backstop.
+- **Grid reflow** — after collapse, `AssignmentsCard` + `RecentAttemptsCard` stack
+  full-width in one column; verify no orphaned `lg:grid-cols` track or empty
+  `<div>` remains (DEC-S4-B). Hero `mb-8` still supplies the hero→stack gap (per
+  the Slice-2 S2-3 grounding).
+- **No async states** — the dashboard card had no data dependency; removal cannot
+  introduce a loading/empty/error path (contrast Slice 1).
+
+### Gotchas
+
+- **Two same-named components** — `AdaptiveLoopCard` exists in both
+  `components/dashboard/` (delete) and `components/result/` (keep). Import paths
+  disambiguate; deleting the dashboard module leaves the result import intact.
+- **`adaptive_loop` (wire type) stays** — `api.d.ts:1900` `adaptive_loop:
+  LoopStep[]` and the MSW `adaptive_loop: []` defaults (`handlers.ts:748,782`,
+  `GradingOverlay.test.tsx`) feed the **result** card — untouched.
+- **Spec gate** — Slice 4 *execution* waits for the FE-3 amendment striking the
+  dashboard-card refs (DEC-S4-A; recommended fold into the D5 PR). Detail-planning
+  proceeds now (removal forced by D4).
+- **`page.tsx` / `dashboard.test.tsx` are shared** — see the cross-slice note
+  below.
+
+### Cross-slice note — `page.tsx` + `dashboard.test.tsx` across S1 → S2 → S4
+
+These two files are mutated by three slices; execution serializes **S1 → S2 → S4**
+(preamble `:70-77`). Rebase-order ownership, so no edit clobbers another:
+
+- **`page.tsx`:** S1 rewrites the `:9-12` docstring (HeroStats container; leaves
+  both card mounts). S2 removes the `<TodaysReading/>` import+mount. S4 removes the
+  `<AdaptiveLoopCard/>` import+mount **and** collapses the grid (DEC-S4-B). Net
+  after S4: `ResumePrompt` · `HeroStats` · single-column `AssignmentsCard` +
+  `RecentAttemptsCard`.
+- **`dashboard.test.tsx`:** S1 rewrites the header invariant + the hero
+  placeholder→live test + adds `resetMockMeCompetence/Attempts`. S2 renames the
+  card-presence test and adds the negative `todays-reading` assertion. S4 drops the
+  `adaptive-loop-card` assertion (renames again) + adds its negative assertion, and
+  removes the CTA-toast test + the `sonner` scaffolding. Each slice touches
+  disjoint lines except the one shared card-presence test, which is edited in
+  S2-then-S4 order.
+
+### Acceptance assertions (executing session verifies)
+
+- The dashboard renders no `adaptive-loop-card`, no "Two weak areas…" copy, and no
+  `toast` CTAs; `queryByTestId("adaptive-loop-card")` is `null`.
+- `components/dashboard/AdaptiveLoopCard.tsx` no longer exists; the **result-page**
+  `AdaptiveLoopCard` (+ `lib/result/adaptive-loop-format.ts`) is untouched and its
+  tests still pass.
+- The dashboard grid is single-column (no empty track); `ResumePrompt` · `Hero` ·
+  `AssignmentsCard` · `RecentAttemptsCard`.
+- `pnpm test` green (incl. the edited `dashboard.test.tsx`, no dead `toast` mock),
+  `pnpm typecheck` + `pnpm lint` clean (no unused `sonner` import), Playwright
+  unaffected.
+
+### Dependencies
+
+- **External (execution-gating):** the FE-3 amendment striking the dashboard
+  AdaptiveLoopCard refs (DEC-S4-A — recommended fold into the D5 PR).
+- **Intra-PR:** **upstream** S1 (page.tsx docstring + dashboard.test.tsx hero
+  rewrite) and S2 (page.tsx TodaysReading removal + card-presence rename) — S4 is
+  the **last** of the S1→S2→S4 chain; build in that order.
+
+### Complexity estimate
+
+Small. One file deletion + a ~6-line `page.tsx` edit (mount/import removal + grid
+collapse) + a `dashboard.test.tsx` edit (one assertion flip, one test + mock
+removal). Net mostly deletions (~90 lines removed, ~3 added); one commit.
+
+---
