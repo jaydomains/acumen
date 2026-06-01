@@ -7,8 +7,11 @@ on its own fresh branch off latest `main` (precedent: `claude/pre-deploy-pr1…`
 + this session's read-only grounding against `main`. FE roadmap closed after
 FE-9; this workstream is a **post-roadmap completion pass** scoped strictly to
 the testee surface.
-**Status:** draft (rev-2 — auditor round-1 findings F1–F7 folded; see the rev-2
-changelog at the end). Decisions D1–D7 PENDING spec-author ruling.
+**Status:** final — approved by planner & auditor (rev-2 `08828fc`). Decisions
+D1–D7 remain PENDING spec-author ruling (their resolution opens the execution
+session); the **plan structure is converged**. See the two final-marker lines at
+the end of this file, the planner/auditor approval logs
+(`plans/.approval-log-pr84-{planner,auditor}.md`), and the rev-2 changelog.
 
 > **What this package is.** The testee surface shipped with three classes of
 > defect that the first real use exposed: (a) dashboard widgets showing
@@ -682,3 +685,8 @@ slice identities changed, no findings dropped.
 **Set-diff gate (rev-1 → rev-2):** no slice or finding IDs dropped; rev-2 edits
 are finding-driven text only (Status, D3, D5, D7, §4 graph, Slice 1, Slice 3, §7,
 acceptance #4, this changelog).
+
+---
+
+Status: final — approved by auditor (rev-2 `08828fc`; all round-1 findings F1–F7 resolved, F7 withdrawn by the auditor as their own line-number error — plan citations verified correct as written; set-diff rev-1→rev-2 clean; no new gaps; no workflow-rule violations).
+Status: final — approved by planner (rev-2 `08828fc`; auditor round-1 fully folded, all 7 review threads resolved, set-diff rev-1→rev-2 clean). Planner role ends. Decisions D1–D7 await the spec author; the two doc-only spec-amendment PRs (D5 + D3) gate Slices 1 and 3. Draft→ready and merge are the overseer's call.
