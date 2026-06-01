@@ -24,10 +24,16 @@ source while the repo record still read PENDING.) The rulings:
 - **D4 = remove** dashboard `AdaptiveLoopCard`.
 - **D5 = standalone doc-only FE-3 spec-amendment PR** (authored separately by
   the spec author; gates Slice 1 **execution**). Ruling scope: drop the
-  "unmounted"/"v1.x-pending" default (`:105`/§H(a) item 5/§E item 1), **confirm
-  the `:92` HeroStats prop contract as the build target**, note day-streak is
-  client-derived from `/v1/attempts` (`:111`). *(The `:92` line interacts with
-  DEC-S1-A — see the note there.)*
+  "unmounted"/"v1.x-pending" default (`:105`/§H(a) item 5/§E item 1), **amend
+  `:92` (+ §H(a) item 5 / §E item 1) to reflect the *container* architecture —
+  HeroStats props simplify to `{displayName, dateLabel}` and it derives the
+  values internally; the amendment does NOT confirm the presentational
+  data-props contract at `:92` literally** (corrected by the spec author's F3
+  clarification, comment
+  [`4596639182`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596639182),
+  which supersedes the earlier ruling's ":92 prop contract" line), and note
+  day-streak is client-derived from `/v1/attempts` (`:111`). *(Container is now
+  ruled — see DEC-S1-A.)*
 - **D6 = zero new backend** for Tier A (three gaps deferred, surfaced not dropped).
 - **D7 = handover note; do NOT mint `AC-D28`.** Nav model captured in the
   Slice 3 handover + workstream plan.
@@ -143,42 +149,35 @@ implemented). The detail-planning itself is not gated; only execution waits.
 > should fold the resolution into the D5 amendment or rule by PR comment).
 > Recommended option first.
 
-- **DEC-S1-A — HeroStats container vs presentational (load-bearing).** The
-  workstream plan's Slice-1 file list says HeroStats should *both* "adopt the
-  spec prop contract (`:92`)" (which lists `overallCompetence`/`pillCount`/…
-  as **data props**) *and* "call `useMeCompetence()` + `useMeAttemptsCapped()`"
-  (which makes it a **container**). These are mutually exclusive; the spec
-  prop contract and the workstream plan's own test direction ("the competence
-  request **does** fire" from `HeroStats.test.tsx`) conflict.
-  **Recommendation: HeroStats owns the hooks (container).** Rationale: the two
-  sibling dashboard cards already own their hooks —
-  `AssignmentsCard.tsx:117` calls `useMeAssignments()`,
-  `RecentAttemptsCard` calls `useMeAttemptsCapped(5)` (FE-3 §B.1 §2). A
-  container HeroStats is consistent with that established pattern and is what
-  the test-pairing implies. **The D5 amendment should reconcile `:92` to drop
-  the four data props** (`overallCompetence`/`pillCount`/`workingPlusCount`/
-  `streakDays`) and keep only `{ displayName, dateLabel }` (+ the `summary?`
-  ruling, DEC-S1-D).
-  - **⚠ Conditional on D5 — explicit (resolves auditor F3).** This entire
-    Slice-1 file list, the *"`page.tsx:44` call site unchanged"* claim, and the
-    **paired test shapes below presuppose the container outcome.** They are
-    **not yet ruled.** The spec author's D1–D7 ruling
-    ([`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727))
-    D5 bullet says *"`:92`: confirm HeroStats prop contract as the build
-    target"* — read literally, `:92`'s contract lists the four **data props**,
-    which points at **presentational** (page.tsx owns the hooks + derives +
-    passes props), the *opposite* of this recommendation. **The architecture is
-    pinned by the actual text of the D5 FE-3 amendment, not by this plan.** If
-    D5 lands presentational, then: HeroStats keeps `:92`'s data props;
-    `page.tsx:44` **changes** (passes 6 derived props; the "call site unchanged"
-    line is **invalidated, not adjusted**); the hooks + `derive-streak` call
-    move to `page.tsx`; `HeroStats.test.tsx` reverts to **prop-based** rendering
-    (the request-fires assertion moves to `dashboard.test.tsx`); and the
-    error/empty distinction (DEC-S1-F / F2) needs the query *status* threaded
-    through a prop (a small extension to `:92`). **Surfaced for the spec author
-    to pin in the D5 amendment** — the executing session must read the merged
-    D5 text first and take the container *or* presentational branch accordingly;
-    do not start Slice 1 before D5 lands.
+- **DEC-S1-A — HeroStats is a CONTAINER (RULED — closes auditor F3).** Earlier
+  the workstream plan's Slice-1 file list was internally contradictory (it asked
+  HeroStats to *both* adopt the `:92` data-prop contract *and* call the hooks),
+  and the spec author's first D5 ruling line (*":92 confirm prop contract as
+  build target"*) read as **presentational** — the opposite. **The spec author's
+  F3 clarification, comment
+  [`4596639182`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596639182)
+  (supersedes the ":92 prop contract" line), RULES the container pattern:**
+  - HeroStats **owns** `useMeCompetence()` + `useMeAttemptsCapped()` and derives
+    `overallCompetence`/`pillCount`/`workingPlusCount`/`streakDays` **internally**
+    from the hook results.
+  - HeroStats props simplify to **`{ displayName, dateLabel }`** — the same shape
+    as today; **no new data props.** The four `:92` data props are **dropped**.
+  - Loading / empty / error / populated state management lives **inside**
+    HeroStats.
+  - The **D5 FE-3 amendment** amends `:92` (+ §H(a) item 5 / §E item 1) to
+    reflect this container architecture — it does **not** confirm the
+    presentational data-props contract at `:92` literally.
+  - Rationale (per the ruling): container matches the dashboard's established
+    pattern (`AssignmentsCard.tsx:117` owns `useMeAssignments()`,
+    `RecentAttemptsCard` owns `useMeAttemptsCapped(5)`, `ResumePrompt` owns its
+    localStorage read); co-locates fetching with the consuming component;
+    eliminates the `page.tsx`↔HeroStats coordination point.
+  - **Consequence — locked:** the `<HeroStats displayName={…} dateLabel={…} />`
+    call site at `page.tsx:44` is **unchanged**; `HeroStats.test.tsx` is the
+    container shape (mount through `QueryClientProvider`, the competence request
+    fires); the error/empty distinction (DEC-S1-F / F2) is handled inside the
+    component (no status prop needed). The Files/Tests subsections below are now
+    the ruled build, not a conditional recommendation.
 - **DEC-S1-B — Day-streak semantics (load-bearing).** "Day streak" is
   undefined in the spec beyond "derivable from `/v1/attempts`" (`:111`); the
   prototype hardcodes `14`. The correctness traps (R3) are timezone,
@@ -474,5 +473,15 @@ implemented). The detail-planning itself is not gated; only execution waits.
 Medium. ~1 component rewrite (~90 lines), 1 new helper (~30 lines), 1
 `page.tsx` comment edit (~5 lines), 2 test rewrites + 1 new test file
 (~180 lines of tests). Total well under 400 lines; one commit.
+
+**Status: final for Slice 1 — approved by planner.** Round-1 auditor findings
+F1–F5 all folded: F1 grounded to the on-record D1–D7 ruling artifact
+[`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727);
+F2 error/empty render-states split (DEC-S1-F2); F3 HeroStats architecture RULED
+**container** by the spec author's clarification
+[`4596639182`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596639182)
+(DEC-S1-A locked); F4 loading test kept; F5 `readings.tsx` citation. Set-diff
+round-0→round-1: 5 finding IDs, none dropped. Awaiting the auditor's per-slice
+"Slice 1 approved" before Slice 2 is pushed.
 
 ---
