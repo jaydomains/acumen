@@ -263,7 +263,7 @@ class SMTPClient:
 
 
 def setup_email_content(raw_token: str) -> tuple[str, str]:
-    link = f"{get_settings().app_public_url}/setup?token={raw_token}"
+    link = f"{get_settings().app_public_url}/setup/{raw_token}"
     return (
         "Set up your Acumen account",
         f"Welcome to Acumen. Set your password to activate your "
@@ -272,7 +272,7 @@ def setup_email_content(raw_token: str) -> tuple[str, str]:
 
 
 def reset_email_content(raw_token: str) -> tuple[str, str]:
-    link = f"{get_settings().app_public_url}/reset?token={raw_token}"
+    link = f"{get_settings().app_public_url}/reset/{raw_token}"
     return (
         "Reset your Acumen password",
         f"A password reset was requested for your Acumen account:\n\n"
