@@ -1288,12 +1288,26 @@ it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
   not called; `history-page.test.tsx:186-197` ("History page · endpoint_absent")
   mocks `setMockMeAttemptsStatus(404)` → asserts `getByTestId
   ("history-endpoint-absent")` + no table/row.
-- **Out of S5 scope (owned elsewhere):** `page.tsx:10` ("unmounted/absent in v1"
-  dashboard docstring) is **S1's** sweep (Slice 1 Files-touched note 3);
-  `layout.tsx:11` ("future testee pages light up the correct item") is benign
-  nav-active prose, **not** endpoint drift — **leave it** (mirror-sweep discipline:
-  don't strike unrelated "light up"). grep-confirmed these are the only other
-  matches on the testee surface.
+- **Full testee-surface drift sweep (corrected — resolves auditor S5-1).** An
+  exhaustive `grep -rn "unmounted"` of `src/` + `tests/` shows my earlier
+  "only other matches" claim was wrong; the complete picture is three buckets:
+  - **In-scope drift S5 MUST sweep** (live endpoint described as unbuilt) —
+    beyond profile/history: **`components/pill-detail/PillMetaCard.tsx:7`**
+    (*"`GET /v1/me/competence` is **unmounted** … They'll slot in here when the
+    endpoint lands"*) — rendered by `(testee)/pills/[pillId]/page.tsx`, so
+    testee-facing, and false (competence is live, G1); plus two stale
+    **test-invariant comments**, **`tests/integration/auth-roundtrip.test.tsx:209`**
+    and **`tests/integration/shell-roundtrip.test.tsx:133`** (both *"`/v1/me/
+    assignments` is **unmounted**"* — false; assignments is live, workstream F2).
+    These are added to Files touched / Tests below.
+  - **Owned by S1 (do not touch here):** `page.tsx:10` (dashboard docstring) +
+    `HeroStats.tsx:6` ("unmounted; we DO NOT construct the query") — Slice 1's
+    sweep.
+  - **Genuine React-lifecycle uses — NOT drift, leave them:**
+    `privacy/layout.tsx:8`, `lib/auth/context.tsx:14` + `:129`,
+    `tests/lib/attempts/use-streaming-queue.test.tsx:390` (all about
+    component-unmount, not endpoints); and `layout.tsx:11` "light up the correct
+    item" is nav-active prose (inverse-mirror-sweep guard — don't strike it).
 
 ### Decisions to surface (recommended first)
 
@@ -1334,8 +1348,14 @@ it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
    `…/history/error.tsx`** — sweep the `:7` comment ("the page's `endpoint_absent`
    branch intercepts 404/405 itself" → "the page's 404/405 error branch intercepts
    those itself"); boundary behavior unchanged.
-4. No other residual stale comments on the testee surface (grep-confirmed; S1 owns
-   the page.tsx docstring, layout.tsx nav prose left intentionally).
+4. **`frontend/src/components/pill-detail/PillMetaCard.tsx:7`** (resolves auditor
+   S5-1) — reword the JSDoc: the per-Testee competence rows are **absent because
+   the pill-detail per-Testee overlay is a deferred v1.x *feature* (FE-3 §7
+   catalogue overlay)** — **not** because the endpoint is "unmounted" (competence
+   is live, G1). Drop "unmounted" / "when the endpoint lands"; frame as a deferred
+   feature. (No render change — comment-only; the card already doesn't fetch
+   competence.) This is testee-facing-surface drift in the same class as
+   profile/history, so it belongs in this hygiene slice.
 
 ### Tests (paired in the same commit)
 
@@ -1351,6 +1371,13 @@ it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
    copy + absence of false copy; keep the no-table/no-row assertions.
 - **R4:** these are *reframes* of existing error-state tests (same 404 trigger,
   asserting the corrected copy/testid), not deletions — coverage preserved.
+3. **`frontend/tests/integration/auth-roundtrip.test.tsx:209` +
+   `…/shell-roundtrip.test.tsx:133`** (resolves auditor S5-1) — correct the stale
+   invariant comments: both say *"`/v1/me/assignments` is **unmounted**"*, which is
+   false (assignments is live — workstream F2). Reword to the honest reason the
+   `AssignmentsCard` placeholder shows in that test path (the test's own mock
+   state), with no "unmounted" claim. Comment-only; the assertions/behavior are
+   unchanged.
 
 ### Edge cases & corner cases
 
@@ -1374,9 +1401,16 @@ it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
 
 ### Acceptance assertions (executing session verifies)
 
-- A grep of the testee surface for "Coming in v1.x" / "light up the" / "arrives
-  once" / "unmounted" returns nothing (save S1's already-swept dashboard docstring
-  + the benign `layout.tsx` nav prose).
+- A grep of the testee surface for the **drift phrases** "Coming in v1.x" /
+  "light up the" / "arrives once" returns nothing. A `grep -rn "unmounted"
+  src/ tests/` returns **only** the genuine React-lifecycle uses
+  (`privacy/layout.tsx:8`, `lib/auth/context.tsx:14`+`:129`,
+  `use-streaming-queue.test.tsx:390`) and the **S1-owned** dashboard refs
+  (`page.tsx:10`, `HeroStats.tsx:6`) — i.e. **zero** endpoint-drift "unmounted"
+  remains after S1+S5 land: `PillMetaCard.tsx:7`, `auth-roundtrip.test.tsx:209`,
+  and `shell-roundtrip.test.tsx:133` are all swept by this slice. (The acceptance
+  grep must exclude the lifecycle false-positives + the S1-owned refs, not assert
+  a literally-empty result.)
 - `/profile` + `/history` 404/405 still render an inline card (guard preserved) —
   now neutral error copy + honest `*-error` testid; non-404/405 still escalate to
   the boundary.
@@ -1395,6 +1429,23 @@ it only trails S1 to reuse the stale-comment-sweep context (preamble `:72-74`).
 ### Complexity estimate
 
 Small. Two ~6-line branch reframes (copy + rename) + two one-line `error.tsx`
-comment sweeps + two error-state test updates. < 150 lines; one commit.
+comment sweeps + a `PillMetaCard.tsx:7` JSDoc reword + two integration-test
+comment corrections + two error-state test updates. All comment/copy-level (no
+behavior change beyond the testid rename). < 170 lines; one commit.
+
+**Status: final for Slice 5 — approved by planner.** Round-1 auditor findings
+folded: **S5-1 (REAL GAP)** — my grep-completeness claim was wrong; an exhaustive
+`grep "unmounted"` found three more drift comments the closer slice must sweep —
+**`PillMetaCard.tsx:7`** (testee pill-detail; reworded to deferred-*feature*
+framing, not "endpoint unmounted") and two stale test-invariant comments
+(**`auth-roundtrip.test.tsx:209`**, **`shell-roundtrip.test.tsx:133`**, "/v1/me/
+assignments unmounted" → corrected). Added all three to Files/Tests, corrected the
+Grounding bucket-list (in-scope drift vs S1-owned vs genuine React-lifecycle
+false-positives), and **fixed the acceptance grep** to exclude the lifecycle
+uses + S1-owned refs rather than assert a false-clean surface. **S5-2** — DEC-S5-A
+(rename) + DEC-S5-B (keep inline guard) affirmed by the auditor; error≠empty
+preserved. Set-diff round-0→round-1: 2 finding IDs, none dropped. Awaiting the
+auditor's "Slice 5 approved" + final-marker — after which the **global
+all-slices** planner marker lands to close the plan.
 
 ---
