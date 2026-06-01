@@ -1448,4 +1448,19 @@ preserved. Set-diff round-0→round-1: 2 finding IDs, none dropped. Awaiting the
 auditor's "Slice 5 approved" + final-marker — after which the **global
 all-slices** planner marker lands to close the plan.
 
+**Status: final for Slice 5 — approved by auditor.** Both round-1 findings
+resolved and re-verified at source against `2b2a13b`. **S5-1 (REAL GAP — the
+closer's catch):** the grep-completeness claim missed three "unmounted"
+drift comments on the testee surface — now swept: `PillMetaCard.tsx:7`
+(reworded to deferred-*feature* framing, not "endpoint unmounted"; comment-only,
+the §7 catalogue overlay stays a deferred feature) + `auth-roundtrip.test.tsx:209`
++ `shell-roundtrip.test.tsx:133` (stale "/v1/me/assignments unmounted" test
+comments corrected), with the grounding re-bucketed (in-scope drift vs S1-owned
+vs genuine React-lifecycle false-positives) and the acceptance grep fixed to
+exclude lifecycle/S1-owned refs. So workstream **acceptance #4** (no testee-facing
+copy claims a live endpoint is unbuilt) actually holds after S1+S5. **S5-2:**
+DEC-S5-A (rename to honest `loadError`/`*-error`) + DEC-S5-B (keep inline 404/405
+guard) affirmed; error≠empty preserved. Set-diff: 2 finding IDs, none dropped.
+No workflow-rule violations. Slice 5 sealed — **all five slices now sealed.**
+
 ---
