@@ -773,6 +773,15 @@ Competency · History`.
   (`attempts.py:2137`, "Newest submission first, tie-break by id" — verified by
   the auditor during Slice 1), so `attempts.data?.data?.[0]` is the most-recent
   submitted attempt; its `attempt_id` (`api.d.ts:1828`) is the redirect key.
+- **Cache-staleness (load-bearing for DEC-S3-A):** the `me/attempts` **list** is
+  **never invalidated on submit** — verified against `main`: every attempt-flow
+  `invalidateQueries` targets `attemptQueryKeys.detail(attemptId)` only
+  (`GradingOverlay.tsx:125`, `FrozenRunner.tsx:201`,
+  `StreamingRunner.tsx:238/258/290`, `use-streaming-queue.ts:187/198/215`); there
+  is **no** `invalidateQueries` on `meQueryKeys.attempts()` anywhere in `src/`.
+  With `staleTime: 30s`, a warm capped-list entry is stale-after-submit — which
+  forces the `(1)` + mount-fresh-gate choice in DEC-S3-A (the redirect must read
+  the true latest, not a cached `data[0]`).
 - **Client-redirect idiom:** `useRouter().replace(...)` from `next/navigation` —
   the established pattern across the app (`profile/page.tsx:120,126`,
   `catalogue/page.tsx:77`, + 8 admin list pages). Use `replace` (not `push`) so
@@ -790,24 +799,53 @@ Competency · History`.
 
 ### Decisions to surface (recommended option first)
 
-- **DEC-S3-A — attempts-fetch cap for the redirect (implementation; minor).** The
-  redirect needs only the single newest `attempt_id`. The workstream plan's
-  file-list parenthetical said `useMeAttemptsCapped(1)`. **Recommendation: use
-  the *default* cap `useMeAttemptsCapped()` (200), not `(1)`** — it **shares the
-  cache key** `[...attempts(), "capped", {limit:200}]` with the hero (Slice 1)
-  and `/profile` (`profile/page.tsx:81`), so a testee arriving from the
-  dashboard/profile gets an **instant, warm-cache redirect** (no spinner, no
-  redundant fetch); newest-first DESC means `data[0]` is the latest regardless of
-  cap. `(1)` mints a 4th distinct cache entry and always cold-fetches. Trade-off:
-  `(1)` ships a 1-row payload on a cold direct visit vs 200 rows; for a transient
-  redirect the warm-cache win dominates. Flagged because it **diverges from the
-  workstream plan's `(1)` parenthetical** — confirm.
+- **DEC-S3-A — attempts-fetch cap + freshness for the redirect (RULED — resolves
+  auditor S3-1; correctness).** The redirect needs the *genuinely* newest
+  `attempt_id`. **Use `useMeAttemptsCapped(1)` (the workstream plan's original) —
+  NOT the shared default 200 cap.** *(An earlier draft recommended the default
+  cap for warm-cache speed; that was wrong on correctness and is reverted.)* The
+  load-bearing reason: the **`me/attempts` list cache is never invalidated on
+  submit** — verified exhaustively against `main`, every attempt-flow
+  `invalidateQueries` targets `attemptQueryKeys.detail(attemptId)` only
+  (`GradingOverlay.tsx:125`, `FrozenRunner.tsx:201`,
+  `StreamingRunner.tsx:238/258/290`, `use-streaming-queue.ts:187/198/215`), and
+  there is **zero** invalidation of `meQueryKeys.attempts()` anywhere in `src/`.
+  Combined with the AC-CD21 `staleTime: 30s`, the shared `{limit:200}` entry
+  (warmed by the hero / `/profile` *before* the newest attempt existed) would
+  hand the redirect a **stale `data[0]` = the *prior* attempt**, sending "Latest
+  Result" to the wrong result for the whole post-submit window. `(1)` mints a
+  distinct `{limit:1}` key that the hero/profile never warm, so the typical
+  submit→"Latest Result" flow **cold-fetches the true latest**.
+  - **Freshness gate (closes the residual re-visit-within-`staleTime` window).**
+    `(1)` alone is still cached for 30s, so a second `/results` visit *after a
+    further submit* could read a stale `{limit:1}`. So: on `/results` mount,
+    **force a revalidation** (`refetch()` in a mount effect, or a dedicated query
+    instance with `staleTime: 0` / `refetchOnMount: "always"`) and **gate the
+    redirect on the post-mount settled result** (`isSuccess &&
+    isFetchedAfterMount`), not the first cached paint — so even a warm-but-stale
+    `{limit:1}` re-reads the true latest before redirecting. Stays nav-scoped (no
+    runner/submit change).
 - **DEC-S3-B — empty-state copy + CTA (no submitted attempts).** A testee who has
   never submitted has `data.data == []`, so there is nothing to redirect to.
   **Recommendation: render an honest empty state** — heading "No results yet",
   body "Finish a test and your latest result lands here.", and a primary link to
   **Discover** (`/catalogue`) to start one — **not** a redirect, not a fabricated
-  result. Surface the exact copy for confirmation.
+  result. The empty branch is gated `!isPending && !isError` (error ≠ empty, per
+  the Slice-1/2 lessons). Surfaced for **product/spec-author confirmation of the
+  exact wording** (not gating — the empty state exists and is honest regardless).
+- **DEC-S3-C — surfaced cross-cutting (root cause of S3-1; OUT of Slice 3
+  scope).** The underlying defect is that **`meQueryKeys.attempts()` is never
+  invalidated on submit** (see DEC-S3-A). That same stale-list window also yields
+  stale reads on the **hero day-streak** (Slice 1), the **`/profile` sparkline**,
+  and **`/history`** during the `staleTime: 30s` after a submit. The systemic fix
+  is the auditor's option (b) — invalidate `meQueryKeys.attempts()` in the
+  submit/grading flow (`GradingOverlay` / `use-streaming-queue`) — but that
+  **touches the runner**, outside Slice 3's nav-only scope. **Surfaced as a
+  deferred backlog item** (not silently dropped; mirrors the workstream's
+  deferred-gap discipline). Slice 3's own correctness is fully handled by the
+  `(1)` + mount-fresh gate in DEC-S3-A without it; the sealed Slice 1 is **not**
+  reopened (its streak staleness is minor, self-healing within 30s, and covered
+  by this deferred item).
 
 ### Files touched (verified)
 
@@ -822,11 +860,14 @@ Competency · History`.
    - **No `ADMIN_NAV` change** — out of scope; admin nav is FE-8/FE-9-locked.
 2. **`frontend/src/app/(authed)/(testee)/results/page.tsx`** (new) — thin client
    redirect:
-   - `"use client"`; `useMeAttemptsCapped()` (DEC-S3-A) + `useRouter()`.
+   - `"use client"`; `useMeAttemptsCapped(1)` (DEC-S3-A — **not** the shared 200
+     key) + `useRouter()`; force a mount revalidation + gate the redirect on the
+     settled post-mount result (DEC-S3-A freshness gate).
    - `const latest = attempts.data?.data?.[0] ?? null;`
-   - Redirect in an effect: `useEffect(() => { if (latest)
-     router.replace(\`/attempts/${latest.attempt_id}/result\`); }, [latest,
-     router]);`
+   - Redirect only once the mount-fresh fetch settles: `useEffect(() => { if
+     (attempts.isSuccess && attempts.isFetchedAfterMount && latest)
+     router.replace(\`/attempts/${latest.attempt_id}/result\`); }, [...]);` (the
+     `isFetchedAfterMount` guard prevents redirecting on a stale cached paint).
    - **Render states (mirror Slice 1's per-query honesty — error ≠ empty):**
      **loading** (`attempts.isPending`) → centered "Loading your latest
      result…" / skeleton; **has-latest** → render the same skeleton while the
@@ -859,6 +900,13 @@ Competency · History`.
    - **error → honest error, no redirect:** `setMockMeAttemptsStatus(500)` →
      assert the error copy, `replace` not called, and **no** "No results yet"
      copy (error ≠ empty).
+   - **freshness → redirects to the *true* latest, not a stale cached entry
+     (guards DEC-S3-A / auditor S3-1):** pre-seed the QueryClient with a stale
+     attempts entry whose `data[0]` is an *older* attempt, then mount `/results`
+     with MSW returning a *newer* `data[0]`; assert `replace` targets the
+     **newer** attempt's result (the mount-fresh refetch + `isFetchedAfterMount`
+     gate won, not the stale paint). This is the regression guard for the
+     redirect-to-prior-result bug.
    - Await a barrier before asserting `replace` (the redirect fires post-fetch in
      an effect) — mirror the Slice-2 S2-1 lesson (don't assert before paint).
 
@@ -893,9 +941,11 @@ Competency · History`.
 - **Independent slice** — S3 touches neither `page.tsx` nor `dashboard.test.tsx`;
   it does **not** participate in the S1→S2→S4 `page.tsx` serialization (preamble
   `:71`). No intra-PR upstream dependency; the only external gate is the D3 PR.
-- **`useMeAttemptsCapped()` cap** — pass **no** argument (default 200) per
-  DEC-S3-A to share the cache; passing `(1)` silently creates a separate,
-  always-cold entry.
+- **`useMeAttemptsCapped(1)` — do NOT reuse the shared 200 key** (DEC-S3-A): the
+  `me/attempts` list is never invalidated on submit, so the warm `{limit:200}`
+  entry is stale-after-submit and would redirect to the *prior* result. Use the
+  distinct `{limit:1}` key **and** the mount-fresh redirect gate
+  (`isFetchedAfterMount`) so "Latest Result" is always the true latest.
 - **`rail-badge-attempt` is gone** — grep confirms it's referenced only at
   `Rail.test.tsx:43` (updated above); no other test/reference breaks.
 
@@ -925,7 +975,22 @@ Competency · History`.
 ### Complexity estimate
 
 Small–medium. One nav-array line removed + a header-comment sweep in `Rail.tsx`;
-one new ~50-line redirect page; one Rail-test update + one new redirect test
-(~90 lines). Well under 250 lines; one commit.
+one new ~55-line redirect page; one Rail-test update + one new redirect test
+(~110 lines). Well under 250 lines; one commit.
+
+**Status: final for Slice 3 — approved by planner.** Round-1 auditor findings
+folded: **S3-1 (REAL GAP — correctness)** — my DEC-S3-A default-200 recommendation
+was wrong; the `me/attempts` list is never invalidated on submit (verified: all
+attempt-flow `invalidateQueries` hit `attemptQueryKeys.detail` only, zero on
+`meQueryKeys.attempts()`), so the warm 200-cap cache is stale-after-submit and
+would redirect "Latest Result" to the *prior* result. **Reverted DEC-S3-A to
+`useMeAttemptsCapped(1)` + a mount-fresh redirect gate** (`isFetchedAfterMount`),
+added a freshness regression test, and added the cache-staleness grounding +
+the root-cause carry-forward (**DEC-S3-C**: invalidate `meQueryKeys.attempts()`
+on submit — also fixes hero-streak/`/profile`/`/history` staleness — deferred as
+out-of-nav-scope, not silently dropped; sealed Slice 1 not reopened).
+**S3-2 (worth-knowing)** — DEC-S3-B empty-copy stays surfaced for product
+confirmation (not gating). Set-diff round-0→round-1: 2 finding IDs, none dropped.
+Awaiting the auditor's per-slice "Slice 3 approved" before Slice 4 is pushed.
 
 ---
