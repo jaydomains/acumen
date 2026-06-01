@@ -1227,4 +1227,19 @@ product/design confirmation (full-width vs max-width; mobile unchanged, no
 correctness/test impact). Set-diff round-0→round-1: 2 finding IDs, none dropped.
 Awaiting the auditor's per-slice "Slice 4 approved" before Slice 5 is pushed.
 
+**Status: final for Slice 4 — approved by auditor.** Both round-1 findings (both
+worth-knowing, no gating defect) resolved and re-verified at source against
+`265b0df`: **S4-1** — DEC-S4-A's cumulative-D5-scope note added (the one combined
+FE-3 PR now carries the original ruling + DEC-S2-A + DEC-S4-A; S1+S2+S4 execution
+all gate on it; spec author confirms the cumulative expansion); **S4-2** —
+DEC-S4-B wide-viewport appearance surfaced for product/design confirmation.
+Grounding verified true against `main`: the **two same-named `AdaptiveLoopCard`
+components** are distinct (delete `components/dashboard/AdaptiveLoopCard.tsx`
+Pascal; keep `@/components/result/adaptive-loop-card` kebab, `result/page.tsx:30/144`)
+— the critical wrong-card-deletion check; deletion surface fully bounded;
+`sonner`-mock removal safe (no other dashboard component uses `toast`); DEC-S4-A
+mirror-sweep complete with AC-D6 correctly retained (not retired); test removals
+correct-by-construction. Set-diff: 2 finding IDs, none dropped. No workflow-rule
+violations. Slice 4 sealed.
+
 ---
