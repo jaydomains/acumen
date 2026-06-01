@@ -60,7 +60,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       aria-label={`Switch to ${next} theme`}
       data-theme-current={theme}
       className={cn(
-        "inline-flex items-center justify-center w-8 h-8",
+        "inline-flex items-center justify-center w-9 h-9",
         "text-ink-2 hover:text-ink transition-colors",
         className,
       )}

@@ -8,7 +8,7 @@ export const AuthSkeleton = () => (
     aria-busy="true"
     aria-live="polite"
   >
-    <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
+    <div className="h-8 w-8 animate-pulse rounded-full bg-bg-sunk" />
     <span className="sr-only">Loading…</span>
   </div>
 );

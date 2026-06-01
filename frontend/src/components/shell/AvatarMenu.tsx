@@ -71,7 +71,7 @@ export function AvatarMenu({ className }: AvatarMenuProps) {
       <div
         data-testid="avatar-skeleton"
         className={cn(
-          "w-8 h-8 rounded-full bg-bg-deep border border-line shrink-0",
+          "w-9 h-9 rounded-full bg-bg-deep border border-line shrink-0",
           className,
         )}
         aria-hidden="true"
@@ -87,7 +87,7 @@ export function AvatarMenu({ className }: AvatarMenuProps) {
         disabled={loggingOut}
         data-state-logging-out={loggingOut || undefined}
         className={cn(
-          "w-8 h-8 rounded-full bg-accent text-bg-raised",
+          "w-9 h-9 rounded-full bg-accent text-bg-raised",
           "grid place-items-center font-serif text-[14px]",
           "shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
           "disabled:opacity-60 disabled:cursor-not-allowed",
