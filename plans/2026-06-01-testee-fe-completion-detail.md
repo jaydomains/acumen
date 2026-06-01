@@ -502,3 +502,185 @@ IDs, none dropped. No workflow-rule violations (PR draft; slices via commits not
 force-push; wake-logs alongside actions; Slice 2 correctly held). Slice 1 sealed.
 
 ---
+
+## Slice 2 — Remove Today's Reading (fabricated-editorial widget)
+
+**Implements:** removes the `Today's Reading` widget (workstream G2) from the
+primary dashboard surface per ruling **D2 = remove (option (a))** — on-record
+artifact [`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727).
+Closes smoke-test issue #2. This is the only dashboard surface that asserts
+**fabricated competence claims as live data**; relabeling (D2 option (b)) was
+ruled out, so this slice is a clean removal, not a reframe.
+
+### Grounding (verified against `main`)
+
+- **What it is.** `frontend/src/data/readings.tsx:27-62` is a 3-entry hardcoded
+  `READINGS` array of horoscope/"fortune" copy that asserts *specific, false*
+  facts about the testee's progress — *"Antifouling is dim today — you've
+  slipped half a band"*, *"Inspection Instruments … expert band, 71 attempts"*.
+  `pickReading()` (`readings.tsx:76-79`) is a pure UTC-day modulo; the file
+  header (`readings.tsx:11`) states **"frontend-only — no API call."** This is
+  worse than a neutral placeholder: it fabricates competence data on the primary
+  surface (workstream acceptance #3/#4).
+- **Mount.** `frontend/src/app/(authed)/(testee)/page.tsx:22` (import) + `:45`
+  (`<TodaysReading />`) — rendered full-width *between* `<HeroStats/>` and the
+  two-column grid `<div>`. The card carries `className="my-6 …"`
+  (`TodaysReading.tsx:22`) — see the vertical-rhythm note under Files touched.
+- **Component.** `frontend/src/components/dashboard/TodaysReading.tsx` (whole
+  file) is the sole non-test consumer of `pickReading` / `@/data/readings`.
+- **Deletion surface is fully bounded** (repo-wide `git grep`, excluding
+  `design-reference/prototype`): the only `@/data/readings` consumer is
+  `TodaysReading.tsx:15`; the only `<TodaysReading/>` consumer is `page.tsx`;
+  the only tests are `frontend/tests/data/readings.test.ts` (unit) + one
+  assertion in `frontend/tests/pages/dashboard.test.tsx:86-90`. **No feature
+  flag** gates it (`frontend/src/lib/flags.ts` has no readings flag — the only
+  "Reading" hit is a prose comment at `:4`); **no storybook/story** file.
+- **Not anchored — no AC retires.** FE-3 §E
+  (`fe-specs/FE-3-content.md:108`): *"Today's Reading … **Not anchored** —
+  frontend-only widget per FE_CHECKLIST FE-3 row."* So removal retires **no**
+  `DECISIONS.md` AC (contrast D7's nav-anchor question). The *"AC-D8 framing"*
+  string in the `readings.tsx` / `TodaysReading.tsx` header comments is loose
+  and incorrect — AC-D8 is *self-directed pill discovery* (the catalogue), not
+  editorial readings; nothing canonical binds this widget.
+- **`daysSinceUtcEpoch` is re-homed by Slice 1 (cross-slice).** `readings.tsx`
+  also exports `daysSinceUtcEpoch` (`:67-70`), used today **only** by
+  `pickReading` (same file) and `readings.test.ts`. Slice 1's
+  `derive-streak.ts` deliberately **inlines** its own
+  `Math.floor(ms / 86_400_000)` rather than importing this primitive (Slice 1
+  Files-touched note 2, `:292-296`), precisely so that deleting `readings.tsx`
+  here strands no import. Verified: after Slice 1 lands, **no** production file
+  imports `daysSinceUtcEpoch`.
+
+### Decisions to surface to the spec author (do not silently resolve)
+
+**DEC-S2-A — FE-3 spec-amendment routing for the Today's-Reading removal
+(execution-gating; mirrors D5).** Removing the widget makes the FE-3 spec text
+describe a v1 surface that no longer exists — drift across **§B.1** (`:22`
+dashboard-widget list), **§C.1** (`:93` component spec — which *additionally*
+mis-cites the path as `components/dashboard/readings.tsx`; the actual file is
+`data/readings.tsx`), **§E** (`:108` anchor-table row), **§F Gherkin**
+(`:147-158`, *two* scenarios: day-stability + cross-day rotation), **§H(a)**
+initial-load (`:126`) + **§H render-states** (`:136`), the **§notes** (`:184`),
+and the test-plan refs (`:594`, `:670`, `:810`). Per the D5/D3 posture —
+spec/drift corrections are authored by the spec author, not the execution
+session (`SESSION_START.md:80-85`) — this removal must ride a spec amendment.
+
+- **(a) Fold into the existing D5 FE-3 amendment PR (recommended).** It is the
+  *same* file (`fe-specs/FE-3-content.md`) the spec author already opens for the
+  HeroStats/competence drift; extend that PR's scope to also strike the
+  Today's-Reading references. One FE-3 PR fixes all FE-3 drift, and **Slice 2
+  execution then gates on the same PR as Slice 1** — no new external dependency.
+- **(b) Separate standalone FE-3 doc-only PR.** Mirrors the D3 FE-2-shell PR
+  pattern, but a *second* PR touching `FE-3-content.md` concurrently with the D5
+  PR invites merge-order coupling / conflicts on the same file.
+- **(c) Handover note only (D7-style).** The widget is "Not anchored" (§E
+  `:108`) so nothing in `DECISIONS.md` breaks; but the FE-3 drift here is
+  materially larger than the nav case (8+ refs incl. two Gherkin scenarios) — a
+  handover note leaves the canonical spec describing a shipped-then-removed
+  surface. Not recommended.
+
+**Recommendation: (a).** Note this **expands the D5 ruling's stated amendment
+scope** (comment `4596569727` lists only `:105` / `:92` / `:111`); flagged here
+for the spec author to confirm the broadened scope. Detail-planning proceeds now
+regardless — the removal direction is forced by ruling D2.
+
+### Files touched (verified)
+
+1. **`frontend/src/app/(authed)/(testee)/page.tsx`** — remove the
+   `import { TodaysReading } from "@/components/dashboard/TodaysReading";` line
+   (`:22`) and the `<TodaysReading />` mount (`:45`). Builds on the **Slice-1
+   version** of this file (S1 rewrote the `:9-12` docstring and explicitly left
+   the TodaysReading mount to S2 — Slice 1 note `:310-311`). After removal,
+   `<HeroStats/>` is followed directly by the two-column grid `<div>`.
+   - **Vertical rhythm:** the removed `<Card>` carried `my-6`
+     (`TodaysReading.tsx:22`), which supplied the gap between the hero and the
+     grid. The grid `<div>` has internal `gap-6` but no top margin. Confirm the
+     layout still breathes; if a visible gap regression appears, add the spacing
+     to the existing grid wrapper — **keep this a deletion, not a re-layout** (the
+     two-column → one-column collapse is S4's concern when `AdaptiveLoopCard` goes).
+2. **`frontend/src/components/dashboard/TodaysReading.tsx`** — **delete** (whole
+   file). Sole `<TodaysReading/>` consumer (`page.tsx`) is updated above.
+3. **`frontend/src/data/readings.tsx`** — **delete** (whole file). Sole non-test
+   consumer was `TodaysReading.tsx` (deleted above); `daysSinceUtcEpoch` is
+   re-homed in Slice 1 (see Grounding), so no import is stranded.
+
+### Tests (paired in the same commit)
+
+1. **`frontend/tests/data/readings.test.ts`** — **delete** (whole file). This is
+   **not** a stub-drop to dodge a failure (cf. auditor F4): the module under test
+   (`READINGS` / `pickReading` / `daysSinceUtcEpoch`) is removed by ruling D2, so
+   the test has no subject to import. Its substantive coverage was the readings
+   *rotation* (day-stability + cross-day cycling), which no longer exists; the
+   reusable **UTC-day-math primitive** gains fresh, equivalent coverage in Slice
+   1's `frontend/src/lib/competence/derive-streak.test.ts` (the streak helper's
+   own day-bucketing tests). **Net: no live behavior loses coverage** — only the
+   removed feature's tests go.
+2. **`frontend/tests/pages/dashboard.test.tsx`** — edit the
+   `"renders TodaysReading + AssignmentsCard + AdaptiveLoopCard"` test
+   (`:86-90`): drop the `todays-reading` `findByTestId` assertion (`:88`), rename
+   the test to `"renders AssignmentsCard + AdaptiveLoopCard"`, and **add a
+   negative assertion** —
+   `expect(screen.queryByTestId("todays-reading")).not.toBeInTheDocument();` —
+   so the removal is asserted, not merely un-asserted. Builds on the **Slice-1
+   version** of this file (S1 rewrote the hero-request invariant + the "hero
+   placeholders" test; this card-presence test was untouched by S1). **Rebase
+   note:** S4 will later drop the `adaptive-loop-card` assertion from this *same*
+   test — leave that to S4 (preamble `:75`).
+
+### Edge cases & corner cases
+
+- **Hydration.** TodaysReading was a deterministic-by-day pure render with no
+  data dependency; removing it cannot introduce an SSR/CSR mismatch (it removes
+  a render, adds none).
+- **No async states.** The widget had no loading/empty/error states, so there is
+  nothing to migrate (contrast Slice 1's render-state matrix).
+- **Unused-import / undefined-component.** Removing the mount without the import
+  (or vice-versa) is a hard `tsc`/`eslint` error; both must go in the same edit —
+  `pnpm typecheck` + the negative test are the backstops.
+
+### Gotchas
+
+- **Delete order / dangling imports.** Remove `TodaysReading.tsx` *and* its
+  `page.tsx` mount in the same commit; only then is `readings.tsx` import-free
+  and deletable. An orphaned import of a deleted module is a hard TS error —
+  `pnpm typecheck` catches it.
+- **Cross-slice ordering (S1 → S2).** Slice 1 lands first and re-homes
+  `daysSinceUtcEpoch` (inlined in `derive-streak.ts`, `:292-296`). Even if order
+  slipped, S1's helper inlines its own copy (no import of `readings.tsx`), so the
+  delete is safe either way; the planned order is S1 → S2 (preamble `:70`).
+- **`dashboard.test.tsx` is shared by S1/S2/S4** (preamble `:75`): S2 touches
+  *only* the card-presence test's `todays-reading` line — do not disturb S1's
+  hero-request invariant or S4's adaptive-loop assertion.
+- **Spec gate.** Slice 2 *execution* waits for the FE-3 amendment striking the
+  Today's-Reading spec text (DEC-S2-A; recommended = the D5 FE-3 PR with extended
+  scope). Detail-planning proceeds now (removal forced by D2).
+
+### Acceptance assertions (executing session verifies)
+
+- The dashboard renders no `todays-reading` widget and no fabricated-competence
+  copy; `queryByTestId("todays-reading")` is `null`.
+- `TodaysReading.tsx`, `data/readings.tsx`, and `tests/data/readings.test.ts` no
+  longer exist; a repo-wide grep for `TodaysReading` / `pickReading` / `READINGS`
+  / `@/data/readings` returns only `design-reference/prototype` hits.
+- `pnpm test` green (incl. the edited `dashboard.test.tsx`), `pnpm typecheck`
+  green, `pnpm lint` clean (no unused imports), Playwright unaffected.
+- No live behavior lost coverage: the UTC-day-math primitive is covered by
+  `derive-streak.test.ts` (Slice 1).
+
+### Dependencies
+
+- **External (execution-gating):** the FE-3 spec amendment striking the
+  Today's-Reading references (DEC-S2-A — recommended: fold into the D5 FE-3 PR).
+- **Intra-PR:** **upstream** S1 (re-homes `daysSinceUtcEpoch`; rewrites
+  `dashboard.test.tsx` + the `page.tsx` docstring first). **Downstream** S4
+  (further edits `page.tsx` — grid collapse — and drops the adaptive-loop
+  assertion from `dashboard.test.tsx`). Serialize **S1 → S2 → S4** (preamble
+  `:70-77`).
+
+### Complexity estimate
+
+Small. Two source-file deletions + one test-file deletion + a 2-line `page.tsx`
+edit + a ~3-line `dashboard.test.tsx` edit. Net mostly deletions (~150 lines
+removed, ~3 added); one commit.
+
+---
