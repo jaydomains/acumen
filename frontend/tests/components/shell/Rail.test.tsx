@@ -39,8 +39,11 @@ describe("Rail", () => {
   });
 
   it("hides the badge chip when count is 0 (default)", () => {
-    render(<Rail role="testee" activeRoute="/" />);
-    expect(screen.queryByTestId("rail-badge-attempt")).not.toBeInTheDocument();
+    // The only count-carrying testee item (In Progress) was removed in v1, so
+    // the chip-hidden-at-0 behavior is now covered via the admin review item
+    // (count: 0) — same guard, a still-present count item.
+    render(<Rail role="admin" activeRoute="/ops" />);
+    expect(screen.queryByTestId("rail-badge-review")).not.toBeInTheDocument();
   });
 
   it("renders the brand block with the testee tag", () => {
@@ -73,15 +76,17 @@ describe("Rail", () => {
     expect(aside.className).not.toContain("sticky");
   });
 
-  it("locks the testee nav order + hrefs", () => {
+  it("locks the testee nav order + hrefs (v1 model — In Progress removed, D3)", () => {
     expect(TESTEE_NAV.map((n) => n.href)).toEqual([
       "/",
-      "/attempts",
       "/catalogue",
       "/results",
       "/profile",
       "/history",
     ]);
+    // No dead In-Progress item.
+    expect(TESTEE_NAV.map((n) => n.href)).not.toContain("/attempts");
+    expect(TESTEE_NAV.map((n) => n.label)).not.toContain("In Progress");
   });
 
   // 11-item ADMIN_NAV locked in FE-8 catalogue spec §C.2

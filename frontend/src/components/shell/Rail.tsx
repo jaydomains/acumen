@@ -4,13 +4,14 @@
  * or `/privacy`.
  *
  * The nav arrays (TESTEE_NAV / ADMIN_NAV) lock here per FE-2-shell.md §B.2.
- * Several href targets are placeholders that will 404 until later phases
- * land them — the Rail does not check route existence; it lists what the
- * role can navigate to.
+ * Every TESTEE_NAV target resolves to a real route (the v1 nav model — D3
+ * ruling — drops the dead In-Progress item; "Latest Result" is a thin
+ * redirect page to the most-recent submitted attempt's result). The Rail
+ * does not check route existence; it lists what the role can navigate to.
  *
- * Active-route matching is exact equality per spec edge case. Badge
- * counts default 0 (chip hidden); FE-4 wires in-progress, FE-6 wires
- * review queue, FE-9 wires engagement.
+ * Active-route matching is exact equality per spec edge case. Badge counts
+ * default 0 (chip hidden); admin review (FE-6) + engagement (FE-9) carry
+ * counts.
  */
 
 import Link from "next/link";
@@ -30,7 +31,6 @@ export type NavItem = {
 
 export const TESTEE_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/" },
-  { id: "attempt", label: "In Progress", icon: "attempt", href: "/attempts", count: 0 },
   { id: "catalogue", label: "Discover", icon: "compass", href: "/catalogue" },
   { id: "results", label: "Latest Result", icon: "graph", href: "/results" },
   { id: "profile", label: "Competency", icon: "constellation", href: "/profile" },
