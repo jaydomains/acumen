@@ -33,8 +33,9 @@ const FIXTURE_TESTEE = {
 
 /**
  * Seed auth + intercept the calls the (testee) shell makes on mount so
- * the Gate resolves to a logged-in testee and the dashboard renders its
- * drift-mode placeholders (only `GET /v1/attempts` is live).
+ * the Gate resolves to a logged-in testee and the dashboard renders. The
+ * catch-all `/v1/` route returns benign bodies for the live `/v1/me/*` +
+ * `/v1/attempts` calls — this spec exercises the shell/nav, not the data.
  */
 async function mockAuthedTestee(page: Page) {
   await page.addInitScript(() => {
