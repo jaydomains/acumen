@@ -97,7 +97,11 @@ export function HeroStats({ displayName, dateLabel }: HeroStatsProps) {
         </h1>
       </div>
       <div className="flex flex-wrap items-baseline gap-8">
-        <Stat value={overallValue} label="OVERALL COMPETENCE" hint={overallHint || undefined} />
+        <Stat
+          value={overallValue}
+          label="OVERALL COMPETENCE"
+          hint={overallHint || undefined}
+        />
         <Stat value={workingPlusValue} label="PILLS AT WORKING+" />
         <Stat value={streakValue} label="DAY STREAK" tone="accent" />
       </div>

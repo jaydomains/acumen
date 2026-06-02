@@ -44,14 +44,20 @@ describe("deriveDayStreak", () => {
 
   it("collapses multiple attempts on the same UTC day to one", () => {
     expect(
-      deriveDayStreak([at("2026-06-02", "08:00:00Z"), at("2026-06-02", "20:00:00Z")], NOW),
+      deriveDayStreak(
+        [at("2026-06-02", "08:00:00Z"), at("2026-06-02", "20:00:00Z")],
+        NOW,
+      ),
     ).toBe(1);
   });
 
   it("treats 23:00Z and 01:00Z-next-day as two distinct UTC days", () => {
     // 2026-06-01T23:00Z (yesterday) + 2026-06-02T01:00Z (today) → streak 2.
     expect(
-      deriveDayStreak([at("2026-06-01", "23:00:00Z"), at("2026-06-02", "01:00:00Z")], NOW),
+      deriveDayStreak(
+        [at("2026-06-01", "23:00:00Z"), at("2026-06-02", "01:00:00Z")],
+        NOW,
+      ),
     ).toBe(2);
   });
 
