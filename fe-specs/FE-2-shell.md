@@ -6,6 +6,20 @@
 > **Anchors:** AC-D9 (band stamp + `competence_estimate` float), AC-D20 (anchor calibration confidence), AC-CD19 (FE stack), AC-CD20 (routing/guards/error/loading), AC-CD23 (theme + tokens + primitives — amendment PR pending, see §H), AC-CD24 (image-stub deferral).
 >
 > This spec follows the FE-1 template established in `fe-specs/FE-1-auth.md` per §G of that file: Context → A inventory → B per-page/per-capability 8-section → C cross-page → D tests → E placeholders → F scope-bleed → G template propagation → H drift roll-up. **One declared variance:** §B is per-capability rather than per-page because FE-2 is primitive-heavy (only six of eighteen rows are page-shaped). The 8-section sub-template adapts (§B preamble). The variance is a precedent for any future primitive-heavy FE-N phases.
+>
+> **Amendment (2026-06-02 — testee-FE-completion workstream).** The `TESTEE_NAV`
+> contract (§B.2 `:323`) and its Gherkin assertion (§B.2 `:344`) are amended in
+> place to the **v1 nav model** ruled in **D3** (PR #84 plan; spec-author ruling
+> PR #85 comment
+> [`4596569727`](https://github.com/jaydomains/acumen/pull/85#issuecomment-4596569727)):
+> `Dashboard · Discover · Latest Result · Competency · History`. The In-Progress
+> (`/attempts`) item is **removed for v1** (resume is handled by the dashboard
+> `ResumePrompt`; no in-progress list endpoint exists), and **Latest Result**
+> becomes a thin redirect page to the most-recent submitted attempt's result
+> (Slice 3). Scope is limited to the nav contract `:323` + the test assertion
+> `:344` per the D3 ruling; the FE-2-build-time snapshot notes (`:326`
+> "404 until later phases", `:337` "FE-4 sets in-progress" badge) are left as-is —
+> they describe the historical FE-2 build state, not the v1 nav contract.
 
 ---
 
@@ -320,7 +334,7 @@ Token bindings: `--bg-sunk` (rail bg), `--line` (rail right border), `--ink` / `
 
 Navigation arrays are role-derived (lock from prototype's `TESTEE_NAV` and `ADMIN_NAV`):
 
-- `TESTEE_NAV`: Dashboard (`/`), In Progress (attempt route from FE-4 — placeholder anchor for FE-2), Discover (catalogue — FE-3 anchor), Latest Result (results — FE-6 anchor), Competency (profile — FE-7 anchor), History (FE-7 anchor).
+- `TESTEE_NAV` (**v1 model**, amended per the D3 ruling — see the amendment banner): Dashboard (`/`), Discover (catalogue — FE-3 anchor), Latest Result (`/results` — a thin redirect page to the most-recent submitted attempt's result, per Slice 3), Competency (profile — FE-7 anchor), History (FE-7 anchor). The original **In-Progress (`/attempts`)** item is **removed for v1** — resume is handled by the dashboard `ResumePrompt` and no in-progress list endpoint exists.
 - `ADMIN_NAV`: Operations (`/ops`), Grade Review (FE-6), Engagement (FE-9), Catalogue (FE-3 admin view — FE-8), Users & Groups (FE-8), AI Cost (FE-9), Loops (FE-9).
 
 In FE-2 the rail items render with their target hrefs but several targets are placeholder routes that 404 until later phases land them. The Rail itself does not check route existence — it lists what the role can navigate to.
@@ -341,7 +355,8 @@ In FE-2 the rail items render with their target hrefs but several targets are pl
 ```
 Scenario: Rail renders the testee nav for a testee
   Given <Rail role="testee" activeRoute="/" />
-  Then the rendered nav contains "Dashboard", "In Progress", "Discover", "Latest Result", "Competency", "History"
+  Then the rendered nav contains "Dashboard", "Discover", "Latest Result", "Competency", "History"
+  And no "In Progress" item appears (removed for v1 per the D3 ruling)
   And no admin-only labels (e.g., "Operations") appear
 
 Scenario: Rail renders the admin nav for an admin
