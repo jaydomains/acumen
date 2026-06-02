@@ -1,14 +1,10 @@
 /**
  * Dashboard integration test (FE-3 §B.1, §B.6).
  *
- * Critical invariant: NO request to `/v1/me/competence` or
- * `/v1/me/assignments` fires from this page in v1 — those endpoints
- * are absent and the corresponding widgets render drift placeholders.
- * MSW is configured with `onUnhandledRequest: "error"` (tests/setup.ts)
- * so any spurious request to those endpoints would fail loudly.
- *
- * `RecentAttemptsCard` now consumes `GET /v1/attempts` live (FE-7); the
- * MSW `meAttemptsListHandler` resolves it on every dashboard render.
+ * The `/v1/me/*` endpoints are LIVE: this page fires `/v1/me/competence`
+ * (HeroStats), `/v1/me/assignments` (AssignmentsCard), and `/v1/attempts`
+ * (RecentAttemptsCard + the hero day-streak). MSW resolves all three on every
+ * dashboard render; the hero renders real derived values, not placeholders.
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -16,7 +12,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { setMockUser, resetMockAuthState } from "@/mocks/handlers";
+import {
+  setMockUser,
+  resetMockAuthState,
+  resetMockMeCompetence,
+  resetMockMeAttempts,
+} from "@/mocks/handlers";
 import { AuthProvider } from "@/lib/auth/context";
 import { setAccessToken, clearTokens } from "@/lib/auth/storage";
 import type { UserResponse } from "@/lib/api/types";
@@ -73,6 +74,8 @@ afterEach(() => {
   cleanup();
   clearTokens();
   resetMockAuthState();
+  resetMockMeCompetence();
+  resetMockMeAttempts();
 });
 
 describe("Testee dashboard page", () => {
@@ -96,14 +99,15 @@ describe("Testee dashboard page", () => {
     expect(await screen.findAllByTestId("recent-attempts-row")).toHaveLength(5);
   });
 
-  it("hero placeholders render '—' (no /v1/me/competence fires under onUnhandledRequest=error)", () => {
-    // The mere fact that this test runs without MSW erroring confirms
-    // no /v1/me/* request fired (the global setup uses onUnhandledRequest:
-    // "error"). Belt-and-braces: assert three placeholder values.
+  it("hero renders live competence values (no v1.x-pending placeholder)", async () => {
     render(mountTree(<TesteeDashboardPage />));
-    const values = screen.getAllByTestId("stat-value");
-    expect(values).toHaveLength(3);
-    values.forEach((v) => expect(v).toHaveTextContent("—"));
+    // Default competence mock = 6 pills, 5 at working+ → "5/6"; overall mean is
+    // a real 1dp value, never "—" or pending copy.
+    expect(await screen.findByText("5/6")).toBeInTheDocument();
+    const values = screen.getAllByTestId("stat-value").map((v) => v.textContent);
+    expect(values).not.toContain("—");
+    expect(values.some((v) => v && /^\d\.\d$/.test(v))).toBe(true); // overall, 1dp
+    expect(screen.queryByText(/v1\.x|pending/i)).toBeNull();
   });
 
   it("adaptive-loop CTAs toast (placeholder until v1.x wiring)", async () => {
