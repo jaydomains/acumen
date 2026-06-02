@@ -86,11 +86,13 @@ describe("Testee dashboard page", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders TodaysReading + AssignmentsCard + AdaptiveLoopCard", async () => {
+  it("renders AssignmentsCard + AdaptiveLoopCard", async () => {
     render(mountTree(<TesteeDashboardPage />));
-    expect(await screen.findByTestId("todays-reading")).toBeInTheDocument();
-    expect(screen.getByTestId("assignments-card")).toBeInTheDocument();
+    // Awaited barrier first (the page paints behind async auth), then the
+    // negative query — otherwise it would run pre-paint and pass vacuously.
+    expect(await screen.findByTestId("assignments-card")).toBeInTheDocument();
     expect(screen.getByTestId("adaptive-loop-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("todays-reading")).not.toBeInTheDocument();
   });
 
   it("renders RecentAttemptsCard with attempts from the wire (FE-7 flag-flip)", async () => {
