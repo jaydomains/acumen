@@ -2,7 +2,7 @@
  * Profile-page Slice 1 integration tests (FE-7 §B.1 §5/§6).
  *
  * Covers the four top-level state branches that ship in Slice 1:
- * loading skeleton, endpoint_absent placeholder, empty fallback, and
+ * loading skeleton, 404/405 load-error card, empty fallback, and
  * the happy-state slots that host the Slice 2/3 components.
  */
 
@@ -219,13 +219,17 @@ describe("Profile page · happy state", () => {
   });
 });
 
-describe("Profile page · endpoint_absent", () => {
-  it("renders the drift-placeholder card and hides the constellation slots on 404", async () => {
+describe("Profile page · load error", () => {
+  it("renders a neutral error card (not 'coming in v1.x') and hides the constellation slots on 404", async () => {
     setMockMeCompetenceStatus(404);
     render(mountTree(<ProfilePage />));
-    await waitFor(() =>
-      expect(screen.getByTestId("profile-endpoint-absent")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("profile-error")).toBeInTheDocument());
+    expect(
+      screen.getByText(/couldn't load your competence profile/i),
+    ).toBeInTheDocument();
+    // The false "endpoint unbuilt" copy is gone.
+    expect(screen.queryByText(/coming in v1\.x/i)).toBeNull();
+    expect(screen.queryByText(/light up/i)).toBeNull();
     expect(screen.queryByTestId("constellation-svg")).toBeNull();
     expect(screen.queryByTestId("view-toggle")).toBeNull();
     expect(routerReplace).not.toHaveBeenCalled();

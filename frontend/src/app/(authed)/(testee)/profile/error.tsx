@@ -4,7 +4,7 @@
  * Profile-page Pattern C boundary (FE-7 §C.6).
  *
  * Fires on a non-404/405 failure of `GET /v1/me/competence` (the
- * page's `endpoint_absent` branch intercepts 404/405 itself). Mirrors
+ * page's 404/405 load-error branch intercepts those itself). Mirrors
  * the FE-6 result-page boundary — same BoundaryFrame, "Try again" /
  * "Go to dashboard" actions.
  */

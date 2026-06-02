@@ -125,12 +125,12 @@ export default function TesteeProfilePage() {
   const navigateToPill = (pillId: string) =>
     router.replace(`?pill=${encodeURIComponent(pillId)}`, { scroll: false });
 
-  // Endpoint-absent placeholder branch — drift-mode for 404/405 only;
-  // any other failure escalates to the Pattern C boundary.
+  // Load-error branch — an inline neutral card for a 404/405 on the (live)
+  // competence endpoint; any other failure escalates to the Pattern C boundary.
   const apiError = competence.error instanceof ApiError ? competence.error : null;
-  const endpointAbsent =
+  const loadError =
     apiError !== null && (apiError.status === 404 || apiError.status === 405);
-  if (competence.error && !endpointAbsent) {
+  if (competence.error && !loadError) {
     throw competence.error;
   }
 
@@ -138,13 +138,13 @@ export default function TesteeProfilePage() {
     return <ProfileSkeleton />;
   }
 
-  if (endpointAbsent) {
+  if (loadError) {
     return (
-      <div data-testid="profile-endpoint-absent">
-        <ProfileHero eyebrow="Your competency · Coming in v1.x" />
+      <div data-testid="profile-error">
+        <ProfileHero eyebrow="Your competency · Unavailable" />
         <Card className="p-6 bg-bg-sunk text-center text-[13px] text-ink-3">
-          Your competence profile arrives once we light up the{" "}
-          <code className="font-mono">/v1/me/competence</code> endpoint. No data yet.
+          We couldn&apos;t load your competence profile right now — please try again
+          shortly.
         </Card>
       </div>
     );

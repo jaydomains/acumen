@@ -129,8 +129,8 @@ describe("FE-2 shell round-trip", () => {
     expect(avatar).toHaveTextContent("A");
     expect(screen.getByPlaceholderText("Search pills…")).toBeInTheDocument();
 
-    // FE-3 dashboard greets the testee and renders the assignments
-    // placeholder card while /v1/me/assignments is unmounted.
+    // FE-3 dashboard greets the testee and mounts the AssignmentsCard,
+    // which resolves /v1/me/assignments via MSW.
     expect(
       screen.getByRole("heading", { name: /welcome back, asha patel\./i }),
     ).toBeInTheDocument();

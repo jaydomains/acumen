@@ -19,10 +19,12 @@ export default function TesteeHistoryPage() {
   const attempts = useMeAttemptsInfinite();
   const rows = flattenAttempts(attempts.data);
 
+  // Load-error branch — an inline neutral card for a 404/405 on the (live)
+  // attempts endpoint; any other failure escalates to the Pattern C boundary.
   const apiError = attempts.error instanceof ApiError ? attempts.error : null;
-  const endpointAbsent =
+  const loadError =
     apiError !== null && (apiError.status === 404 || apiError.status === 405);
-  if (attempts.error && !endpointAbsent) {
+  if (attempts.error && !loadError) {
     throw attempts.error;
   }
 
@@ -30,13 +32,12 @@ export default function TesteeHistoryPage() {
     return <HistorySkeleton />;
   }
 
-  if (endpointAbsent) {
+  if (loadError) {
     return (
-      <div data-testid="history-endpoint-absent">
-        <HistoryHero eyebrow="Your attempt history · Coming in v1.x" />
+      <div data-testid="history-error">
+        <HistoryHero eyebrow="Your attempt history · Unavailable" />
         <Card className="p-6 bg-bg-sunk text-center text-[13px] text-ink-3">
-          Your attempt history arrives once we light up the{" "}
-          <code className="font-mono">/v1/attempts</code> endpoint.
+          We couldn&apos;t load your attempt history right now — please try again shortly.
         </Card>
       </div>
     );

@@ -205,8 +205,8 @@ describe("FE-1 auth round-trip", () => {
 
     // Wait for the AuthProvider to settle so the welcome heading reads
     // the resolved user name rather than the loading-state fallback.
-    // FE-3 dashboard greets "Welcome back, {name}." and renders the
-    // AssignmentsCard placeholder while /v1/me/assignments is unmounted.
+    // FE-3 dashboard greets "Welcome back, {name}." and mounts the
+    // AssignmentsCard, which resolves /v1/me/assignments via MSW.
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
         new RegExp(NAME, "i"),
