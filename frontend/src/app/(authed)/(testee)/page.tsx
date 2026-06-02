@@ -18,7 +18,6 @@ import { useAuth } from "@/lib/auth/context";
 import { HeroStats } from "@/components/dashboard/HeroStats";
 import { ResumePrompt } from "@/components/dashboard/ResumePrompt";
 import { AssignmentsCard } from "@/components/dashboard/AssignmentsCard";
-import { AdaptiveLoopCard } from "@/components/dashboard/AdaptiveLoopCard";
 import { RecentAttemptsCard } from "@/components/dashboard/RecentAttemptsCard";
 
 export default function TesteeDashboardPage() {
@@ -39,14 +38,9 @@ export default function TesteeDashboardPage() {
     <>
       <ResumePrompt />
       <HeroStats displayName={displayName} dateLabel={dateLabel} />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-        <div className="flex flex-col gap-6 min-w-0">
-          <AssignmentsCard />
-          <RecentAttemptsCard />
-        </div>
-        <div className="flex flex-col gap-6 min-w-0">
-          <AdaptiveLoopCard />
-        </div>
+      <div className="flex flex-col gap-6">
+        <AssignmentsCard />
+        <RecentAttemptsCard />
       </div>
     </>
   );

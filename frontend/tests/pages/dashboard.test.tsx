@@ -8,7 +8,6 @@
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -36,11 +35,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-vi.mock("sonner", () => ({
-  toast: Object.assign(vi.fn(), { error: vi.fn() }),
-}));
-import { toast } from "sonner";
-
 const USER: UserResponse = {
   id: "00000000-0000-0000-0000-000000000099",
   email: "jordan@acumen.test",
@@ -67,7 +61,6 @@ function mountTree(node: React.ReactNode) {
 beforeEach(() => {
   setAccessToken("dashboard-test-token");
   setMockUser(USER);
-  vi.mocked(toast).mockClear();
 });
 
 afterEach(() => {
@@ -86,12 +79,13 @@ describe("Testee dashboard page", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders AssignmentsCard + AdaptiveLoopCard", async () => {
+  it("renders AssignmentsCard + RecentAttemptsCard (no AdaptiveLoopCard / Today's Reading)", async () => {
     render(mountTree(<TesteeDashboardPage />));
     // Awaited barrier first (the page paints behind async auth), then the
-    // negative query — otherwise it would run pre-paint and pass vacuously.
+    // negative queries — otherwise they would run pre-paint and pass vacuously.
     expect(await screen.findByTestId("assignments-card")).toBeInTheDocument();
-    expect(screen.getByTestId("adaptive-loop-card")).toBeInTheDocument();
+    expect(screen.getByTestId("recent-attempts-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("adaptive-loop-card")).not.toBeInTheDocument();
     expect(screen.queryByTestId("todays-reading")).not.toBeInTheDocument();
   });
 
@@ -110,16 +104,6 @@ describe("Testee dashboard page", () => {
     expect(values).not.toContain("—");
     expect(values.some((v) => v && /^\d\.\d$/.test(v))).toBe(true); // overall, 1dp
     expect(screen.queryByText(/v1\.x|pending/i)).toBeNull();
-  });
-
-  it("adaptive-loop CTAs toast (placeholder until v1.x wiring)", async () => {
-    const user = userEvent.setup();
-    render(mountTree(<TesteeDashboardPage />));
-    await user.click(screen.getByTestId("adaptive-loop-explainer"));
-    expect(toast).toHaveBeenCalled();
-    vi.mocked(toast).mockClear();
-    await user.click(screen.getByTestId("adaptive-loop-defer"));
-    expect(toast).toHaveBeenCalled();
   });
 
   it("falls back to email-local-part when user.name is empty", async () => {
