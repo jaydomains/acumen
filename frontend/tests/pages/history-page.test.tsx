@@ -183,13 +183,14 @@ describe("History page · happy first page", () => {
   });
 });
 
-describe("History page · endpoint_absent", () => {
-  it("renders the drift-placeholder card on 404 (no table mounts)", async () => {
+describe("History page · load error", () => {
+  it("renders a neutral error card (not 'coming in v1.x') on 404 (no table mounts)", async () => {
     setMockMeAttemptsStatus(404);
     render(mountTree(<HistoryPage />));
-    await waitFor(() =>
-      expect(screen.getByTestId("history-endpoint-absent")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("history-error")).toBeInTheDocument());
+    expect(screen.getByText(/couldn't load your attempt history/i)).toBeInTheDocument();
+    expect(screen.queryByText(/coming in v1\.x/i)).toBeNull();
+    expect(screen.queryByText(/light up/i)).toBeNull();
     expect(screen.queryByTestId("history-table")).toBeNull();
     expect(screen.queryByTestId("history-row")).toBeNull();
   });

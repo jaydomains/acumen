@@ -2,10 +2,12 @@
  * PillMetaCard — pill detail left column (FE-3 §B.3 §2).
  *
  * Mirrors `pill-detail.jsx:73–122`. Renders subject + difficulty
- * range + description; per-Testee rows (current band, competence
- * value, last activity) are absent in v1 because
- * `GET /v1/me/competence` is unmounted (FE-3 §E item 1 / item 7).
- * They'll slot in here when the endpoint lands.
+ * range + description. Per-Testee rows (current band, competence
+ * value, last activity) are not rendered in v1 because the pill-detail
+ * per-Testee competence overlay is a deferred v1.x feature (FE-3 §7
+ * catalogue overlay) — not because the endpoint is missing
+ * (`GET /v1/me/competence` is live). They slot in here when that
+ * overlay feature is built.
  */
 
 import type { PillResponse } from "@/lib/queries/pills";
