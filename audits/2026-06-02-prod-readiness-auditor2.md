@@ -269,6 +269,101 @@ question "why ship it"), or gate them behind a feature flag.
 
 ## Round-1 status
 
-Round 1 filed. Awaiting reviewer adjudication. Round-2 follow-ups will
-append below per the two-auditor protocol. The closing marker
-("Auditor 2: no further findings") is **not** yet posted.
+Round 1 filed and adjudicated by the reviewer (synthesis on
+`claude/dazzling-volta-6Vpzz` @ `bd5ca2e`): all six A2 findings stand —
+F1 CONFIRMED (headline blocker), F2/F3/F4/F5 VERIFIED, F6 CONFIRMED; 0
+disputed, 0 rejected. F2+F3 provisionally tiered pre-deploy.
+
+---
+
+# Round 2 — reviewer coverage-question follow-up
+
+The reviewer asked (not a finding): were the **live SSE attempt-stream
+resume contract (AC-CD22)** and the **cost/budget-alert email path
+(AC-D18)** deliberately out of scope, or simply uncovered? Answer:
+**in scope, simply not reached in Round 1.** I traced both for Round 2.
+One yields a new finding; the other is sound.
+
+## A2-R2-F7 · Streaming attempt dies unrecoverably when it outlives the 15-minute access token — the documented token-refresh mitigation is a no-op · **Medium**
+
+The per-Testee streaming runner (FE-5 / P10, the core adaptive-assessment
+surface) consumes `GET /v1/attempts/{id}/stream` via a fetch-based SSE
+adapter. The access token TTL is **900 s = 15 min**
+(`app/config.py:49`, `jwt_access_ttl_seconds: int = 900`). The adapter's
+own docstring claims this is handled:
+
+> *"If the access token expires mid-stream the next reconnect picks up
+> the fresh token via `getAccessToken()`. v1 acceptable trade per
+> AC-CD22."* (`frontend/src/lib/api/sse.ts:54-57`)
+
+That mitigation does not actually work, for two compounding reasons:
+
+1. **`getAccessToken()` never refreshes.** It is a plain in-memory getter
+   — `export const getAccessToken = (): string | null => accessTokenInMemory;`
+   (`frontend/src/lib/auth/storage.ts:21`). It does **not** invoke the
+   api-client 401-refresh coordinator. The in-memory token is only
+   refreshed when some *other* request 401s through `client.ts`. So "the
+   next reconnect picks up the fresh token" only holds if a concurrent
+   call happened to refresh it; the SSE adapter itself does nothing.
+2. **A 401 on (re)connect throws hard instead of refresh-and-retry.** The
+   adapter's one-reconnect budget only catches `fetch` *rejections*
+   (network errors, `sse.ts:309-316`) and empty-body (`:333-339`). A
+   non-ok HTTP response — including a `401` from an expired token —
+   hits `if (!response.ok)` at `:318` and **throws** `apiErrorFromBody(...)`
+   (`:325`) straight to the consumer. There is no refresh, no second
+   attempt; the stream ends in an error state.
+
+**User impact:** an actively-answering testee stays safe — every
+answer-change autosave goes through `client.ts` and refreshes the token —
+so the realistic trigger is **idle think-time on one question exceeding
+15 min, or any network blip / reconnect after the token has expired**.
+When it triggers, the streaming generation of the remaining questions
+dies; the runner surfaces an error and the testee must re-authenticate
+mid-assessment. Answers already given are persisted (autosave), so it is
+not data-loss, but it is a broken core-flow experience on a long
+assessment — and the in-code comment asserting it is handled makes it
+likely to be assumed-safe and shipped.
+
+**Why it is new:** audit-2 verified the *main* client's 401 coordinator
+("F1 … correct") but no prior audit traced the **SSE** token path; it sits
+on the exact AC-CD22 surface the reviewer flagged as uncovered.
+
+**Fix direction:** before each (re)connect, ensure a fresh token (route
+the SSE open through the same refresh coordinator / `ensureFreshToken()`
+the api client uses); and on a `401` response specifically, refresh once
+and retry rather than throwing. Minimum viable: treat `401` like the
+network-error path (refresh + one reconnect) instead of an immediate hard
+throw. Update the `sse.ts:54-57` comment to match real behaviour.
+
+## Coverage note — cost/budget-alert email path (AC-D18): traced, sound (no new finding)
+
+`maybe_fire_budget_alert` (`app/ai/cost.py:405-538`) is robust for v1:
+the recipient is the first **active administrator** for the tenant with a
+loud `logger.warning` + no-send when none exists (`:498-511`); thresholds
+are dedup'd against the `budget_alert.fired` audit log so each fires once
+per month; and because `record_audit` runs **after** `smtp.send` inside
+the per-threshold loop (`:523-537`), an SMTP failure leaves no audit row
+and the next sweep retries — self-healing. The only residual is the
+already-on-the-books **audit-4 S3-M** top-level `try/except` swallow
+(`:442-447`) that lets the cron report a clean no-op when a dependency
+fails; that is a known queued item, not a new finding. The AC-D18 email
+path itself is correctly wired.
+
+## Coverage note — SSE resume / Last-Event-ID (AC-CD22): contract honored
+
+Separate from F7's token gap, the resume **replay** contract is correctly
+implemented: the adapter sends `Last-Event-ID` (highest received SSE id)
+on auto-reconnect and `?since=`/`Last-Event-ID` for consumer-initiated
+resume (`sse.ts:294-300`), and de-dups arrived positions via an
+`arrivedSet` keyed on `attempt_position` — so snapshot replay does not
+regenerate or reorder questions. No finding on the replay path.
+
+---
+
+## Round-2 status
+
+Round 2 filed: 1 new finding (A2-R2-F7, Medium) + 2 coverage notes
+answering the reviewer's question (both surfaces now traced). Awaiting
+reviewer adjudication of Round 2. The closing marker ("Auditor 2: no
+further findings") is **not** yet posted — it follows once Round 2 is
+adjudicated and I have no further surfaces to raise.
