@@ -285,3 +285,88 @@ when `pathname === href || pathname.startsWith(href + "/")`), keeping the root
 ---
 
 *Auditor 1 — Round 1 complete. Awaiting reviewer adjudication before Round 2.*
+
+---
+
+# Round 2 — mobile responsiveness pass + reviewer coverage-question concurrence
+
+> Round 1 adjudicated by the reviewer (synthesis on `claude/dazzling-volta-6Vpzz`):
+> all 8 A1 findings stand (#1 & #5 CONFIRMED via convergence with A2; V1/V2/V3/
+> V8/V9/V10 VERIFIED; 0 disputed, 0 rejected). For Round 2 I deliberately avoided
+> re-treading A2's dynamic-flow ground (result page / grading overlay / dashboard
+> assignments / engagement / SSE) and instead drove the one explicit in-scope
+> surface **neither** Round-1 file traced concretely: **mobile responsiveness
+> (PR #82)**. One new finding; plus a short concurrence on the reviewer's
+> coverage question.
+
+## Finding 9 (A1-R2) — Admin data tables overflow on mobile; the responsive table wrapper was applied to testee surfaces only — **WORTH-KNOWING**
+
+**User perspective.** PR #82 made the *shell* responsive (hamburger nav drawer,
+collapsing breadcrumbs, search hidden under `md:`) and that part works — I traced
+it through `TopBar.tsx:73-86` (`lg:hidden` hamburger), `NavDrawer.tsx`, and both
+authed layouts. The **content** inside the shell did not get the same treatment.
+Every admin data table is a bare `<table className="… w-full …">` with **no
+horizontal-scroll wrapper**, while the two *testee* tables both wrap in
+`overflow-x-auto`. On a phone, a multi-column admin table (e.g. Users:
+name · email · role · status · actions) cannot shrink below its columns' intrinsic
+content width — long unbreakable tokens like email addresses force the table wider
+than the viewport. With no `overflow-x-auto` boundary, the overflow propagates to
+the page, producing horizontal scroll / a broken sticky-header alignment rather
+than a contained, swipeable table. So a KBC admin who opens the console on a phone
+gets a half-responsive experience: the nav adapts, the actual data doesn't.
+
+**Code reference.**
+- Admin tables with **no** overflow wrapper (all `<table className="mt-5 w-full …">`):
+  `admin/users/_components/users-list.tsx:276`,
+  `admin/tests/_components/tests-table.tsx:247`,
+  `admin/assignments/_components/assignments-list.tsx:242`,
+  `engagement/_components/pending-list.tsx:139`, plus `admin/paths/_components/
+  paths-list.tsx`, `loop/_components/loop-queue.tsx`,
+  `calibration/_components/calibration-view.tsx`, `cost/_components/cost-dashboard.tsx`,
+  and the four catalogue tabs (`pills-tab`/`subjects-tab`/`proposals-tab`/`safety-tab`)
+  + `admin/groups/**`.
+- The pattern that **was** applied — on testee surfaces only:
+  `components/profile/history-table.tsx:54` (`<div className="overflow-x-auto">`)
+  and `components/profile/matrix-table.tsx:78` (`overflow-x-auto`).
+- No page-level guard catches the overflow: the admin/testee shells render content
+  in `<main className="… w-full mx-auto">` inside a `min-w-0` grid column
+  (`(admin)/layout.tsx:44-48`) — `min-w-0` lets the column shrink, but the table's
+  intrinsic min-width still overflows it.
+
+**Reproduction.** Load `/admin/users` (seeded with a few users) at a ~360px
+viewport (or DevTools device mode). The table runs off-screen and the page scrolls
+horizontally. Compare `/history` (testee) at the same width — it scrolls *within*
+the card, page intact.
+
+**Confidence note.** Grounded structurally (the missing wrapper + the testee/admin
+asymmetry are certain from the code); the exact pixel at which each table overflows
+depends on column content and device width, which I could not render headlessly in
+this environment. Filed at worth-knowing on the audit's bias-toward-surfacing rule
+since mobile is explicitly in scope.
+
+**Proposed fix direction.** Wrap each admin table in the same `overflow-x-auto`
+boundary the testee tables already use (ideally hoist it into the shared table
+primitive so the responsive behavior is uniform and can't drift per-surface again),
+or adopt a card/stacked layout for these tables under `md:`. This is the admin-side
+mirror of Finding 5's "the testee sweep didn't reach admin" theme.
+
+## Concurrence — reviewer coverage question (SSE/AC-CD22, cost/AC-D18)
+
+For the record (fair triangulation, not a duplicate finding): both surfaces the
+reviewer flagged were **in scope and simply not reached in my Round 1** — neither
+was a deliberate exclusion. A2 traced both in their Round 2; having reviewed that
+trace against the code, I concur: **A2-R2-F7** (SSE stream dies on mid-stream token
+expiry because `getAccessToken()` never refreshes and a 401 on reconnect throws
+hard at `sse.ts:318-325`) is real and correctly characterized, and the AC-D18
+budget-alert path and the AC-CD22 `Last-Event-ID` replay contract are sound. I have
+nothing to add to A2's treatment of those two surfaces.
+
+---
+
+## Round-2 status
+
+Round 2 filed: **1 new finding** (A1-R2-F9, worth-knowing — admin-table mobile
+overflow) + concurrence on the reviewer's coverage question. This is my only
+Round-2 finding. I am holding the "Auditor 1: no further findings" marker pending
+the reviewer's adjudication of Round 2; I will post it immediately after, as I have
+no further surfaces to raise.
