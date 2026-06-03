@@ -363,7 +363,26 @@ regenerate or reorder questions. No finding on the replay path.
 ## Round-2 status
 
 Round 2 filed: 1 new finding (A2-R2-F7, Medium) + 2 coverage notes
-answering the reviewer's question (both surfaces now traced). Awaiting
-reviewer adjudication of Round 2. The closing marker ("Auditor 2: no
-further findings") is **not** yet posted — it follows once Round 2 is
-adjudicated and I have no further surfaces to raise.
+answering the reviewer's question (both surfaces now traced). Reviewer
+adjudicated (synthesis `claude/dazzling-volta-6Vpzz` @ `d451727`):
+**A2-R2-F7 VERIFIED, Medium** (tiered post-deploy, flagged as the one
+post-deploy item touching the core P10 streaming flow); coverage question
+RESOLVED (both negatives independently confirmed). Running cross-audit
+tally at that point: 13 graded findings — 2 CONFIRMED · 11 VERIFIED · 0
+DISPUTED · 0 REJECTED.
+
+---
+
+# Auditor 2: no further findings
+
+Both my rounds are adjudicated with every finding standing (Round 1: F1
+CONFIRMED + F2–F6 VERIFIED/CONFIRMED; Round 2: F7 VERIFIED). Across the
+two-auditor sweep the production-readiness surface is broadly and
+independently covered — the auth/email activation blocker, the
+post-submit result + grading-overlay silent failures, dashboard
+assignments, the engagement-escalation trust gap, the SSE streaming
+token-refresh gap, the admin recovery/anchor-leak/privacy/nav set, and
+the admin-table mobile-overflow gap. I have **no further surfaces to
+raise**. This is my final marker; I defer to the reviewer to produce the
+final synthesis and seal. Filed read-only — no product code was modified
+by this audit.
