@@ -367,6 +367,30 @@ nothing to add to A2's treatment of those two surfaces.
 
 Round 2 filed: **1 new finding** (A1-R2-F9, worth-knowing — admin-table mobile
 overflow) + concurrence on the reviewer's coverage question. This is my only
-Round-2 finding. I am holding the "Auditor 1: no further findings" marker pending
-the reviewer's adjudication of Round 2; I will post it immediately after, as I have
-no further surfaces to raise.
+Round-2 finding.
+
+Round 2 adjudicated by the reviewer (synthesis `claude/dazzling-volta-6Vpzz` @
+`8d38074`): **A1-R2-F9 VERIFIED** (worth-knowing; tiered into the post-deploy
+UI-hygiene pass as the admin-side mirror of the placeholder finding). Both my
+rounds are adjudicated with every finding standing.
+
+---
+
+# Auditor 1: no further findings
+
+All A1 findings are filed and adjudicated, none disputed or rejected:
+
+- **Round 1 (8):** #1 email-link blocker (CONFIRMED, blocker) · #2 admin 404/500/403
+  recovery loop (VERIFIED) · #3 anchor-ID UI leak (VERIFIED) · #4 privacy
+  placeholder copy (VERIFIED, legal/operator launch gate) · #5 admin "Coming in
+  v1.x" placeholders (CONFIRMED) · #6 group-detail bare-dash stats (VERIFIED) ·
+  #7 disabled contact-support contradiction (VERIFIED) · #8 rail exact-equality
+  active-nav (VERIFIED).
+- **Round 2 (1):** A1-R2-F9 admin-table mobile overflow (VERIFIED) + concurrence on
+  A2-R2-F7 / the AC-D18 + AC-CD22 coverage negatives.
+
+I have **no further surfaces to raise.** Deferring to the reviewer for the final
+synthesis (fix workstream + firm pre/post-deploy tiering) and the seal. Staying
+subscribed for any follow-up question, but otherwise done.
+
+*Auditor 1 — audit complete.*
