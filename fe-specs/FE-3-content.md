@@ -26,6 +26,24 @@
 > Out of scope, surfaced for separate triage: the catalogue per-card competence
 > overlay (§B.2 / §E item 7) — the endpoint is live but that overlay feature is
 > not wired, and that section was not re-grounded in the detail-plan audit.
+>
+> **Amendment (2026-06-06 — post-audit pre-deploy fix workstream).** This
+> doc is amended in place per the spec-author ruling **D3** for the
+> 2026-06-02 production-readiness audit finding **V2** (internal anchor IDs
+> rendered in the UI). Authoritative source: the **D1/D2b/D3 ruling** (PR #94
+> comment
+> [`4640241946`](https://github.com/jaydomains/acumen/pull/94#issuecomment-4640241946)).
+> The rendered **Safety\*** strings drop their `· AC-D21` provenance suffix —
+> the suffix is an internal anchor decoration, not testee-facing copy. Two
+> changes to the verbatim copy this doc locks: (a) the **SafetyEmpty footer**
+> (§B.3 §2 component list and the §B.4.6 Gherkin) becomes `Acumen never
+> generates safety teaching content.`; (b) the **SafetyLinks header eyebrow**
+> (§B.4) becomes `Curated industry sources`. The build session's **Slice 4b**
+> strips the suffix from `SafetyEmpty.tsx:16/26` and `SafetyLinks.tsx:28` and
+> owns rewriting the three coupled assertions (`SafetyLinks.test.tsx:26`/`:48`,
+> `pill-detail.test.tsx:224`); the test-safe anchor decorations elsewhere
+> (`JITQueue.tsx:78`, `grade-review-queue.tsx:105`, `loop-step-row.tsx:74`,
+> `SafetyPosterCard.tsx:22`) are stripped in Slice 4a without a spec gate.
 
 ---
 
@@ -344,7 +362,7 @@ Scenario: Direct deep-link with filter query-params hydrates the FilterBar
 - `SafetyPosterCard` (`frontend/src/components/pill-detail/safety-poster-card.tsx`) — left column safety-only card matching `pill-detail.jsx:124–143`. Renders only when `pill.safety_relevant === true`. Icon (`shield`), danger-soft background, transparent border, explainer text.
 - `MaterialLoading` (`frontend/src/components/pill-detail/material-loading.tsx`) — right column skeleton matching `pill-detail.jsx:148–181`. Includes the "Generating · claude-sonnet-4-5" status indicator with pulse-dot and the "Usually ready in 4–8 seconds..." footer.
 - `MaterialReady` (`frontend/src/components/pill-detail/material-ready.tsx`) — right column rendered prose matching `pill-detail.jsx:183–258`. Props: `{ content: string, prompt_version?: string, model_id?: string, served_at?: string, cached: boolean, onRegenerate: () => void, regenerating: boolean }`. Renders content as paragraph-split plain-text by default; if §H (b) item 9 finds the backend emits Markdown, install `react-markdown` per §F.4.
-- `SafetyEmpty` (`frontend/src/components/pill-detail/safety-empty.tsx`) — right column empty state matching `pill-detail.jsx:390–415`. Footer copy verbatim: "Per AC-D21 · Acumen never generates safety teaching content".
+- `SafetyEmpty` (`frontend/src/components/pill-detail/safety-empty.tsx`) — right column empty state matching `pill-detail.jsx:390–415`. Footer copy verbatim: "Acumen never generates safety teaching content."
 - `StickyDifficultyBar` (`frontend/src/components/pill-detail/sticky-difficulty-bar.tsx`) — sticky-bottom CTA matching `pill-detail.jsx:420–459`. Props: `{ pill: PillResponse, currentBand: Band | null, recommendedDifficulty: number | null, onStart: (d: number) => void }`. Local state: `selectedDifficulty` (init from `recommendedDifficulty` or middle of `[available_difficulty_min, available_difficulty_max]`). Renders 10 difficulty buttons (D1–D10), only those within `[available_difficulty_min, available_difficulty_max]` are enabled; the others render disabled.
 - `SafetyLinks` (`frontend/src/components/pill-detail/safety-links.tsx`) — covered in §B.4 below (safety branch).
 
@@ -459,7 +477,7 @@ Scenario: Disabled difficulties outside available_difficulty_range
 Same route as §B.3. Branch keyed on `pill.safety_relevant === true`. Shares all components in §B.3 §2 plus:
 
 - `SafetyPosterCard` (already listed in §B.3 §2) — renders in left column below `PillMetaCard`.
-- `SafetyLinks` (`frontend/src/components/pill-detail/safety-links.tsx`) — right column matching `pill-detail.jsx:332–388` (SafetyLinks + SafetyLink). Props: `{ links: SafetyLinkRef[], curatedAt?: string, curatedBy?: string }`. Renders header row ("Curated industry sources · AC-D21" + "last curated Nd ago · by {name}") + description paragraph + flex column of `SafetyLink` items. Each `SafetyLink` renders: serif index (00, 01, …) + metadata row (kind label REGULATOR / STANDARD / CASE STUDIES · source short · ~{minutes} min) + title with external-link icon + body + source name.
+- `SafetyLinks` (`frontend/src/components/pill-detail/safety-links.tsx`) — right column matching `pill-detail.jsx:332–388` (SafetyLinks + SafetyLink). Props: `{ links: SafetyLinkRef[], curatedAt?: string, curatedBy?: string }`. Renders header row ("Curated industry sources" + "last curated Nd ago · by {name}") + description paragraph + flex column of `SafetyLink` items. Each `SafetyLink` renders: serif index (00, 01, …) + metadata row (kind label REGULATOR / STANDARD / CASE STUDIES · source short · ~{minutes} min) + title with external-link icon + body + source name.
 - `SafetyEmpty` (already listed in §B.3 §2) — renders in right column when `safety_links` is null or empty.
 
 **3. API endpoints consumed** — same as §B.3 §3. The polymorphic response is the entire reason this is one page with two branches.
@@ -486,7 +504,7 @@ Scenario: Safety branch renders SafetyEmpty when no links are curated
   And POST /v1/pills/P/learning-material returns source=curated_safety_links with safety_links=[]
   When the page renders
   Then SafetyEmpty renders
-  And the SafetyEmpty footer reads "Per AC-D21 · Acumen never generates safety teaching content"
+  And the SafetyEmpty footer reads "Acumen never generates safety teaching content."
 
 Scenario: SafetyPosterCard renders below PillMetaCard for safety pills
   Given the pill has safety_relevant=true
