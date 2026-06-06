@@ -142,3 +142,29 @@ describe("GradingOverlay · poll cap (45s)", () => {
     expect(mockedRouter.push).toHaveBeenCalledWith("/");
   });
 });
+
+describe("GradingOverlay · V5 persistent result-poll error", () => {
+  it("escapes promptly to the distinct error affordance (not the slow-grading card, not after the cap)", async () => {
+    server.use(
+      http.get(
+        `${API}/v1/attempts/:attempt_id/result`,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    render(mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="frozen" />));
+
+    // First poll fails immediately (retry:false) → error state, no fake
+    // timers / no 45s cap wait needed.
+    await waitFor(() =>
+      expect(screen.getByTestId("grading-overlay")).toHaveAttribute(
+        "data-state",
+        "error",
+      ),
+    );
+    expect(screen.getByText(/We couldn't load your result/i)).toBeInTheDocument();
+    expect(screen.getByTestId("grading-overlay-retry")).toBeInTheDocument();
+    // Not the slow-grading copy, and the spinner is gone.
+    expect(screen.queryByText(/Taking longer than expected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Working through your responses/i)).not.toBeInTheDocument();
+  });
+});

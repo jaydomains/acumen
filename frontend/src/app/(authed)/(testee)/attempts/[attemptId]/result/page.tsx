@@ -40,6 +40,17 @@ const POLL_INTERVAL_MS = 5_000;
 
 type AttemptResultResponse = components["schemas"]["AttemptResultResponse"];
 
+/**
+ * V4 throwOnError predicate (audit V4 / F3). Throw to the Pattern-C
+ * `result/error.tsx` boundary **only** when we have nothing to show — an
+ * initial-fetch failure (`data === undefined`). A transient error during
+ * polling (data already rendered as `review_pending`) must NOT nuke a valid
+ * page; it recovers on the next interval. Exported so the predicate is
+ * asserted at the config level even if the test harness's boundary shim
+ * drifts.
+ */
+export const resultErrorIsInitial = (data: unknown): boolean => data === undefined;
+
 export default function AttemptResultPage() {
   const params = useParams<{ attemptId: string }>();
   const attemptId = params?.attemptId ?? "";
@@ -58,6 +69,7 @@ export default function AttemptResultPage() {
     refetchInterval: (q) =>
       q.state.data?.status === "review_pending" ? POLL_INTERVAL_MS : false,
     refetchOnWindowFocus: true,
+    throwOnError: (_err, q) => resultErrorIsInitial(q.state.data),
   });
 
   const result = resultQuery.data as AttemptResultResponse | undefined;

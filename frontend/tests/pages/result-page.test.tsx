@@ -11,12 +11,40 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Suspense } from "react";
+import { Component, Suspense, type ReactNode } from "react";
+import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import ResultPage from "@/app/(authed)/(testee)/attempts/[attemptId]/result/page";
+import ResultPage, {
+  resultErrorIsInitial,
+} from "@/app/(authed)/(testee)/attempts/[attemptId]/result/page";
 import { makeRichResult, setMockAttemptResult } from "@/mocks/handlers";
+import { server } from "@/mocks/node";
 
 const ATTEMPT_ID = "11111111-1111-1111-1111-000000000001";
+const API = "http://localhost:8000";
+
+/**
+ * Minimal error boundary standing in for the App-Router `result/error.tsx`
+ * boundary, which the bare-QueryClientProvider harness does not mount
+ * natively (plan G4). V4's `throwOnError` predicate must throw into it on
+ * an initial-fetch failure.
+ */
+class TestErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  override state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  override render() {
+    return this.state.hasError ? (
+      <div data-testid="result-error-fallback">boundary fired</div>
+    ) : (
+      this.props.children
+    );
+  }
+}
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -144,5 +172,35 @@ describe("Result page · deterministic-only attempt", () => {
     );
     render(mountTree(<ResultPage />));
     await waitFor(() => expect(screen.getByText("AUTO-GRADED")).toBeInTheDocument());
+  });
+});
+
+describe("Result page · V4 fetch-error boundary", () => {
+  it("throwOnError predicate fires only when there is no data to show", () => {
+    // Initial-blank (data === undefined) → throw to the boundary; once data
+    // exists (a rendered review_pending page) a transient poll error must NOT
+    // throw and nuke valid UI.
+    expect(resultErrorIsInitial(undefined)).toBe(true);
+    expect(resultErrorIsInitial({ status: "review_pending" })).toBe(false);
+    expect(resultErrorIsInitial(null)).toBe(false);
+  });
+
+  it("throws to the error boundary on an initial-fetch 500 (not header + blank body)", async () => {
+    server.use(
+      http.get(
+        `${API}/v1/attempts/:attempt_id/result`,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    render(
+      mountTree(
+        <TestErrorBoundary>
+          <ResultPage />
+        </TestErrorBoundary>,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("result-error-fallback")).toBeInTheDocument(),
+    );
   });
 });

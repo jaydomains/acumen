@@ -101,6 +101,11 @@ export function GradingOverlay({ attemptId, mode }: GradingOverlayProps) {
     refetchInterval: (q) => {
       const data = q.state.data as AttemptResultResponse | undefined;
       if (data?.status === "ready") return false;
+      // V5 (audit): on a persistent result-poll error the query never
+      // produces data, so the dataUpdatedAt-keyed cap below never advances
+      // and the spinner would run forever. Stop polling on `error` status
+      // and escape to the distinct error affordance below (retry available).
+      if (q.state.status === "error") return false;
       if (pollExhausted) return false;
       return POLL_INTERVAL_MS;
     },
@@ -125,6 +130,59 @@ export function GradingOverlay({ attemptId, mode }: GradingOverlayProps) {
     queryClient.invalidateQueries({ queryKey: attemptQueryKeys.detail(attemptId) });
     router.push(`/attempts/${attemptId}/result`);
   }, [resultQuery.data?.status, attemptId, queryClient, router]);
+
+  // V5 (audit): a persistent result-poll error escapes PROMPTLY to a
+  // distinct error affordance — not the slow-grading "still grading" card
+  // (whose copy is wrong for a 500 and which only appears after the ~45s
+  // cap). With retry:false each poll fails immediately, so `isError` flips
+  // on the first failure and stays set (polling stopped above).
+  if (resultQuery.isError && resultQuery.data?.status !== "ready") {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="grading-overlay-title"
+        data-testid="grading-overlay"
+        data-state="error"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm"
+      >
+        <div className="flex w-full max-w-md flex-col gap-4 border border-danger bg-bg-raised p-8 text-ink">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-danger">
+            Grading error
+          </span>
+          <h2
+            id="grading-overlay-title"
+            className="font-serif text-[24px] leading-tight tracking-[-0.01em]"
+          >
+            We couldn&apos;t load your result.
+          </h2>
+          <p className="text-[14px] leading-6 text-ink-2">
+            Something went wrong fetching your grade. Try again, or head back to your
+            dashboard — your result will be waiting once grading finishes.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              data-testid="grading-overlay-retry"
+              variant="outline"
+              onClick={() => {
+                setPollExhausted(false);
+                void resultQuery.refetch();
+              }}
+            >
+              Try again
+            </Button>
+            <Button
+              data-testid="grading-overlay-dashboard"
+              variant="outline"
+              onClick={() => router.push("/")}
+            >
+              Back to dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (pollExhausted && resultQuery.data?.status !== "ready") {
     return (
