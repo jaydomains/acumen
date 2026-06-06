@@ -9,9 +9,9 @@ against the two auditor files (`…-auditor1.md`, `…-auditor2.md`).
 `main`). Every `file:line` below was read directly against this tree, not a
 proxy. Where current code differs from or extends the synthesis text, it is
 flagged in §2.
-**Status:** draft — awaiting auditor review. (See the two final-marker lines
-appended at convergence. Draft→ready PR flip is the overseer's call, not the
-planner's.)
+**Status:** final — approved by planner & auditor (rev-1 `4a849bb`; F1–F6
+folded, set-diff rev-0→rev-1 clean). See the two final-marker lines at the end
+of this file. Draft→ready PR flip is the overseer's call, not the planner's.
 
 > **What this package is.** The execution of this plan is the production
 > redeploy gate for the KBC pilot. Scope is the audit's **pre-deploy code
@@ -543,3 +543,8 @@ All six Round-1 findings verified valid against `fd7f267` and folded:
 all still in scope; the only scope *change* is V2 splitting into 4a/4b and two
 new spec-drift gates (D2b, D3) surfaced for the spec author. rev-1 edits are
 audit-driven only (G1, G6.1, D2, D3, D4, Slices 1/2/4, graph, matrix).
+
+---
+
+Status: final — approved by auditor (rev-1 `4a849bb`; Round-1 findings F1–F6 all accepted + resolved, re-verified read-only against rev-1 doc + current code; set-diff rev-0→rev-1 clean, no finding IDs dropped; two spec-author rulings remain surfaced as spec-drift gates — D2b AC-CD5 amendment, D3 FE-3 §B.4.6 amendment — not absorbed). Recorded at `plans/.approval-log-pr94.md`.
+Status: final — approved by planner (rev-1 `4a849bb`; auditor F1–F6 folded — G6.1/D3/Slice-4a-4b for F1, D2b spec-drift flip for F2, throwOnError predicate F3, distinct error affordance F4, `app_frontend_url`+CORS-membership F5, append-to-errors precision F6; set-diff rev-0→rev-1 clean). Planner role ends; draft→ready and merge are the overseer's call.
