@@ -487,7 +487,7 @@ Same route as §B.3. Branch keyed on `pill.safety_relevant === true`. Shares all
 | State | Trigger | Visual |
 |---|---|---|
 | Safety links populated | Learning-material resolves with `source: 'curated_safety_links'`, `safety_links` non-empty | `SafetyLinks` list rendered with N items |
-| Safety empty | Learning-material resolves with `source: 'curated_safety_links'`, `safety_links` empty or null | `SafetyEmpty` card with AC-D21 footer copy |
+| Safety empty | Learning-material resolves with `source: 'curated_safety_links'`, `safety_links` empty or null | `SafetyEmpty` card with the safety-disclaimer footer copy (governed by AC-D21; the anchor is not rendered in the footer text) |
 
 **6. Acceptance criteria (Gherkin)** — additions to §B.3 §6:
 
