@@ -37,7 +37,12 @@ export type GuardResult = {
   fallback: ReactNode | null;
 };
 
-const dashboardPathFor = (role: "testee" | "admin" | null): string => {
+/**
+ * Role's home dashboard. Admins land on `/ops`, testees on `/`. Exported
+ * so the recovery-CTA surfaces (root error/404/403) route an admin out of
+ * the testee-gated `/` instead of looping (audit V1).
+ */
+export const dashboardPathFor = (role: "testee" | "admin" | null): string => {
   if (role === "admin") return "/ops";
   return "/";
 };

@@ -14,6 +14,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
+import { useAuth } from "@/lib/auth/context";
+import { dashboardPathFor } from "@/lib/auth/guards";
 import { Icon } from "@/components/primitives/Icon";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   const router = useRouter();
+  const { role } = useAuth();
   const apiErr = error instanceof ApiError ? error : null;
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export default function GlobalError({
       actions={
         <>
           <Button onClick={reset}>Try again →</Button>
-          <Button variant="outline" onClick={() => router.push("/")}>
+          <Button variant="outline" onClick={() => router.push(dashboardPathFor(role))}>
             Go to dashboard
           </Button>
           {/* TODO(v1.x): wire real support channel */}

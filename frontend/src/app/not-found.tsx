@@ -3,9 +3,8 @@
  * unauth and authed unmatched routes — `next-found.tsx` is the catchall.
  */
 
-import Link from "next/link";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
-import { buttonVariants } from "@/components/ui/button";
+import { DashboardLink } from "@/components/shell/DashboardLink";
 
 export default function NotFound() {
   return (
@@ -18,11 +17,7 @@ export default function NotFound() {
         </>
       }
       body="The link may be old or mistyped. Try the dashboard or head back."
-      actions={
-        <Link href="/" className={buttonVariants()}>
-          Go to dashboard →
-        </Link>
-      }
+      actions={<DashboardLink />}
     />
   );
 }
