@@ -60,9 +60,15 @@ exact boot-guard scaffold WS-A Facet B needs:
   safe per AC-CD2).
 - `app/config.py:123` `DEV_ENVS = {"development","dev","local","test"}`;
   `:135` `_cors_is_insecure(...)`; `:178` the non-dev fail-closed block that
-  RAISEs on `change-me` secrets / wildcard|localhost CORS.
+  **appends to the returned `errors` list** on `change-me` secrets /
+  wildcard|localhost CORS.
 - `app/main.py:42` `run_startup_checks(...)` called from the `:70` FastAPI
-  lifespan — logs warnings, raises `RuntimeError` on any error.
+  lifespan — logs warnings and **raises** `RuntimeError` when the `errors`
+  list is non-empty (`main.py:57-63`). **Note the two-layer contract (auditor
+  F6):** `check_startup_config` never raises — it returns `(warnings,
+  errors)`; the raise lives one layer up. Any C1 fail-closed clause must
+  *append to `errors`*, not raise, or it breaks the structure-gate-safe
+  return contract.
 
 **Consequence:** WS-A Facet B is **not new infrastructure** — it is one new
 `Settings` field plus one new fail-closed clause inside the existing
@@ -147,8 +153,34 @@ attempt · 60s ceiling`). **But `SafetyEmpty.tsx:26` also renders
 `Per AC-D21 · Acumen never generates safety teaching content` as visible body
 text** — a seventh leak A1 did not enumerate. Unlike the decorative `·
 AC-Dxx` suffixes, this one is a substantive safety-policy sentence with the
-anchor woven in. Stripping it blindly would damage the policy copy. See
-**Decision D3** (reword vs strip).
+anchor woven in.
+
+**G6.1 — the Safety* anchor strings are spec-verbatim AND test-asserted
+(auditor Round-1 F1; re-verified).** The original G6 read the render sites but
+not the spec/test lock — a grounding gap. Re-verified:
+- `fe-specs/FE-3-content.md:347` locks the SafetyEmpty footer **verbatim**
+  ("Footer copy verbatim: *Per AC-D21 · Acumen never generates safety teaching
+  content*") and the §B.4.6 Gherkin at `:489` repeats it as an acceptance
+  criterion; `:462` describes the SafetyLinks header as rendering
+  `"Curated industry sources · AC-D21"`. `SafetyEmpty.tsx:6-8` self-documents
+  the footer as "VERBATIM per spec".
+- Three existing assertions lock the strings:
+  `tests/components/pill-detail/SafetyLinks.test.tsx:26`
+  (`/Curated industry sources · AC-D21/i`), `:48` (exact footer string), and
+  `tests/pages/pill-detail.test.tsx:224` (same footer). Stripping these and
+  adding Slice 4's "no `AC-D` in rendered text" guard **cannot both pass** —
+  the old assertions must be rewritten, downstream of a spec amendment.
+- **Two-group split (verified):** the spec/test coupling is confined to the
+  three **Safety\*** strings — `SafetyEmpty.tsx:16` & `SafetyLinks.tsx:28`
+  (eyebrow, FE-3:462) and `SafetyEmpty.tsx:26` (footer, FE-3:347/489). The
+  other four — `JITQueue.tsx:78`, `grade-review-queue.tsx:105`,
+  `loop-step-row.tsx:74` (test `adaptive-loop-card.test.tsx:107` asserts only
+  the partial `/Stepped difficulty down/`), and **`SafetyPosterCard.tsx:22`**
+  (`Safety pill · AC-D21` — FE-3:344 describes the card but does **not** quote
+  this eyebrow verbatim, and no test asserts it) — are **test-safe** to strip.
+
+Consequence: the Safety* group is a **spec-drift** fix (FE-3 amendment first),
+not a free copy tweak. See the rewritten **Decision D3** and Slice 4.
 
 ---
 
@@ -171,53 +203,89 @@ no benefit over rewriting two strings. Both rejected as strictly more work.)*
 
 ### D2 — C1 frontend-origin config shape + AC-CD5 anchor (gates WS-A Slice 1)
 Two coupled sub-decisions:
-- **(a) Settings field + fail-closed wiring.** Recommendation: add
-  `app_public_web_url: str = "http://localhost:3000"` to `Settings`
-  (mirroring the `cors_allowed_origins` default), build the setup/reset links
-  from it with path-segment shape, and add **one** fail-closed clause to
-  `check_startup_config` — RAISE in a non-dev env when `app_public_web_url` is
-  unset/empty or localhost (reuse the existing `_LOOPBACK_MARKERS` /
-  `_cors_is_insecure` style at `config.py:127–143`). This keeps the whole fix
-  inside the existing G1 boot-guard with zero new modules and no structure-gate
-  change.
-- **(b) Anchor.** The email templates live at the AC-CD5 auth seam
-  (`permissions.py:259–281` comment). The link **contract** (user-facing links
-  use the public **web** origin with a path-segment token, distinct from the
-  API `app_public_url`) is currently undocumented (AC-CD5 body,
-  `CODE_SPEC.md:597–602`, is silent on it). Recommendation: **amend AC-CD5's
-  body** in-place to record the link-building contract, folded into Slice 1's
-  commit under the structural-additions carve-out (`SESSION_START.md:86–96`) —
-  this is a defect-fix clarification of existing intent (links are *meant* to
-  reach the FE), not a new product rule, so it does not require a separate
-  user-authored spec PR. **Surface for confirmation:** if the spec author
-  judges the anchor edit to be spec-drift rather than an absorbable
-  clarification, they author a standalone AC-CD5 amendment PR first and Slice 1
-  implements against it (spec-drift pause, `SESSION_START.md:80–85`).
+- **(a) Settings field + fail-closed wiring** *(revised per auditor F5).*
+  Recommendation: add **`app_frontend_url: str = "http://localhost:3000"`**
+  (`APP_FRONTEND_URL`) to `Settings` — matching the synthesis F.2 suggestion
+  and **deliberately distinct** from `APP_PUBLIC_URL` (the original draft's
+  `app_public_web_url` differed by one infix token, so an operator swap of two
+  real `https://…` URLs would evade the guard and silently re-introduce C1
+  Facet B — auditor F5.1). Build the setup/reset links from it with
+  path-segment shape, and add **two** clauses to `check_startup_config` (both
+  **append to `errors`** in a non-dev env, never raise — see G1/F6):
+  (i) reject empty/localhost `app_frontend_url` (reuse `_LOOPBACK_MARKERS` /
+  `_cors_is_insecure` style at `config.py:127–143`); **(ii) cross-consistency —
+  assert `app_frontend_url` ∈ `cors_allowed_origins_list`** (the browser app's
+  own origin must already be CORS-allowed), which catches both the swap and a
+  plain typo for ~one line, reusing the existing list accessor (auditor F5.2).
+  Keeps the whole fix inside the existing G1 boot-guard — zero new modules, no
+  structure-gate change.
+- **(b) Anchor** *(re-grounded per auditor F2).* The email templates live at
+  the AC-CD5 auth seam (`permissions.py:259–281` comment); the link
+  **contract** (user-facing links use the public **frontend** origin with a
+  path-segment token, distinct from the API `app_public_url`) is undocumented
+  (AC-CD5 body, `CODE_SPEC.md:597–602`). **Correction:** the draft cited the
+  `SESSION_START.md:86–96` structural-additions carve-out to fold the AC-CD5
+  edit into Slice 1 — but that carve-out covers *new files / modules /
+  dependencies*, **not anchor-body edits**. An anchor-body edit is governed by
+  the spec-drift rule (`:80–85`) + Anchor discipline (`:97+`), so the
+  **default is the spec-drift fork**, not the fold: the spec author authors a
+  standalone AC-CD5 body amendment PR (the same shape as the precedent's FE-8
+  §H(a) handling), and Slice 1 implements against it (pause,
+  `SESSION_START.md:80–85`). This also makes D2(b) consistent with D3's F1
+  spec-drift handling. **Surface for ruling:** confirm the standalone-AC-CD5
+  -amendment route, or rule the contract is already implied by AC-CD5 and no
+  anchor edit is needed (in which case Slice 1 ships the code + a handover note
+  only).
 
-### D3 — V2 scope: the seventh site + the safety-policy sentence (refines WS-C/V2)
-**Recommendation:** strip the decorative `· AC-Dxx` trace suffix from all six
-A1 sites (keep the human-readable head — `Queue`, `Curated industry sources`,
-`Cross-family review`, etc.), **and reword** `SafetyEmpty.tsx:26` from
-`Per AC-D21 · Acumen never generates safety teaching content` to
-`Acumen never generates safety teaching content.` — preserving the policy
-statement while dropping the meaningless-to-users anchor. This is an
-**out-of-A1-scope discovery** (G6), surfaced rather than silently folded:
-confirm the reword wording, or rule that `:26` stays as-is (intentional
-provenance copy).
+### D3 — V2 scope: the Safety* strings are spec-drift, not a copy tweak (revised per auditor F1)
+The draft framed `SafetyEmpty.tsx:26` as a free reword. It is not — G6.1
+(verified) shows the Safety* strings are **spec-verbatim** (FE-3 §B.4.6 /
+§B.3, lines 347/462/489) and **test-asserted** (3 assertions). So V2 splits
+into two groups:
+- **Test-safe group — strip in Slice 4, no spec gate:** `JITQueue.tsx:78`,
+  `grade-review-queue.tsx:105`, `loop-step-row.tsx:74`, **and**
+  `SafetyPosterCard.tsx:22` (not verbatim-locked, no exact-text test — G6.1).
+  Strip the `· AC-Dxx` suffix, keep the human-readable head.
+- **Spec-locked group — Safety* eyebrows + footer (`SafetyEmpty.tsx:16`,
+  `SafetyLinks.tsx:28`, `SafetyEmpty.tsx:26`):** rewording/stripping these
+  edits FE-3 acceptance criteria → **spec-drift** (`SESSION_START.md:80–85`),
+  handled the **same way as D2(b)**: the spec author authors the FE-3 §B.4.6 /
+  §B.3 amendment (proposed text e.g. footer → `Acumen never generates safety
+  teaching content.`; eyebrow → `Curated industry sources`), then Slice 4
+  implements against it and **owns rewriting the 3 coupled assertions**
+  (`SafetyLinks.test.tsx:26`/`:48`, `pill-detail.test.tsx:224`).
+**Recommendation:** confirm the FE-3 amendment route + the proposed replacement
+copy, **or** rule the Safety* `· AC-D21` provenance stays (it is arguably
+deliberate safety-policy attribution, unlike the other anchor decorations) —
+in which case Slice 4 ships only the test-safe group and V2 is partially
+closed. Either ruling is clean; the asymmetry the draft had (D2(b) applied the
+spec-drift rule, D3 didn't) is now removed.
 
 ### D4 — Test strategy for V4/V5 (runtime-state findings)
 These are render-under-failure-mode issues; the existing result-page harness
 doesn't run the App-Router boundary (G4). **Recommendation:**
-- **V4:** (i) assert the result `useQuery` is configured `throwOnError: true`
-  (config-level guard), **and** (ii) add a vitest case that seeds an MSW 500
-  for `GET /v1/attempts/{id}/result`, wraps `<ResultPage/>` in a **test
-  `ErrorBoundary`**, and asserts the boundary's fallback renders (proving the
-  query throws rather than blanking to `null`). This exercises the seam the
-  real `error.tsx` sits on without depending on App-Router internals.
-- **V5:** in `GradingOverlay.test.tsx`, seed a persistent MSW 500 + fake
-  timers, advance past `POLL_MAX_ATTEMPTS` intervals, and assert the overlay
-  reaches an **error/exhausted affordance** (not an eternal spinner) — i.e. the
-  cap now advances on `isError`/`errorUpdatedAt`, not only `dataUpdatedAt`.
+- **V4** *(predicate, not literal — auditor F3).* The result query **polls**
+  (`result/page.tsx:58-59` keeps refetching while `status === "review_pending"`),
+  so a literal `throwOnError: true` would throw to the boundary on a *transient
+  poll-refetch 500 after a successful initial load*, nuking a valid pending
+  page. Use the library's "only throw when we have nothing to show" predicate:
+  `throwOnError: (_err, query) => query.state.data === undefined` — fires the
+  boundary for V4's **initial-blank** case, lets a transient mid-poll error
+  recover next interval. Test: (i) a config-level assertion that the predicate
+  returns `true` for `data === undefined` and `false` otherwise (not `===
+  true`), and (ii) an MSW-500 + test-`ErrorBoundary` case proving the boundary
+  fallback renders on initial failure.
+- **V5** *(distinct error affordance, not the exhausted card — auditor F4).*
+  The `pollExhausted` branch (`GradingOverlay.tsx:129-148`) renders **"Still
+  grading / Taking longer than expected — check back soon."** — correct for
+  slow grading, **wrong** for a hard 500 (and folding the error into
+  `pollExhausted` delays escape ~45s = `POLL_MAX_ATTEMPTS × POLL_INTERVAL_MS`).
+  Prefer: on persistent `isError` (with `retry:false`, each poll fails
+  immediately so `errorUpdatedAt` advances every interval), escape **promptly**
+  to a **distinct error affordance** (retry/report copy), not the slow-grading
+  card. Test in `GradingOverlay.test.tsx`: persistent MSW 500 + fake timers →
+  the distinct error affordance appears quickly (not after the full cap, not
+  the "still grading" copy).
 
 Confirm this strategy, or specify a preferred harness (e.g. a Playwright
 route-mock e2e for the boundary instead of the test-ErrorBoundary shim).
@@ -241,74 +309,95 @@ other and may proceed in any order after Slice 1.
 
 ### Dependency / execution graph
 ```
-S1 (WS-A · C1)  ─┬─ S2 (WS-B · V4+V5)
-                 ├─ S3 (WS-C · V1)
-                 └─ S4 (WS-C · V2)
+S1 (WS-A · C1) [code unblocked; AC-CD5 doc via D2b spec PR] ─┬─ S2 (WS-B · V4+V5)
+                                                            ├─ S3 (WS-C · V1)
+                                                            └─ S4a (WS-C · V2 test-safe)
+                                                               S4b (V2 Safety*) ── GATED on FE-3 amend (D3)
 ```
-S1 first (blocker visibility, synthesis F.3 #1). S2/S3/S4 are mutually
+S1 first (blocker visibility, synthesis F.3 #1). S2/S3/S4a are mutually
 independent (disjoint surfaces) and auto-continue on clean review.
-**No spec-drift gate** is expected unless D2(b) is ruled to require a
-standalone AC-CD5 amendment PR — in which case S1 pauses on that PR landing
-(`SESSION_START.md:80–85`) and S2–S4 proceed meanwhile.
+**Two spec-drift gates now apply** (auditor F1/F2, surfaced not absorbed):
+- **D2(b) — AC-CD5 link contract:** default route is a standalone
+  user-authored AC-CD5 amendment PR; S1's *code* (config/email/test) is
+  unblocked and proceeds, the *anchor doc* lands via that PR.
+- **D3 — FE-3 Safety* strings:** S4b waits on the user-authored FE-3
+  §B.4.6/§B.3 amendment; S4a proceeds meanwhile.
+Both honour the spec-drift pause (`SESSION_START.md:80–85`): the executing
+session does not author either amendment.
 
 ---
 
 ### Slice 1 — WS-A: auth activation path (C1, both facets) + regression test
-**Gated on Decisions D1 + D2.**
+**Gated on Decisions D1 + D2.** If D2(b) is ruled the spec-drift route
+(recommended), Slice 1's code waits on the standalone AC-CD5 amendment PR
+landing on `main`; the email/config/test work below is otherwise unblocked.
 **Fix:**
-- `app/config.py` — add `app_public_web_url: str = "http://localhost:3000"`
-  (D2a); add a fail-closed clause to `check_startup_config` (`:178` non-dev
-  block) RAISEing when `app_public_web_url` is empty/localhost in a non-dev
-  env, reusing `_LOOPBACK_MARKERS` (`:132`).
+- `app/config.py` — add **`app_frontend_url: str = "http://localhost:3000"`**
+  (`APP_FRONTEND_URL`, D2a — distinct from `APP_PUBLIC_URL`); add **two
+  clauses to `check_startup_config`** that **append to the returned `errors`
+  list** (never raise — G1/F6) in a non-dev env: (i) `app_frontend_url`
+  empty/localhost (reuse `_LOOPBACK_MARKERS`, `config.py:132`); (ii)
+  `app_frontend_url ∉ cors_allowed_origins_list` (cross-consistency, F5.2).
 - `app/permissions.py:266` / `:275` — rebuild both links as **path segments**
-  off the **web** origin:
-  `f"{get_settings().app_public_web_url}/setup/{raw_token}"` and
+  off the **frontend** origin:
+  `f"{get_settings().app_frontend_url}/setup/{raw_token}"` and
   `…/reset/{raw_token}`.
-- `docs/DEPLOYMENT.md` + `.env.example` — document `APP_PUBLIC_WEB_URL` as the
+- `docs/DEPLOYMENT.md` + `.env.example` — document `APP_FRONTEND_URL` as the
   externally-visible **frontend** origin (distinct from the API
-  `APP_PUBLIC_URL`), required-in-prod, no-localhost; cross-reference the new
-  boot assertion (mirror the existing CORS checklist `DEPLOYMENT.md:55–57`).
-- **(D2b)** AC-CD5 body amendment documenting the link contract (folded here,
-  pending D2b ruling).
+  `APP_PUBLIC_URL`), required-in-prod, no-localhost, **must be a member of
+  `CORS_ALLOWED_ORIGINS`**; cross-reference the new boot assertions (mirror the
+  existing CORS checklist `DEPLOYMENT.md:55–57`).
+- **(D2b)** AC-CD5 link-contract documentation — via the standalone amendment
+  PR (D2b spec-drift route), not folded here.
 **Test (the seam no test exercised — auditor1.md:70):**
 - `tests/integration/test_auth_email_links.py` (new) — assert
   `setup_email_content(tok)` / `reset_email_content(tok)` emit
-  `{app_public_web_url}/setup/{tok}` and `…/reset/{tok}` (path shape + web
+  `{app_frontend_url}/setup/{tok}` and `…/reset/{tok}` (path shape + frontend
   host), and that the emitted path matches the FE `[token]` route pattern
-  (e.g. `/setup/<tok>` has the token as the **last path segment**, no query
-  string).
-- Extend `tests/unit/test_startup_config.py` — `development` boots clean on
-  the localhost web URL default; a non-dev env with empty/localhost
-  `app_public_web_url` **raises** (the new fail-closed clause); a real
-  frontend origin passes.
+  (token as the **last path segment**, no query string).
+- Extend `tests/unit/test_startup_config.py`, **mirroring the existing
+  dual-assert pattern** (`check_startup_config` *collects the error* +
+  `run_startup_checks` *raises* — `:107-110`, `:120-124`, `:161-162`):
+  `development` boots clean on the localhost frontend default; a non-dev env
+  with empty/localhost `app_frontend_url`, or a frontend URL outside the CORS
+  list, **collects an error (and `run_startup_checks` raises)**; a real
+  CORS-member frontend origin passes.
 **Acceptance:** a created user's setup email links to
 `{frontend-origin}/setup/{token}` (resolves to `setup/[token]/page.tsx`, no
-404); `development` + CI boot clean; a non-dev env without a real
-`APP_PUBLIC_WEB_URL` fails fast; `pytest --ignore=tests/e2e` + `structure_gate`
+404); `development` + CI boot clean; a non-dev env without a real CORS-member
+`APP_FRONTEND_URL` fails fast; `pytest --ignore=tests/e2e` + `structure_gate`
 + `mypy` green. **PR #83 superseded** (D1).
 
 ### Slice 2 — WS-B: testee result-flow silent failures (V4 + V5) + tests
 **Fix:**
 - **V4** — `frontend/src/app/(authed)/(testee)/attempts/[attemptId]/result/
-  page.tsx:47–62` — add `throwOnError: true` to the result `useQuery` so a
-  fetch error throws into the already-correct Pattern-C boundary
-  `result/error.tsx` (no longer dead code).
-- **V5** — `frontend/src/components/attempt/GradingOverlay.tsx:111–121` —
-  advance the poll cap on the **error** path too: key the cap-advance on
-  `resultQuery.isError` / `errorUpdatedAt` (not only `dataUpdatedAt`), or break
-  to an error affordance on `isError`, so a persistent result-poll error
-  reaches `pollExhausted`/an escape card instead of spinning forever.
+  page.tsx:47–62` — add the **predicate** `throwOnError: (_err, query) =>
+  query.state.data === undefined` to the result `useQuery` (F3) so an
+  **initial-fetch** error throws into the already-correct Pattern-C boundary
+  `result/error.tsx` (no longer dead code), while a transient mid-poll error
+  on an already-rendered `review_pending` page recovers on the next interval
+  rather than nuking valid UI.
+- **V5** — `frontend/src/components/attempt/GradingOverlay.tsx:111–121` — on
+  persistent `resultQuery.isError`, escape **promptly** to a **distinct error
+  affordance** (retry/report copy), **not** the slow-grading `pollExhausted`
+  card (whose "Still grading / check back soon" copy at `:129-148` is wrong for
+  a 500, and which delays escape ~45s) (F4). With `retry:false`, each poll
+  fails immediately so `errorUpdatedAt` advances every interval — drive the
+  error escape off `isError`/`errorUpdatedAt`.
 **Test (per D4):**
 - `frontend/tests/pages/result-page.test.tsx` (extend) — MSW 500 on the result
   endpoint + a test `ErrorBoundary` wrapper; assert the boundary fallback
-  renders (not a blank body). Plus a config-level assertion that the query sets
-  `throwOnError`.
+  renders on **initial** failure (not a blank body). Plus a config-level
+  assertion that the `throwOnError` predicate returns `true` for `data ===
+  undefined` and `false` otherwise.
 - `frontend/tests/components/attempt/GradingOverlay.test.tsx` (extend) —
-  persistent MSW 500 + fake timers past `POLL_MAX_ATTEMPTS`; assert an
-  error/exhausted affordance appears (no eternal spinner).
-**Acceptance:** a result-fetch 500 renders the result error boundary (not
-header + blank); a persistent grading-poll error escapes to an error/exhausted
-state within the cap; `pnpm test` + `pnpm typecheck` green.
+  persistent MSW 500 + fake timers; assert the **distinct error affordance**
+  appears **promptly** (not the "Still grading" exhausted copy, not after the
+  full `POLL_MAX_ATTEMPTS` cap, no eternal spinner).
+**Acceptance:** a result-fetch 500 on initial load renders the result error
+boundary (not header + blank); a transient mid-poll 500 does not unmount a
+valid pending page; a persistent grading-poll error escapes promptly to a
+distinct error affordance; `pnpm test` + `pnpm typecheck` green.
 
 ### Slice 3 — WS-C: admin recovery loop (V1) + test
 **Fix:**
@@ -330,20 +419,34 @@ state within the cap; `pnpm test` + `pnpm typecheck` green.
 `pnpm typecheck` green.
 
 ### Slice 4 — WS-C: anchor-ID UI leak (V2) + test
-**Gated on Decision D3 (the `SafetyEmpty:26` reword).**
-**Fix:** strip the `· AC-Dxx` trace suffix from the six rendered sites (G6) —
-`JITQueue.tsx:78`, `loop-step-row.tsx:74`, `SafetyPosterCard.tsx:22`,
-`SafetyEmpty.tsx:16`, `SafetyLinks.tsx:28`, `grade-review-queue.tsx:105` —
-keeping the human-readable head; and reword `SafetyEmpty.tsx:26` per D3.
-Comments/aria/docstrings that mention `AC-D…` are **not** touched (A1 already
-excluded them).
+**Two groups per D3 / G6.1.** Comments/aria/docstrings that mention `AC-D…`
+are **not** touched (A1 already excluded them).
+
+**4a — test-safe group (no spec gate; ships in this slice unconditionally):**
+strip the `· AC-Dxx` suffix, keep the human-readable head, at
+`JITQueue.tsx:78`, `grade-review-queue.tsx:105`, `loop-step-row.tsx:74`, and
+`SafetyPosterCard.tsx:22` (G6.1 — none is verbatim-locked or exact-text
+tested).
+
+**4b — Safety* spec-locked group — GATED on the D3 FE-3 amendment (spec-drift):**
+`SafetyEmpty.tsx:16`, `SafetyLinks.tsx:28` (eyebrow), `SafetyEmpty.tsx:26`
+(footer) are spec-verbatim (FE-3:347/462/489) and test-asserted. Implement
+**only after** the user-authored FE-3 §B.4.6/§B.3 amendment lands on `main`
+(pause per `SESSION_START.md:80–85`); then strip/reword to match the amended
+spec **and rewrite the 3 coupled assertions** that currently lock the old
+strings: `tests/components/pill-detail/SafetyLinks.test.tsx:26` & `:48`,
+`tests/pages/pill-detail.test.tsx:224`. *(If D3 is ruled "Safety* provenance
+stays," 4b is dropped and V2 closes on 4a alone.)*
+
 **Test:**
-- `frontend/tests/components/` (new/extend) — render each touched component and
-  assert its visible text contains **no** `AC-D` substring (a regex guard so
-  the leak can't silently return).
-**Acceptance:** no user-facing surface renders an `AC-Dxx` token; the
-human-readable labels and the safety-policy statement remain intact; `pnpm
-test` + `pnpm typecheck` green.
+- `frontend/tests/components/` (new/extend) — render each **4a** component and
+  assert its visible text contains **no** `AC-D` substring (regex guard).
+- For **4b** (post-amendment): rewrite the 3 coupled assertions to the amended
+  copy and extend the no-`AC-D` guard to the Safety* surfaces.
+**Acceptance:** the 4a surfaces render no `AC-Dxx` token, human-readable heads
+intact, `pnpm test` + `pnpm typecheck` green; 4b lands the same guarantee on
+the Safety* surfaces once the FE-3 amendment is on `main`, with the 3 coupled
+assertions rewritten (no pre-existing test left red).
 
 ---
 
@@ -354,7 +457,8 @@ test` + `pnpm typecheck` green.
 | 1 | C1 (WS-A) | email-link shape+host; startup fail-closed | `tests/integration/test_auth_email_links.py` (new) + `tests/unit/test_startup_config.py` (extend) |
 | 2 | V4 + V5 (WS-B) | result-error boundary fires; grading-overlay escapes | `frontend/tests/pages/result-page.test.tsx` + `…/components/attempt/GradingOverlay.test.tsx` (extend both) |
 | 3 | V1 (WS-C) | role-aware recovery CTA | `frontend/tests/components/shell/*` (new) |
-| 4 | V2 (WS-C) | no `AC-D` in rendered text | `frontend/tests/components/*` (new/extend) |
+| 4a | V2 test-safe | no `AC-D` in rendered text | `frontend/tests/components/*` (new/extend) |
+| 4b | V2 Safety* (post FE-3 amend) | rewrite 3 coupled asserts + no-`AC-D` guard | `SafetyLinks.test.tsx:26/:48`, `pill-detail.test.tsx:224` |
 
 ---
 
@@ -395,9 +499,16 @@ carry-forward items remain parked per synthesis F.3/F.4.
 - **Slice 4 over-strip.** Strip only the decorative `· AC-Dxx` suffixes and
   the D3-reworded sentence; do not touch comments/aria/docstrings or the
   human-readable label heads.
-- **D2(b) spec-drift fork.** If the spec author rules the AC-CD5 edit is
-  drift (not absorbable), Slice 1 pauses on a standalone AC-CD5 amendment PR
-  before landing; Slices 2–4 proceed meanwhile.
+- **Two spec-drift gates (rev-1).** The AC-CD5 link contract (D2b) and the
+  FE-3 Safety* strings (D3/Slice 4b) are now both **spec-drift by default** —
+  each needs a user-authored amendment PR; the executing session must not
+  author either, and must pause the gated work until the amendment is on `main`
+  (S1 code and S4a proceed meanwhile). If the spec author instead rules either
+  contract is already implied (no amendment), that work un-gates.
+- **Slice 4b coupled tests.** 4b must rewrite the 3 existing assertions
+  (`SafetyLinks.test.tsx:26/:48`, `pill-detail.test.tsx:224`) in the **same**
+  commit as the strip, or the slice lands red — they exact-match the old
+  strings and the new no-`AC-D` guard directly contradicts them.
 
 ---
 
@@ -405,3 +516,30 @@ carry-forward items remain parked per synthesis F.3/F.4.
 authoring. Decisions D1–D5 are open and await the spec author's ruling (via PR
 comment). The planner authors and revises in response to audit only — it does
 not execute slices or flip draft→ready.*
+
+## rev-1 — auditor Round-1 findings folded (F1–F6)
+
+All six Round-1 findings verified valid against `fd7f267` and folded:
+- **F1 (real gap)** — V2 Safety* strings are spec-verbatim (FE-3:347/462/489)
+  + test-asserted (3 assertions): added **G6.1**, rewrote **D3** as a
+  spec-drift fork, split **Slice 4** into 4a (test-safe) / 4b (spec-gated +
+  owns the 3 coupled-test rewrites). Independently confirmed `SafetyPosterCard
+  :22` is **not** locked → moved to the test-safe group.
+- **F2 (real gap)** — AC-CD5 amendment was miscited to the `:86-96` structural
+  carve-out; it is spec-drift (`:80-85`) — **D2(b)** default flipped to a
+  standalone user-authored AC-CD5 PR; Slice 1 code unblocked, anchor doc via
+  that PR.
+- **F3** — V4 `throwOnError` made a **predicate** (`data === undefined`), not
+  literal `true`, to spare the polling query (D4, Slice 2).
+- **F4** — V5 escapes to a **distinct error affordance** on `isError`, not the
+  slow-grading `pollExhausted` card (D4, Slice 2).
+- **F5** — config field renamed `app_public_web_url` → **`app_frontend_url`
+  (`APP_FRONTEND_URL`)** + added a **CORS-membership** boot assertion (D2a,
+  Slice 1).
+- **F6** — corrected "raises" → "appends to `errors` (and `run_startup_checks`
+  raises)"; Slice 1 test mirrors the existing dual-assert pattern (G1, Slice 1).
+
+**Set-diff gate (rev-0 → rev-1):** no finding IDs dropped — C1, V4, V5, V1, V2
+all still in scope; the only scope *change* is V2 splitting into 4a/4b and two
+new spec-drift gates (D2b, D3) surfaced for the spec author. rev-1 edits are
+audit-driven only (G1, G6.1, D2, D3, D4, Slices 1/2/4, graph, matrix).
