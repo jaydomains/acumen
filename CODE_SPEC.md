@@ -597,8 +597,27 @@ migrations; SiteMesh `env.py` pattern.
 ### AC-CD5 — Standalone email+password auth + role-check; Auth-Hub seam
 **Decision:** argon2id + JWT, admin-created users, token-based
 setup/reset, single role-check dependency, deactivation + privacy gates.
+**Setup/reset link contract (amended 2026-06-06 per audit-2026-06-02
+finding C1 / PR #94 plan D2b).** The token-bearing setup and reset links
+embedded in account emails are built against the public **frontend**
+origin, held in a dedicated `app_frontend_url` setting
+(`APP_FRONTEND_URL`, default `http://localhost:3000`) that is
+deliberately distinct from the API origin `app_public_url` — the links
+carry a **path-segment** token (matching the frontend route shape, e.g.
+`/<flow>/{token}`), not a query-string token, so they resolve to the
+browser app rather than the API host. `check_startup_config` fails
+closed in a non-dev environment when `app_frontend_url` is empty or
+loopback, and additionally asserts `app_frontend_url ∈
+cors_allowed_origins_list` (the browser app's own origin must already be
+CORS-allowed); both checks **append to the returned `errors` list** and
+never raise — the `RuntimeError` is raised one layer up in
+`run_startup_checks`. This contract was previously implicit in the email
+templates; it is recorded here so the frontend origin is a named,
+boot-guarded setting rather than an undocumented coupling.
 **Rationale:** the smallest correct auth that ports cleanly.
-**Implications:** one-file swap at port (SPEC §9.2).
+**Implications:** one-file swap at port (SPEC §9.2); WS-A Slice 1 of the
+post-audit pre-deploy workstream implements the link contract against
+this anchor.
 **Confidence:** confident default.
 
 ### AC-CD6 — REST `/v1` + error envelope + SSE for AC-D25
