@@ -6,6 +6,22 @@
 > **Anchors:** AC-D5 (per_testee in the mode set), AC-D11 (pause mechanics — user vs system-glitch branch via `pause_reason`), AC-D13 (benchmark explicitly excluded from JIT), AC-D17 (snapshot/replay semantics), AC-D24 (shuffle seed + question_group_id; anchor interleave is server-side), AC-D25 (JIT per-Testee streaming, Q1 sync + Q2..N parallel, single-retry then AC-D11 pause), AC-CD6 (uniform error envelope), AC-CD10 (in-process `asyncio.gather` + `Semaphore`; `attempt_position` ordering; `Last-Event-ID` resume), AC-CD19 (frontend stack lock), AC-CD20 (routing + role guards), AC-CD21 (TanStack Query + react-hook-form + error envelope), AC-CD22 (fetch-streaming SSE adapter, **subject to spec-clarification PRs below**), AC-CD24 (image-field typed stubs, render `null` in v1).
 >
 > This is the **fifth per-page FE detail spec.** Template inheritance: per-page §B from `fe-specs/FE-1-auth.md` (verbatim); the SSE event-sequence subsection nests inside §5 (States) of the consuming page per FE-1 §G. Deviating from the template in FE-6+ is itself spec drift.
+>
+> **Amendment (2026-06-06 — post-audit pre-deploy fix workstream).** This
+> doc is amended in place per the spec-author ruling for the 2026-06-02
+> production-readiness audit finding **V2** (internal anchor IDs rendered in
+> the UI — `audits/2026-06-02-prod-readiness-synthesis.md` §V2). Authorizing
+> context: `plans/2026-06-06-post-audit-pre-deploy-fix-workstream.md` (merged
+> at `621a549`, PR #94), §4 Slice 4. The **`JITQueue`** eyebrow row (§B.1,
+> `JITQueue.tsx`) drops its `· AC-D25` provenance suffix — internal anchor
+> decoration, not testee-facing copy: `"Queue · AC-D25"` becomes `"Queue"`.
+> The plan's Slice 4a grounded "test-safe" only against component tests and
+> missed that this rendered copy is quoted verbatim here; per spec-drift
+> discipline (`SESSION_START.md:80–85`) the build session paused the strip
+> until this amendment landed. The build session's Slice 4 strips the
+> matching `JITQueue.tsx` string. Same fork as PR #97 (FE-3 Safety\* copy).
+> Legitimate `AC-D…` references elsewhere in this doc (the Anchors block,
+> prose contract notes, §H items) are unchanged.
 
 ---
 
@@ -517,7 +533,7 @@ Component co-located with the streaming runner (not its own route). File: `front
 
 *Inner layout* (per `attempt.jsx:295–403`):
 
-- Eyebrow row: "Queue · AC-D25" + pulse-dot + "streaming" meta (replaced by "done · {N} arrived" when `status === "done"`).
+- Eyebrow row: "Queue" + pulse-dot + "streaming" meta (replaced by "done · {N} arrived" when `status === "done"`).
 - Buffer card: "BUFFER · {arrivedIdx - currentIdx - 1} ready" (warn-coloured when < 2); 8-position bar; "{arrivedIdx} of {questions.length} arrived · Q1 took 2.4s · others stream in parallel" copy. The "Q1 took 2.4s" copy is **placeholder text** in the design; in production the FE pulls the actual Q1 generation time from `attempt.started_at - attempt.created_at` if surfaced (verify §H (b) item 7). If not, drop the timing copy and just show "{arrivedIdx} of {N} arrived".
 - Per-question cards: `QueueItem` with the four states.
 
