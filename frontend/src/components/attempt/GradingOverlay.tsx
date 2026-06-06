@@ -101,12 +101,12 @@ export function GradingOverlay({ attemptId, mode }: GradingOverlayProps) {
     refetchInterval: (q) => {
       const data = q.state.data as AttemptResultResponse | undefined;
       if (data?.status === "ready") return false;
-      // V5 (audit): on a persistent result-poll error the query never
-      // produces data, so the dataUpdatedAt-keyed cap below never advances
-      // and the spinner would run forever. Stop polling on `error` status
-      // and escape to the distinct error affordance below (retry available).
-      if (q.state.status === "error") return false;
       if (pollExhausted) return false;
+      // V5 (audit): keep polling THROUGH errors. On a persistent error the
+      // distinct error affordance below shows (driven off `isError`) so the
+      // spinner never runs forever; but a transient blip (one-off 5xx under
+      // grading load) self-heals on the next interval rather than hard-
+      // stopping the user on the first failure.
       return POLL_INTERVAL_MS;
     },
     refetchIntervalInBackground: false,
@@ -165,6 +165,12 @@ export function GradingOverlay({ attemptId, mode }: GradingOverlayProps) {
               data-testid="grading-overlay-retry"
               variant="outline"
               onClick={() => {
+                // Clean restart: rewind the phase animation + poll cap so a
+                // successful retry resumes from phase 0 rather than the final
+                // "still running" copy, and a retry after a long wait can't
+                // immediately re-trip the cap.
+                setPhaseIdx(0);
+                setPollCount(0);
                 setPollExhausted(false);
                 void resultQuery.refetch();
               }}
