@@ -142,3 +142,60 @@ describe("GradingOverlay · poll cap (45s)", () => {
     expect(mockedRouter.push).toHaveBeenCalledWith("/");
   });
 });
+
+describe("GradingOverlay · V5 persistent result-poll error", () => {
+  it("escapes promptly to the distinct error affordance (not the slow-grading card, not after the cap)", async () => {
+    server.use(
+      http.get(
+        `${API}/v1/attempts/:attempt_id/result`,
+        () => new HttpResponse(null, { status: 500 }),
+      ),
+    );
+    render(mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="frozen" />));
+
+    // First poll fails immediately (retry:false) → error state, no fake
+    // timers / no 45s cap wait needed.
+    await waitFor(() =>
+      expect(screen.getByTestId("grading-overlay")).toHaveAttribute(
+        "data-state",
+        "error",
+      ),
+    );
+    expect(screen.getByText(/We couldn't load your result/i)).toBeInTheDocument();
+    expect(screen.getByTestId("grading-overlay-retry")).toBeInTheDocument();
+    // Not the slow-grading copy, and the spinner is gone.
+    expect(screen.queryByText(/Taking longer than expected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Working through your responses/i)).not.toBeInTheDocument();
+  });
+
+  it("auto-recovers from a transient blip: a one-off 500 then ready still routes", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${API}/v1/attempts/:attempt_id/result`, () => {
+        calls += 1;
+        if (calls === 1) return new HttpResponse(null, { status: 500 });
+        return HttpResponse.json({
+          attempt_id: ATTEMPT_ID,
+          submitted_at: "2026-05-27T10:30:00Z",
+          status: "ready",
+          overall_score: 0.9,
+          outcome: "pass",
+          pills: [],
+          adaptive_loop: [],
+          questions: null,
+        });
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="frozen" />));
+    // Advance one poll interval (component POLL_INTERVAL_MS = 1500) so the
+    // second (successful) poll fires — polling is NOT hard-stopped by the
+    // first failure.
+    await vi.advanceTimersByTimeAsync(1700);
+    vi.useRealTimers();
+
+    await waitFor(() =>
+      expect(mockedRouter.push).toHaveBeenCalledWith(`/attempts/${ATTEMPT_ID}/result`),
+    );
+  });
+});
