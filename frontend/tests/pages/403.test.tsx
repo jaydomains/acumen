@@ -19,6 +19,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
 
+// The recovery CTA (DashboardLink) is role-aware (audit V1); default to a
+// testee so "Go to dashboard" targets "/". The /ops admin case is covered in
+// tests/components/shell/recovery-cta.test.tsx.
+vi.mock("@/lib/auth/context", () => ({
+  useAuth: () => ({ role: "testee", status: "authenticated", privacy_ack_at: "x" }),
+}));
+
 import ForbiddenPage from "@/app/403/page";
 
 describe("/403", () => {

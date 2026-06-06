@@ -5,7 +5,15 @@
  */
 
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The recovery CTA (DashboardLink) is role-aware (audit V1); default to a
+// testee so "Go to dashboard" targets "/". The /ops admin case is covered in
+// tests/components/shell/recovery-cta.test.tsx.
+vi.mock("@/lib/auth/context", () => ({
+  useAuth: () => ({ role: "testee", status: "authenticated", privacy_ack_at: "x" }),
+}));
+
 import NotFound from "@/app/not-found";
 
 describe("/not-found", () => {

@@ -23,11 +23,10 @@
  */
 
 import { Suspense } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/primitives/Icon";
 import { BoundaryFrame } from "@/components/shell/BoundaryFrame";
-import { buttonVariants } from "@/components/ui/button";
+import { DashboardLink } from "@/components/shell/DashboardLink";
 
 const REQUIRED_LABEL: Record<string, string> = {
   admin: "administrators",
@@ -50,11 +49,7 @@ function ForbiddenContent() {
         </>
       }
       body="Your account doesn't have access. Ask an admin if you need elevated permissions."
-      actions={
-        <Link href="/" className={buttonVariants()}>
-          Go to dashboard →
-        </Link>
-      }
+      actions={<DashboardLink />}
       footer={
         <div className="space-y-1">
           <div>
