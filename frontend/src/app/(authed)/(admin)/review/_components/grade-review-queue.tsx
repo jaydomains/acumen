@@ -102,7 +102,7 @@ export function GradeReviewQueue() {
   return (
     <>
       <PageHeader
-        eyebrow="Cross-family review · AC-D19 · batched per attempt · 60s ceiling"
+        eyebrow="Cross-family review · batched per attempt · 60s ceiling"
         title="Adjudicate AI grades."
         subtitle="Flagged grades are where the AI grader and its reviewer disagree. Keep the AI grade, accept the reviewer, or substitute your own."
       />

@@ -25,7 +25,7 @@ export function SafetyLinks({ links }: SafetyLinksProps) {
   return (
     <Card data-testid="safety-links" className="flex flex-col gap-5 p-6">
       <div className="flex items-baseline justify-between gap-3">
-        <div className="eyebrow">Curated industry sources · AC-D21</div>
+        <div className="eyebrow">Curated industry sources</div>
         <span
           className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-4"
           aria-hidden

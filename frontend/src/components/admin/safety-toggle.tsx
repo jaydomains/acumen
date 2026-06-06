@@ -55,7 +55,7 @@ export function SafetyToggle({ on, onChange, disabled, className }: SafetyToggle
         </div>
         <div className="text-ink-3 text-[11.5px] mt-0.5 leading-[1.5]">
           {on
-            ? "Curated industry links served via the safety-pill viewer (AC-D21)."
+            ? "Curated industry links served via the safety-pill viewer."
             : "Acumen generates a learning material on demand for this pill."}
         </div>
       </div>

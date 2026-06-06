@@ -21,9 +21,9 @@ describe("SafetyLinks", () => {
     });
   });
 
-  it("renders the AC-D21 eyebrow header", () => {
+  it("renders the curated-sources eyebrow header", () => {
     render(<SafetyLinks links={[link(0)]} />);
-    expect(screen.getByText(/Curated industry sources · AC-D21/i)).toBeInTheDocument();
+    expect(screen.getByText(/Curated industry sources/i)).toBeInTheDocument();
   });
 
   it("emits the source label when present, falls back gracefully when absent", () => {
@@ -42,10 +42,10 @@ describe("SafetyLinks", () => {
 });
 
 describe("SafetyEmpty", () => {
-  it("renders the verbatim AC-D21 footer copy", () => {
+  it("renders the safety-disclaimer footer copy", () => {
     render(<SafetyEmpty />);
     expect(
-      screen.getByText("Per AC-D21 · Acumen never generates safety teaching content"),
+      screen.getByText("Acumen never generates safety teaching content."),
     ).toBeInTheDocument();
   });
 });

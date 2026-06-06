@@ -19,7 +19,7 @@ export function SafetyPosterCard() {
       <div className="flex items-center gap-2 text-danger">
         <Icon name="shield" size={18} />
         <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
-          Safety pill · AC-D21
+          Safety pill
         </span>
       </div>
       <p className="text-[14px] leading-[1.6] text-ink-2">

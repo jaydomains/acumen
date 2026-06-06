@@ -71,7 +71,7 @@ export function LoopStepRow({ step, index }: LoopStepRowProps) {
       ) : null}
       {step.step_down_hint ? (
         <p className="mb-2 font-mono text-[11px] text-warn">
-          Stepped difficulty down · AC-D6 third-iteration rule
+          Stepped difficulty down · third-iteration rule
         </p>
       ) : null}
       <CtaButton step={step} />

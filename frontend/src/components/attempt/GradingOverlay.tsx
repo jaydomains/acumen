@@ -50,11 +50,11 @@ const FROZEN_PHASES: Phase[] = [
   },
   {
     label: "Cross-family review",
-    copy: "Cross-family review pass · OpenAI · 60s ceiling per AC-D19",
+    copy: "Cross-family review pass · OpenAI · 60s ceiling",
   },
   {
     label: "Competence + loop",
-    copy: "Computing competence + queueing loop · recency-weighted per AC-D9",
+    copy: "Computing competence + queueing loop · recency-weighted",
   },
 ];
 

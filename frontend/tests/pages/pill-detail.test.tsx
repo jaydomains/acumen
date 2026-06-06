@@ -221,7 +221,7 @@ describe("Pill detail page · safety branch", () => {
     render(mountTree(<PillDetailPage />));
     await waitFor(() => expect(screen.getByTestId("safety-empty")).toBeInTheDocument());
     expect(
-      screen.getByText("Per AC-D21 · Acumen never generates safety teaching content"),
+      screen.getByText("Acumen never generates safety teaching content."),
     ).toBeInTheDocument();
   });
 });

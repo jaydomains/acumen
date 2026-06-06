@@ -25,7 +25,7 @@ const ITEMS = [
   "Watermarking — your name + attempt id is overlaid on the page",
   "Focus tracking — tab switches are counted while you take the test",
   "Copy / paste blocked — text selection + Ctrl/Cmd+C/V are suppressed",
-  "Pause blanks content — leaving the question pane hides text per AC-D11",
+  "Pause blanks content — leaving the question pane hides text",
   "N-gram overlap checked at grading — substantial verbatim matches flag",
 ];
 
@@ -49,7 +49,7 @@ export function IntegrityBadge({ tabSwitches }: IntegrityBadgeProps) {
         className="absolute right-0 top-[calc(100%+6px)] z-30 w-[320px] border border-line bg-bg-raised p-3 text-[12.5px] text-ink-2 shadow-lg"
       >
         <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-3">
-          Integrity surface (AC-D4)
+          Integrity surface
         </div>
         <ul className="flex flex-col gap-1.5">
           {ITEMS.map((item) => (
