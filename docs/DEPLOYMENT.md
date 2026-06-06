@@ -46,6 +46,14 @@ annotated list and non-secret defaults):
 - **Environment:** `APP_ENV` set to `production` (or any non-dev value) to
   arm the fail-closed boot checks; `APP_PUBLIC_URL` set to the externally-
   visible API URL.
+- **Frontend origin (setup/reset links):** `APP_FRONTEND_URL` set to the
+  externally-visible **frontend** origin (the browser app, e.g.
+  `https://acumen.example.com`) — **distinct from** the API `APP_PUBLIC_URL`.
+  Setup/reset email links are built from it with a path-segment token
+  (AC-CD5 link contract). Required-in-prod, no-localhost, and **must be a
+  member of `CORS_ALLOWED_ORIGINS`** (the browser app's own origin must be
+  CORS-allowed); the boot check rejects an empty/localhost value or one
+  outside the CORS list in a non-dev `APP_ENV` (see the CORS checklist below).
 
 Optional / feature-gated: `GOOGLE_DRIVE_CREDENTIALS_JSON` +
 `GOOGLE_DRIVE_FOLDER_ID` (Drive RAG, AC-D22), `WEB_SEARCH_API_KEY`

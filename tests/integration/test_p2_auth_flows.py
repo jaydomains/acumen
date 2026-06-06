@@ -18,7 +18,9 @@ from app import permissions as p
 from app.config import get_settings
 from tests.integration.conftest import FakeSession, bearer, make_user
 
-_TOKEN_RE = re.compile(r"token=([^\s]+)")
+# AC-CD5 link contract (Slice 1 / audit C1): setup/reset links carry the
+# token as the final PATH segment (``/<flow>/{token}``), not a query string.
+_TOKEN_RE = re.compile(r"/(?:setup|reset)/([^\s/]+)")
 
 
 def _token_from_last_email() -> str:

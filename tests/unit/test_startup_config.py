@@ -35,6 +35,12 @@ def _settings(**overrides: str) -> Settings:
         "openai_api_key": "sk-openai-real",
     }
     base.update(overrides)
+    # AC-CD5 link contract: default the frontend origin to a CORS member
+    # (the first CORS origin) unless a test sets it explicitly, so existing
+    # prod-clean cases stay clean under the new app_frontend_url boot checks.
+    base.setdefault(
+        "app_frontend_url", base["cors_allowed_origins"].split(",")[0].strip()
+    )
     return Settings(**base)
 
 
@@ -160,6 +166,61 @@ def test_unknown_env_fails_closed_on_defaults() -> None:
     assert errors != []
     with pytest.raises(RuntimeError):
         run_startup_checks(bad)
+
+
+# --- AC-CD5 link contract: app_frontend_url fail-closed (Slice 1) -----
+
+
+def test_production_errors_on_empty_frontend_url() -> None:
+    bad = _settings(app_env="production", app_frontend_url="")
+    _, errors = check_startup_config(bad)
+    assert any("APP_FRONTEND_URL" in e for e in errors)
+    with pytest.raises(RuntimeError):
+        run_startup_checks(bad)
+
+
+def test_production_errors_on_localhost_frontend_url() -> None:
+    bad = _settings(
+        app_env="production",
+        app_frontend_url="http://localhost:3000",
+    )
+    _, errors = check_startup_config(bad)
+    assert any("APP_FRONTEND_URL" in e for e in errors)
+    with pytest.raises(RuntimeError):
+        run_startup_checks(bad)
+
+
+def test_production_errors_on_frontend_url_not_in_cors() -> None:
+    # The browser-app origin used for links must itself be CORS-allowed —
+    # catches an operator URL swap or a plain typo (auditor F5.2).
+    bad = _settings(
+        app_env="production",
+        cors_allowed_origins="https://acumen.kbc.example",
+        app_frontend_url="https://acumen.kbc.exampel",  # typo
+    )
+    _, errors = check_startup_config(bad)
+    assert any("APP_FRONTEND_URL" in e for e in errors)
+    with pytest.raises(RuntimeError):
+        run_startup_checks(bad)
+
+
+def test_production_clean_on_real_cors_member_frontend_url() -> None:
+    good = _settings(
+        app_env="production",
+        cors_allowed_origins="https://acumen.kbc.example,https://app.kbc.example",
+        app_frontend_url="https://app.kbc.example",
+    )
+    _, errors = check_startup_config(good)
+    assert errors == []
+    run_startup_checks(good)  # does not raise
+
+
+def test_development_boots_clean_on_localhost_frontend_default() -> None:
+    # The localhost frontend default is fine in the dev-set (checks skipped).
+    _, errors = check_startup_config(
+        _settings(app_env="development", app_frontend_url="http://localhost:3000")
+    )
+    assert errors == []
 
 
 def test_production_clean_when_fully_configured() -> None:

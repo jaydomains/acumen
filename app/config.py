@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # --- APP_* ---
     app_env: str = "development"
     app_public_url: str = "http://localhost:8000"
+    # Public **frontend** origin used to build token-bearing setup/reset
+    # email links (AC-CD5 link contract). Deliberately DISTINCT from
+    # ``app_public_url`` (the API origin): the links must resolve to the
+    # browser app, not the API host. Boot-guarded in non-dev envs (see
+    # ``check_startup_config``).
+    app_frontend_url: str = "http://localhost:3000"
     app_secret_key: str = "change-me"
     app_file_storage_path: str = "/var/lib/acumen/files"
 
@@ -96,6 +102,17 @@ class Settings(BaseSettings):
     def cors_allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
+    @field_validator("app_frontend_url", "app_public_url")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str) -> str:
+        # Both are origins interpolated into URLs (setup/reset links off
+        # app_frontend_url; api_base_url off app_public_url). A natural
+        # operator form like "https://app.example.com/" would otherwise
+        # yield a double-slash path ("…//setup/<token>") that 404s on the
+        # FE router — the exact failure class C1 closes. Normalising here
+        # also keeps the CORS-membership comparison robust.
+        return v.rstrip("/")
+
     @field_validator("db_schema")
     @classmethod
     def _validate_db_schema(cls, v: str) -> str:
@@ -156,9 +173,15 @@ def check_startup_config(settings: Settings) -> tuple[list[str], list[str]]:
       "stub served as real" condition loud (A4-S3-C).
     - **Error** (boot must fail closed) when ``app_env`` is NOT in
       :data:`DEV_ENVS` AND any of: ``app_secret_key`` / ``jwt_secret`` is
-      the default ``"change-me"``, or the CORS allow-list is wildcard /
-      localhost. An env value outside the dev-set therefore RAISEs on these
-      rather than failing open (Decision D2).
+      the default ``"change-me"``, the CORS allow-list is wildcard /
+      localhost, or ``app_frontend_url`` is empty/loopback or not itself a
+      member of the CORS allow-list (AC-CD5 link contract, Slice 1). An env
+      value outside the dev-set therefore RAISEs on these rather than
+      failing open (Decision D2).
+
+    All checks **append to the returned ``errors`` list** — this function
+    never raises; the ``RuntimeError`` is raised one layer up in
+    ``app.main.run_startup_checks`` (AC-CD5; two-layer contract, G1/F6).
     """
     warnings: list[str] = []
     errors: list[str] = []
@@ -190,6 +213,25 @@ def check_startup_config(settings: Settings) -> tuple[list[str], list[str]]:
             errors.append(
                 "CORS_ALLOWED_ORIGINS is wildcard or localhost — set the real "
                 f"production origin(s) for app_env={settings.app_env!r}."
+            )
+        # AC-CD5 link contract: setup/reset email links are built from
+        # ``app_frontend_url``. (i) reject empty/loopback (the same anchored
+        # marker match as CORS); (ii) cross-consistency — the frontend origin
+        # used for links must itself be CORS-allowed, which also catches an
+        # operator swap of two real https URLs or a plain typo (auditor F5).
+        if not settings.app_frontend_url or any(
+            marker in settings.app_frontend_url for marker in _LOOPBACK_MARKERS
+        ):
+            errors.append(
+                "APP_FRONTEND_URL is empty or localhost — set the real public "
+                "frontend origin (distinct from APP_PUBLIC_URL) for "
+                f"app_env={settings.app_env!r}."
+            )
+        elif settings.app_frontend_url not in settings.cors_allowed_origins_list:
+            errors.append(
+                "APP_FRONTEND_URL is not a member of CORS_ALLOWED_ORIGINS — the "
+                "browser-app origin used for setup/reset links must itself be "
+                f"CORS-allowed (app_env={settings.app_env!r})."
             )
 
     return warnings, errors
