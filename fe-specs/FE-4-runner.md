@@ -6,6 +6,23 @@
 > **Anchors:** AC-D4 (test integrity — deterrence, focus, watermark, deterministic n-gram overlap base), AC-D5 (per-Testee + frozen + hand_authored + benchmark mode set), AC-D11 (pause mechanics — content-blanking overlay + max_pause_duration + autosave-reuse snapshot per v1.6), AC-D13 (benchmark sequential walk + adaptive difficulty + untimed default), AC-D17 (snapshot at attempt; autosave-flush as the v1.6 mechanism), AC-D19 (review_pending → confirmed/flagged at grading), AC-D22 (per-question realism flag idempotent on (question, testee)), AC-D24 (shuffle seed + randomise_question_order + question_group_id), AC-D26 (engagement_status implications on assignment_id), AC-CD6 (uniform error envelope), AC-CD19 (frontend stack lock), AC-CD20 (routing + role guards), AC-CD21 (TanStack Query + react-hook-form + error envelope), AC-CD24 (image-field typed stubs, render `null` in v1).
 >
 > This is the **fourth per-page FE detail spec.** Template inheritance: per-page §B from `fe-specs/FE-1-auth.md` (verbatim). Deviating from the template in FE-5+ is itself spec drift.
+>
+> **Amendment (2026-06-06 — post-audit pre-deploy fix workstream).** This
+> doc is amended in place per the spec-author ruling for the 2026-06-02
+> production-readiness audit finding **V2** (internal anchor IDs rendered in
+> the UI — `audits/2026-06-02-prod-readiness-synthesis.md` §V2). Authorizing
+> context: `plans/2026-06-06-post-audit-pre-deploy-fix-workstream.md` (merged
+> at `621a549`, PR #94), §4 Slice 4. The **`GradingOverlay`** 4-phase
+> progress copy (§B, `grading-overlay.tsx`) drops its `AC-Dxx` provenance
+> suffixes — internal anchor decoration, not testee-facing copy: phase (iii)
+> becomes `… · 60s ceiling` and phase (iv) becomes `… · recency-weighted`.
+> The plan's Slice 4a grounded "test-safe" only against component tests and
+> missed that this rendered copy is quoted verbatim here; per spec-drift
+> discipline (`SESSION_START.md:80–85`) the build session paused the strip
+> until this amendment landed. The build session's Slice 4 strips the
+> matching `grading-overlay.tsx` string. Same fork as PR #97 (FE-3 Safety\*
+> copy). Legitimate `AC-D…` references elsewhere in this doc (the Anchors
+> block, prose contract notes, §H items) are unchanged.
 
 ---
 
@@ -116,7 +133,7 @@ FE-0 (PR-032) shipped the Next.js 15 / App Router scaffold, the typed `openapi-f
   - `QuestionScenario` (`questions/scenario.tsx`) — same as short-answer with minHeight 220 px and "scenario" eyebrow.
 - `PauseOverlay` (`pause-overlay.tsx`) — fixed overlay (zIndex 30, bg `color-mix(in oklab, var(--bg) 92%, transparent)`). Centered card per `attempt.jsx:155–171`: "paused" headline (serif-it), AC-D11 copy, Resume button, "N of {max_pause_duration_minutes} pause minutes remaining today" footer. Content beneath remains in DOM (for autosave continuity) but is blanked via the overlay; question-pane visibility is `hidden` to belt-and-braces the integrity rule.
 - `SubmitConfirmModal` (`submit-confirm-modal.tsx`) — shadcn `AlertDialog`. Copy per `attempt.jsx:217–234`: eyebrow "Submit attempt", title "Ready to hand this in?", body "You've answered N of M questions. Once submitted, your AI-graded responses run through OpenAI cross-family review before your result is shown — usually 3–6 seconds." (AC-D19 wording). Buttons: "Keep going" (dismiss) + "Submit →" (primary).
-- `GradingOverlay` (`grading-overlay.tsx`) — fixed overlay (zIndex 50, backdrop blur). 4-phase progress per `attempt.jsx:607–650`: (i) "Auto-grading deterministic responses · MCQ + T/F + matching", (ii) "AI grading short-answer responses · claude-sonnet-4-5", (iii) "Cross-family review pass · OpenAI gpt-4o-mini · 60s ceiling per AC-D19", (iv) "Computing competence + queueing loop · recency-weighted per AC-D9". Phase timing: 600 ms / 1400 ms / 2400 ms / 3200 ms breakpoints (local animation only). After phase 4, polls `GET /v1/attempts/{id}/result` every 1.5 s until `status !== "review_pending"`, then routes to FE-6 result placeholder.
+- `GradingOverlay` (`grading-overlay.tsx`) — fixed overlay (zIndex 50, backdrop blur). 4-phase progress per `attempt.jsx:607–650`: (i) "Auto-grading deterministic responses · MCQ + T/F + matching", (ii) "AI grading short-answer responses · claude-sonnet-4-5", (iii) "Cross-family review pass · OpenAI gpt-4o-mini · 60s ceiling", (iv) "Computing competence + queueing loop · recency-weighted". Phase timing: 600 ms / 1400 ms / 2400 ms / 3200 ms breakpoints (local animation only). After phase 4, polls `GET /v1/attempts/{id}/result` every 1.5 s until `status !== "review_pending"`, then routes to FE-6 result placeholder.
 - `FlagRealismButton` (`flag-realism-button.tsx`) — chip with flag icon, "Flag as unrealistic" copy per `attempt.jsx:196–198`. Hidden in benchmark mode. Mutation: idempotent `POST /v1/attempts/{id}/questions/{qid}/flag-realism`. Local Set seeded from initial fetch (§H (b) item 10 verifies whether the server pre-populates flagged state).
 - `AutosaveIndicator` (`autosave-indicator.tsx`) — atom per `attempt-variants.jsx:319–432`. States: `idle` (invisible spacer, width 120 px), `saving` (pulse-dot + "Saving…", ink-3), `saved` (check + "Saved Ns ago", ok colour; client-side relative timestamp updates every 1 s; fades to idle after 5 s), `failed` (x + "Save failed · retry {n}", danger colour). After 3 consecutive failures, escalates to sonner toast + persistent banner (per `attempt-variants.jsx:382–389`).
 - `useAttempt` (`use-attempt.ts`) — reducer hook. State: `{ currentIndex, answers: Map<questionId, AnswerPayload>, autosaveState, flaggedQuestions: Set<questionId>, pauseState }`. Actions: `setAnswer`, `advanceTo`, `commitAutosave`, `markPause`, `markResume`, `markFlagged`. Owns the 600 ms debounce per question and the autosave mutation queue.

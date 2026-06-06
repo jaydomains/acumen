@@ -6,6 +6,24 @@
 > **Anchors:** AC-D6 (adaptive loop — autonomous vs admin-reviewed modes, approve/reject pending steps), AC-D19 (cross-family review — flagged → admin attention queue, three resolve actions), AC-D26 (mandatory-assignment engagement + auto-escalation, sweep), AC-D18 (cost summary teaser on ops landing), AC-CD11 (admin-only surfaces; cross-family-review batched-per-attempt locked at v1.7), AC-CD19 (FE stack lock), AC-CD20 (`(admin)` route group + role guard → `/403`), AC-CD21 (centralised query keys + form helper + error envelope).
 >
 > This is the **ninth per-page FE detail spec**, first of two siblings (ops / systems) for the FE-9 admin operations phase. Template inheritance: per-page §B from `fe-specs/FE-1-auth.md:50–60` verbatim; FE-2's `(admin)` route group + admin shell consumed unchanged; FE-1's `applyApiErrorToForm` precedent consumed by every mutation form at path `frontend/src/lib/api/form-errors.ts` per `CODE_SPEC.md:1024` + FE-3/FE-4/FE-8 consensus; FE-3 cursor pagination + filter-bar + URL-state-sync patterns reused (`fe-specs/FE-3-content.md:527–644`); FE-8 `adminKeys` library (`fe-specs/FE-8-admin-catalogue.md:1072–1149`) consumed and EXTENDED with FE-9-specific key roots. Two-file split selected per `fe-specs/FE-1-auth.md:747` escape clause; user-locked at plan time. **This is the LAST FE-N detail spec** — no further template propagation downstream.
+>
+> **Amendment (2026-06-06 — post-audit pre-deploy fix workstream).** This
+> doc is amended in place per the spec-author ruling for the 2026-06-02
+> production-readiness audit finding **V2** (internal anchor IDs rendered in
+> the UI — `audits/2026-06-02-prod-readiness-synthesis.md` §V2). Authorizing
+> context: `plans/2026-06-06-post-audit-pre-deploy-fix-workstream.md` (merged
+> at `621a549`, PR #94), §4 Slice 4. The grade-review queue **`PageHeader`**
+> eyebrow (§B.2, `grade-review-queue.tsx`) drops its `· AC-D19` provenance
+> suffix — internal anchor decoration, not admin-facing copy: `"Cross-family
+> review · AC-D19 · batched per attempt · 60s ceiling"` becomes `"Cross-family
+> review · batched per attempt · 60s ceiling"`. The plan's Slice 4a grounded
+> "test-safe" only against component tests and missed that this rendered copy
+> is quoted verbatim here; per spec-drift discipline (`SESSION_START.md:80–85`)
+> the build session paused the strip until this amendment landed. The build
+> session's Slice 4 strips the matching `grade-review-queue.tsx` string. Same
+> fork as PR #97 (FE-3 Safety\* copy). Legitimate `AC-D…` references elsewhere
+> in this doc (the Anchors block, prose contract notes, §H items) are
+> unchanged.
 
 ---
 
@@ -245,7 +263,7 @@ Scenario: Testee hits /admin/ops — 403
   - `OverrideDrawer` — shadcn `Sheet` (right-side, ~520px width). Header "Apply override" + sub-line of grade context. Body: 4 verdict tiles per `admin.jsx:255–277` ("Full · 1.0" / "Partial · 0.6" / "Partial · 0.4" / "None · 0.0") rendered as `<button role="radio">` group with one selected. Optional reason textarea ("Reason visible to testee — optional"). Footer: Cancel + "Apply override" submit button.
   - `VerdictTile` — single tile primitive (~120px square, label + numeric score subtitle + check icon when selected) per `admin.jsx:265–272`. Reused by sibling file's calibration verdict-choice in `FE-9-admin-systems.md` §B.2 — extracted to `frontend/src/components/admin/verdict-tile.tsx`.
 - **shadcn primitives installed:** none beyond FE-2 + FE-8's installed set (`Sheet` from FE-8 §B.4 reused).
-- **Design primitives reused:** `Pill` (verdict / status badges), `BandTag` (per-pill band in detail header), `PageHeader` (FE-2 — eyebrow "Cross-family review · AC-D19 · batched per attempt · 60s ceiling" + serif-italic title "Adjudicate AI grades."). `.card`, `.btn`, `.btn.btn-primary`, `.tbl`, `.eyebrow`, `.h-display`, `.muted`, `.mono` classes per FE-2 / AC-CD23.
+- **Design primitives reused:** `Pill` (verdict / status badges), `BandTag` (per-pill band in detail header), `PageHeader` (FE-2 — eyebrow "Cross-family review · batched per attempt · 60s ceiling" + serif-italic title "Adjudicate AI grades."). `.card`, `.btn`, `.btn.btn-primary`, `.tbl`, `.eyebrow`, `.h-display`, `.muted`, `.mono` classes per FE-2 / AC-CD23.
 
 **3. API endpoints consumed**
 
