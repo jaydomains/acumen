@@ -102,6 +102,17 @@ class Settings(BaseSettings):
     def cors_allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
+    @field_validator("app_frontend_url", "app_public_url")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str) -> str:
+        # Both are origins interpolated into URLs (setup/reset links off
+        # app_frontend_url; api_base_url off app_public_url). A natural
+        # operator form like "https://app.example.com/" would otherwise
+        # yield a double-slash path ("…//setup/<token>") that 404s on the
+        # FE router — the exact failure class C1 closes. Normalising here
+        # also keeps the CORS-membership comparison robust.
+        return v.rstrip("/")
+
     @field_validator("db_schema")
     @classmethod
     def _validate_db_schema(cls, v: str) -> str:

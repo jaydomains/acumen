@@ -50,6 +50,24 @@ def test_reset_email_links_to_frontend_path_segment() -> None:
     assert _API not in body
 
 
+def test_trailing_slash_frontend_url_does_not_double_slash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A natural operator form ``https://app.example.com/`` must not yield a
+    double-slash ``//setup/<token>`` link (which 404s — the C1 failure
+    class). The Settings validator normalises the trailing slash."""
+    from app.config import Settings
+
+    s = Settings(app_frontend_url="https://app.example.com/")
+    monkeypatch.setattr("app.permissions.get_settings", lambda: s)
+    _, setup_body = setup_email_content(_TOKEN)
+    _, reset_body = reset_email_content(_TOKEN)
+    assert f"https://app.example.com/setup/{_TOKEN}" in setup_body
+    assert f"https://app.example.com/reset/{_TOKEN}" in reset_body
+    assert "//setup/" not in setup_body
+    assert "//reset/" not in reset_body
+
+
 @pytest.mark.parametrize(
     ("content_fn", "flow"),
     [(setup_email_content, "setup"), (reset_email_content, "reset")],
