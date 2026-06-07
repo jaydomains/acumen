@@ -223,6 +223,14 @@ describe("Pill detail page · safety branch", () => {
     expect(
       screen.getByText("Acumen never generates safety teaching content."),
     ).toBeInTheDocument();
+    // V2 (testee-facing): the safety subtitle dropped its "(AC-D21)".
+    // Targeted to the subtitle element — the mock pill *description* fixture
+    // still carries an AC-D21 annotation (test data, not production copy),
+    // so a page-wide regex would be out of V2's scope here.
+    const subtitle = screen.getByText(
+      "Safety-tagged pill — curated external sources only.",
+    );
+    expect(subtitle.textContent ?? "").not.toMatch(/AC-D\d/);
   });
 });
 

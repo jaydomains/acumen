@@ -91,6 +91,29 @@ describe("GradingOverlay · benchmark phase-4 copy", () => {
   });
 });
 
+describe("GradingOverlay · V2 anchor-leak guard (testee-facing)", () => {
+  it("frozen-mode phase copy renders no AC-Dxx token", async () => {
+    setMockAttemptResult(ATTEMPT_ID, {
+      attempt_id: ATTEMPT_ID,
+      submitted_at: "2026-05-27T10:30:00Z",
+      status: "review_pending",
+      overall_score: null,
+      outcome: null,
+      pills: [],
+      adaptive_loop: [],
+      questions: null,
+    });
+    const { container } = render(
+      mountTree(<GradingOverlay attemptId={ATTEMPT_ID} mode="frozen" />),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Cross-family review pass/)).toBeInTheDocument(),
+    );
+    // phases iii ("…per AC-D19") + iv ("…per AC-D9") dropped their anchors.
+    expect(container.textContent ?? "").not.toMatch(/AC-D\d/);
+  });
+});
+
 describe("GradingOverlay · poll cap (45s)", () => {
   it("after 30 polls without ready, swaps to the timeout card", async () => {
     // Override the result handler to always return review_pending.
