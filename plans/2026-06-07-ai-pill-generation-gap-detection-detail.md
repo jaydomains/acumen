@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–3 SEALED · Slice 4 (A4) round-1 folded (S4-1 codegen-artifact scope) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–4 (A1–A4) SEALED · Slice 5 (A5, FE) detail next. (4/10 slices sealed; Stage A nearly complete.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -791,7 +791,7 @@ both planner-surfaced unprompted; S3-P3/P10 G3-no-column-without-ratification co
 
 ## Slice 4 (A4) — generation endpoint (thin router) + envelope/authz
 
-**Status: Slice 4 (A4) — round-1 folded (S4-1: §4.5 now names the codegen-artifact regen as the one `frontend/` touch); awaiting reviewer re-verify.**
+**Status: final for Slice 4 — approved by planner** (content-bound §4 @ `75718a8`; auditor S4-1 RESOLVED + content seal + overseer governance re-seal; all three bind §4@`75718a8`. Content-invariant marker — §4.1–§4.6 byte-identical. Slice 4 findings all resolved — §4.6.)
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3 —
 A4 exposes that whole stack over HTTP) plus A4's own gate G6 (the new generation API contract + its
