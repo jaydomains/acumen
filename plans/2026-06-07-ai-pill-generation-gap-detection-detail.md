@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–4 SEALED · Slice 5 (A5, FE) round-1 folded (S5-1 invalidation idiom `.all()`); overseer sealed @`fa5f949`, auditor re-verify pending. (4/10 sealed; A5 closes Stage A.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: STAGE A COMPLETE — Slices 1–5 (A1–A5) SEALED (5/10). Slice 6 (B1, Stage B — signal capture) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -898,7 +898,7 @@ Auditor S4-P1…S4-P11 otherwise Confirms (G6 well-surfaced; every §4.1 cite ve
 
 ## Slice 5 (A5, FE) — admin "generate pills from a topic" surface
 
-**Status: Slice 5 (A5) — round-1 folded (S5-1: invalidation now `adminKeys.proposals.all()` per the module idiom); awaiting reviewer re-verify.**
+**Status: final for Slice 5 — approved by planner** (content-bound §5 @ `d15a8c2`; auditor S5-1 RESOLVED + content seal + overseer governance re-seal; all three bind §5@`d15a8c2`. Content-invariant marker — §5.1–§5.6 byte-identical. **Closes Stage A** — Path-2 generator A1–A5 content-complete.)
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3,
 A4 G6 — A5 is the FE over A4's endpoint) plus A5's own gate G8 (FE scope: is this surface in *this*
