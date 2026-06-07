@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) — round-4 fold (completeness closed by THREE structural greps: +numeral `DECISIONS.md:63`, +`anthropic.py:61` runtime-KeyError map, +`cost.py:132`, +`test_p5_cost:137`; twins at 4/5). No planner marker yet; auditor + overseer re-verify pending. Slice 2 (A2) held.**
+**Status: final for Slice 1 — approved by planner** (convergence SHA; auditor S1-1 RESOLVED + overseer governance SEAL [all 12 positions]; both re-seal here. Non-blocking A2-grep + conftest polishes folded. Slice 2 (A2) detail next once Slice 1 fully seals.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -125,7 +125,7 @@ each before the next is posted.
 
 ## Slice 1 (A1) — new generation prompt entry + `Operation` wiring + provider stub
 
-**Status: Slice 1 (A1) — round-4 fold (completeness closed by three structural greps — word/numeral/structural; §1.4); twins S1-1≡OV-S1.12 at 4/5; OV-S1.7 resolved; awaiting auditor + overseer re-verify (re-run greps) at new content-SHA (§1.7).**
+**Status: final for Slice 1 — approved by planner** (content-bound to this convergence SHA; auditor S1-1 RESOLVED + overseer governance SEAL [all 12 positions resolved]; both re-seal here. Slice 1 findings all resolved — §1.7.)
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated spec-author ratification of G1 and G7.**
 This detail is written **against the recommended direction** (mint a new
@@ -319,7 +319,8 @@ complete set at **`697c857`** (`app/`/`SPEC.md`/`DECISIONS.md`/`CODE_SPEC.md` by
 grep -rniE 'seven[- ](value|ai|distinct|operation|prompt)|(all|of|the|each) seven (ai )?(operation|prompt)|five of seven|eighth (ai )?operation' \
      SPEC.md CODE_SPEC.md DECISIONS.md ROADMAP.md CHECKLIST.md FE_ROADMAP.md FE_CHECKLIST.md SESSION_START.md app/ tests/ frontend/src | grep -viE 'cron|seventh integrity'
 # (A2) textual — NUMERAL forms (e.g. "7-operation -> 4-method") that (A) cannot match
-grep -rnE '[0-9]+-(operation|method|prompt)' SPEC.md CODE_SPEC.md DECISIONS.md app/ tests/ | grep -viE 'cron'
+# ('prompt' dropped from the alternation — it false-matched token-counts like "~3000-prompt"; auditor/overseer polish)
+grep -rnE '[0-9]+-(operation|method)' SPEC.md CODE_SPEC.md DECISIONS.md app/ tests/ | grep -viE 'cron'
 # (B) STRUCTURAL — every total map over Operation, every strict [operation] subscript, every op-set floor (NAME-AGNOSTIC)
 grep -rnE 'dict\[Operation|\[operation\]|set\(Operation\)|list\(Operation\)|frozenset\(_REGISTERED' app/ tests/
 ```
@@ -335,7 +336,12 @@ grep -rnE 'dict\[Operation|\[operation\]|set\(Operation\)|list\(Operation\)|froz
   (`_MAX_OUTPUT_TOKENS`), `cost.py:132` (`OP_TO_METHOD`), `prompts/__init__.py:37` (`_REGISTRY`); and
   the op-set floors `test_p5_prompts.py:46`, `test_p5_cost.py:137`, `test_p5_resolve.py:54`.
   **`openai.py:76` is correctly OUT** — OpenAI-only `_MAX_OUTPUT_TOKENS`; an Anthropic-default op
-  never routes there (auditor confirmed).
+  never routes there (auditor confirmed). Grep (B)'s `[operation]` arm also returns
+  `tests/integration/conftest.py:339/347` (`self.responses[operation]`) — a **dynamic per-test
+  response cache, not an op total-map or floor**; correctly **not** a must-change surface (auditor
+  polish). The overseer's independent escape-check (`== Operation.` / `match` / `.get(operation)`)
+  found no surface beyond this set; the only other op-coupled structures (the `provider.py:237`
+  stub-switch + `_ANTHROPIC_DEFAULT_OPS` membership) are already §1.2(b).
 
 Keying (B) on **structure** is what *ends* the round-1→4 recursion: a `dict[Operation]` map or an
 `[operation]` subscript cannot hide from a grep on its own type/access shape, the way a recalled
@@ -486,13 +492,23 @@ All 12 auditor pre-registered positions (S1-P1…S1-P12) and overseer OV-S1.1–
 **Confirms** (no action). Round-trips: **S1-1 → 4/5**, **OV-S1.12 → 4/5** (the completeness twins —
 **one round from the §7(d) 5/5 escalation bound**; both reviewers state the round-4 structural-grep
 consolidation is the *convergence* fold, not the escalation one), **OV-S1.7 → 1/5** (resolved). Round
-4 also folds the overseer's **construction-oracle backstop** convergence-steer (§1.4 — grep proves the
-un-oracled docs + 2 oracle-blind code maps; the green suite proves the rest); the overseer signalled
-**seal-on-landing** once this lands. The round-4 §1.4 content change re-stales both reviewers'
-withdrawn seals — both re-verify and **re-run all three greps themselves** at the new content-SHA
-before re-sealing. **No planner marker while the twins are open.** If a *fifth* surface appears, the
-twins hit 5/5 and I escalate to the spec author (role files §7(d)) rather than push a sixth blind
-round.
+4 also folds the overseer's **construction-oracle backstop** (§1.4 — grep proves the un-oracled docs +
+2 oracle-blind code maps; the green suite proves the rest).
+
+**CONVERGED at round 5 (not §7(d) escalation).** Both reviewers **re-ran all three greps themselves**
+and resolved: **auditor S1-1 RESOLVED** (re-verified A/A2/B against the live tree; confirmed the A2
+fix to its own proposed regex); **overseer OV-S1.12 RESOLVED + governance SEAL** with an independent
+op-dispatch escape-check (`== Operation.` / `match` / `.get(operation)`) finding no surface beyond the
+union; **all 12 overseer positions resolved**, **OV-S1.7** re-confirmed. Two **non-blocking** polishes
+both flagged were then folded (A2 grep tightened to drop the `prompt` token-count false-positive; a
+note that grep-B's `conftest.py` `self.responses[operation]` hits are dynamic caches, not floors) —
+both reviewers said they'd re-confirm these without re-opening completeness. **Planner posts
+`Status: final for Slice 1 — approved by planner`** at this convergence SHA; both reviewers re-seal
+here so all three markers sit at one content-SHA. *On the record (overseer):* four rounds is the
+**framework working** — the completeness claim was over-asserted three times and corrected each time by
+a **deeper independent re-verification** (word → numeral → structural → construction-oracle), so no
+silent partial-fold reached a seal and a real spec↔impl drift (incl. a runtime `KeyError`) was kept
+out of the downstream G1 amendment PR.
 
 ---
 
