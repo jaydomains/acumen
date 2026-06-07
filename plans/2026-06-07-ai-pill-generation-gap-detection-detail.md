@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) SEALED (all 3 markers @ `18a719a`) · Slice 2 (A2) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slice 1 (A1) SEALED (all 3 markers @ `18a719a`) · Slice 2 (A2) round-1 folded (both grounding paths G4-gated; cites fixed) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -514,14 +514,19 @@ out of the downstream G1 amendment PR.
 
 ## Slice 2 (A2) — grounding retrieval (RAG / web search) + per-draft citations
 
-**Status: Slice 2 (A2) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 2 (A2) — round-1 folded (S2-1≡OV-S2.11: both grounding paths now G4-gated, neither baked; S2-2 cites fixed); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the A1 holds — authenticated ratification of G1 + G7 —
-since A2 builds on the A1 primitive; and (b) A2's own gate G4 (web-search-for-generation anchor
-scope). Detail-planning is not gated.** Written **against the recommended direction**: topic-keyed
-Drive-RAG grounding (reuses AC-D22 infra, no anchor change) as the default; web-search grounding as an
-**optional, G4-gated** add; per-draft `grounding_refs` materialised as the **G7(7b)** schema bump
-`pill_generation` v1.0.0 → **v1.1.0**.
+since A2 builds on the A1 primitive; and (b) A2's own gate G4, which covers BOTH grounding sources for
+§6.5 pill generation — `G4a` Drive-RAG (an AC-D22 §6.5-scope question) and `G4b` web search (an AC-D21
+scope question). Detail-planning is not gated.** Written **against the recommended direction**:
+topic-keyed Drive-RAG + (optionally) web-search grounding, with per-draft `grounding_refs` as the
+**G7(7b)** schema bump `pill_generation` v1.0.0 → **v1.1.0**. *(Corrected per overseer OV-S2.11: an
+earlier draft declared the RAG path "in-scope under AC-D22, ships without G4" — that **baked** a
+contestable AC-D22 scope reading; AC-D22 enumerates "every generation call (test generation per §6.1,
+learning material per §6.4)" and **omits §6.5**, so RAG-for-pill-generation is itself a surfaced scope
+item, not a planner call. **Conservative posture: both grounding paths are G4-gated** until the spec
+author rules.)*
 
 **Implements:** the A1 `pill_generation` primitive learns to **ground** — it retrieves reference
 context for the *topic* and emits **per-draft citations** so the admin can evaluate provenance
@@ -532,7 +537,7 @@ endpoint (Slice 4), **no** FE (Slice 5).
 
 - **Existing RAG retrieval is *pill*-keyed — the generator has no pill.** `retrieve_for_generation(db,
   *, pill, target_difficulty, k=5)` (`app/domain/drive_rag.py:650`) builds its embed query via
-  `build_rag_query(pill_name, pill_description, target_difficulty)` (`drive_rag.py:~560`) and returns
+  `build_rag_query(pill_name, pill_description, target_difficulty)` (`drive_rag.py:178`) and returns
   `[{source_doc_ref, chunk_text}]`. **Path 2 generates pills — there is no pill to key on, only a
   topic** — so A2 needs a **topic-keyed** retrieval, not a reuse of the pill-keyed signature
   unchanged. `pill=None` already returns `[]` (`:~690`), so the existing helper cannot be coerced.
@@ -542,7 +547,8 @@ endpoint (Slice 4), **no** FE (Slice 5).
 - **Query-side embed cost** is captured via an `AuditLog` row `action="rag.retrieve"` (no persisted
   entity owns it), folded into the monthly aggregate by `app.ai.cost._rag_retrieve_spend` so the
   AC-CD8 sum-to-call-total invariant holds. A topic-keyed retrieval **must stamp cost the same way**.
-- **`cosine_top_k`, `_DEFAULT_TOP_K = 5`** (`drive_rag.py:580`); `render_rag_context(rag_hits)` renders
+- **`cosine_top_k`** (`drive_rag.py:196`), **`_DEFAULT_TOP_K = 5`** (`drive_rag.py:580`),
+  `render_rag_context` (`drive_rag.py:587`); `render_rag_context(rag_hits)` renders
   chunks into the prompt's `{rag_context}` slot, `(none)` when empty (mirrors `generation.py:55-56`).
 - **Web search is AC-D21-scoped to safety links only.** `WebSearchSource` protocol +
   `TavilyWebSearch` + `get_web_search_source()` (`app/domain/web_search.py:81-208`);
@@ -564,11 +570,11 @@ line-aware shape. Same `cosine_top_k` against `DriveChunk`; **same fail-soft con
 → `[]` no embed; empty index → `[]` one embed + `rag.retrieve` cost audit; embed raises → `[]` WARN);
 returns `[{source_doc_ref, chunk_text}]`. Reuse `render_rag_context` unchanged.
 
-**(b) Optional web-search grounding — G4-gated.** When (and only when) G4 ratifies web-search-for-
+**(b) Web-search grounding — `G4b`-gated.** When (and only when) `G4b` ratifies web-search-for-
 generation, call `get_web_search_source().search(topic)` and render the `WebSearchResult` rows into a
-second grounding block. **Held behind G4** — the recommended default until ruled is **RAG-only**
-grounding (which needs no anchor change: AC-D22 already covers generation-time RAG). A2 is authored so
-web-search grounding is an additive block the executor wires *iff* G4 = allow.
+second grounding block. Held behind `G4b`; A2 is authored so web-search grounding is an additive block
+the executor wires *iff* `G4b` = allow. **Both** the RAG block (a) and this web block are
+grounding-source scope items (see §2.3) — neither is asserted in-scope by the planner.
 
 **(c) Per-draft citations — prompt schema bump to v1.1.0 (G7 7b).** `pill_generation.py` `VERSION`
 → **`1.1.0`**; add `{rag_context}` (+ `{web_context}` behind G4) slots + the "ground in the material;
@@ -584,15 +590,34 @@ citation contract deterministically); `[]` when no context.
 
 ### 2.3 Embedded ratification-class item — SURFACED (blocking A2 execution, Gate 2)
 
-- **G4 — grounding sources for generation.** Class (ii) (AC-D21 / AC-D22 anchor scope).
-  **Recommendation:** **Drive-RAG grounding is in-scope under AC-D22 already** (it governs
-  generation-time RAG) — no anchor change for the topic-keyed RAG path. **Web search**, however, is
-  **AC-D21-scoped to safety-link curation**; using it as a *generation grounding source* is a **new
-  AC-D21 use** requiring ratification. Recommend ruling whether generation grounding is (i) **RAG-only**
-  (no anchor change — ship A2 on RAG, defer web), or (ii) **RAG + web** (amend AC-D21 to add the
-  generation-grounding use). **Blocks only the web-search path of A2 execution**; the RAG path can ship
-  without G4. *(Re-touches **G7(7b)** — the v1.0.0→v1.1.0 schema bump for `grounding_refs` — first
-  surfaced at A1 §1.3; A2 is where it lands.)*
+**G4 — grounding sources for §6.5 pill generation.** Class (ii) (spec §6.5 Inputs + AC-D21/AC-D22
+scope). **Neither source is asserted in-scope by the planner** (auditor S2-1 ≡ overseer OV-S2.11):
+§6.5's **Inputs** (`SPEC.md:344`) are *"recent generated questions and their pill tags, recent Testee
+discovery searches that returned no good match, recent assignments where admin manually clarified
+scope"* — **signals, no Drive material and no web search**. And AC-D22's RAG is referenced
+**operation-by-operation** — §6.1 generation (`SPEC.md:302`) and §6.4 learning material
+(`SPEC.md:334`) each cite *"retrieved Drive RAG chunks per AC-D22"*; **§6.5 cites neither**. So adding
+*either* grounding source to the new `pill_generation` op is a **§6.5 input addition** for the spec
+author to rule — symmetric, not asymmetric. Two sub-items:
+
+  - **G4a — Drive-RAG grounding for pill generation.** Does AC-D22's *"every generation call (§6.1,
+    §6.4)"* RAG scope **extend** to the new §6.5 `pill_generation` op, or is grounding pill-generation
+    in Drive RAG a **§6.5 Inputs addition** needing ratification? **Coordinate with G2** (the §6.5
+    amendment separating signal-analysis from generation — that PR is the natural home for a §6.5
+    Inputs change). **Blocks the RAG path of A2 execution.**
+  - **G4b — web-search grounding for pill generation.** Web search is **AC-D21-scoped to safety-link
+    curation** (`web_search.py:1-3`); using it as a generation grounding source is a **new AC-D21 use**
+    + a §6.5 Inputs addition. **Blocks the web path of A2 execution.**
+
+  **Recommendation:** rule generation grounding as **(i) signals-only / no Drive-or-web grounding at
+  A2** (A2 ships the topic→N primitive grounded only in the topic + Path-3 signals; defer both
+  external sources), **(ii) RAG-only** (amend §6.5 Inputs + extend AC-D22 to §6.5), or **(iii) RAG +
+  web** (also amend AC-D21). **Conservative posture: BOTH grounding paths are G4-gated; A2 bakes
+  neither.** Both dissolve to "no external grounding at A2" if the spec author rules them out — A2 then
+  reduces to the prompt-version bump + the topic-only contract. *(Re-touches **G7(7b)** — the
+  v1.0.0→v1.1.0 `grounding_refs` schema bump first surfaced at A1 §1.3; A2 is where it lands. If
+  grounding is ruled out entirely, `grounding_refs` stays an empty-list contract for forward
+  compatibility or the bump defers — itself part of the G4 ruling.)*
 
 ### 2.4 Tests (AC-CD15 — zero-network)
 
@@ -618,7 +643,16 @@ G4 = RAG+web) rides the **spec author's G4 amendment PR**, not this executor sli
 
 ### 2.6 Reviewer findings folded — Slice 2 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 2; `0 dropped / 0 added`. Per-round records append here as the loop runs.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 2 added [S2-1≡OV-S2.11, S2-2]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S2-1 ≡ OV-S2.11** | auditor (content) + overseer (governance), twins | Push-back | I **baked** "RAG-for-pill-generation = no anchor change, ships without G4." Both caught it; auditor sharpened with the spec cite (§6.5 Inputs `SPEC.md:344` = signals only, **no RAG**; AC-D22 RAG referenced op-by-op at `:302`/`:334`, §6.5 has none → adding RAG to the new §6.5 op is a **§6.5 Inputs addition**). **Folded:** §2.3 G4 split into **G4a** (RAG, §6.5 input addition, coordinate with G2) + **G4b** (web, AC-D21) — **both grounding paths now G4-gated**, neither baked; §2-execution-gate + §2.2(b) corrected. Both dissolve to "no external grounding at A2" if ruled out. |
+| **S2-2** | auditor | Refine | Two wrong `file:line` cites (a transportability defect — the doc's whole purpose). `build_rag_query` `~560`→**`:178`**; `cosine_top_k` `:580`→**`:196`** (`:580` is `_DEFAULT_TOP_K`). Fixed + verified against the live tree; added `render_rag_context` `:587`. Rest of §2.1 re-verified clean. |
+
+Auditor S2-P1…S2-P11 otherwise Confirms (notably S2-P1 topic-keyed retrieval — the auditor's sharpest
+pre-concern — confirmed solved); overseer OV-S2.1–.10 Confirms (OV-S2.5: Slice-1 seal intact / clean
+append). Round-trips: **S2-1 → 1/5**, **OV-S2.11 → 1/5**, **S2-2 → 1/5**.
 
 ---
 
