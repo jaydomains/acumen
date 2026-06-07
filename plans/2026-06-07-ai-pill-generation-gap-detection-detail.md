@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1 (A1) + 2 (A2) SEALED · Slice 3 (A3) round-1 folded (S3-1 cost-share reuse) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1 (A1) + 2 (A2) + 3 (A3) SEALED (planner marker + both reviewer seals at one content-SHA each) · Slice 4 (A4) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -658,7 +658,7 @@ append). Round-trips: **S2-1 → 1/5**, **OV-S2.11 → 1/5**, **S2-2 → 1/5**.
 
 ## Slice 3 (A3) — N-draft fan-out + `processing_tasks` persistence + band decomposition
 
-**Status: Slice 3 (A3) — round-1 folded (S3-1: cost attribution now mirrors `record_provenance_share` even-share); awaiting reviewer re-verify.**
+**Status: final for Slice 3 — approved by planner** (content-bound to §3 at `170c7e4`; auditor S3-1 RESOLVED + content seal + overseer governance re-seal; all three bind §3@`170c7e4`. Content-invariant marker — §3.1–§3.6 byte-identical. Slice 3 findings all resolved — §3.6.)
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited A1 holds (G1 + G7) and A2 hold (G4a/G4b/G7(7b)
 — A3 persists the generated drafts incl. any `grounding_refs`), plus A3's own gate G3 (per-band
