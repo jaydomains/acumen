@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1 (A1) + 2 (A2) + 3 (A3) SEALED (planner marker + both reviewer seals at one content-SHA each) · Slice 4 (A4) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1 (A1) + 2 (A2) + 3 (A3) SEALED · Slice 4 (A4) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -789,7 +789,101 @@ both planner-surfaced unprompted; S3-P3/P10 G3-no-column-without-ratification co
 
 ---
 
-*(Slices 4–10 detail sections append below as each prior slice seals — slice-iterative, one PR
+## Slice 4 (A4) — generation endpoint (thin router) + envelope/authz
+
+**Status: Slice 4 (A4) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3 —
+A4 exposes that whole stack over HTTP) plus A4's own gate G6 (the new generation API contract + its
+AC-CD). Detail-planning is not gated.** Written **against the recommended direction**: a thin
+admin-only `POST /v1/pill-proposals/generate` over A3's `enqueue_pill_generation`, returning the
+batch of queued drafts; the drafts then surface in the **existing** `GET /v1/pill-proposals` queue.
+
+**Implements:** the HTTP entry surface for admin-driven Path-2 generation — topic → N queued drafts.
+Stops there: **no** FE (Slice 5), **no** domain logic (A3 owns `enqueue_pill_generation`; routers are
+thin per AC-CD2), **no** Path-3 signal-write endpoints (Stage B/C).
+
+### 4.1 Grounding (verified against the tree at this SHA)
+
+- **Thin-router pattern to mirror.** `create_pill_proposal` (`catalogue.py:330-352`): `@router.post(
+  "/pill-proposals", status_code=201)`, `_admin: AppUser = Depends(_require_admin)`, validates a
+  `PillCreate` body, calls `catalogue.enqueue_pill_proposal(...)`, `await db.commit()`, returns
+  `PillProposalResponse{id, status, payload, created_at}`. A4 mirrors this shape over
+  `enqueue_pill_generation` (A3).
+- **Authz is one dependency (AC-CD5).** `_require_admin = require_role(ROLE_ADMINISTRATOR)`
+  (`catalogue.py:43`) — admin-only, same as the refiner endpoint. The uniform error envelope is
+  `APIError` (`app/permissions.py`); REST `/v1` + envelope is AC-CD6.
+- **Routers carry no business logic (AC-CD2).** The endpoint is validation + authz + envelope only;
+  the fan-out/persistence/cost-share all live in A3's `enqueue_pill_generation`.
+- **Request/response schemas.** `PillCreate` (`schemas.py:203`, extends `_DifficultyRange`) is the
+  *refiner* body (name+description). `PillProposalResponse` (`schemas.py:295`) is the queue row shape.
+  A4 needs a **new request schema** (topic-based, not name/description) and a **batch response**.
+- **OpenAPI is the FE contract.** New endpoint + schemas flow into the generated OpenAPI the frontend
+  consumes (the `codegen-drift` CI check); A5 (FE) consumes this contract.
+
+### 4.2 Build choices — concrete (recommended direction)
+
+**(a) New request schema — `PillGenerationCreate` (`app/schemas.py`).** `topic: str` (the gap/topic
+prompt; bounded length), `subject_id: uuid | None`, `target_count: int` (bounded 1–`N_max`, e.g. 10),
+extends `_DifficultyRange` (reuses the `available_difficulty_min ≤ max` validation). Distinct from
+`PillCreate` — the generator takes a *topic*, not a name+description.
+
+**(b) New endpoint — `POST /v1/pill-proposals/generate` (`catalogue.py`), thin.** `_require_admin`;
+validate `PillGenerationCreate`; call `catalogue.enqueue_pill_generation(db, topic=…, subject_id=…,
+target_count=…, available_difficulty_min/max=…)` (A3); `await db.commit()`; return a **batch
+response** `PillGenerationBatchResponse{generation_batch_id, count, tasks: [PillProposalResponse]}` so
+the caller/FE sees the N drafts created. The drafts also appear in the existing `GET /v1/pill-
+proposals` (A3 persists them under `PROPOSAL_TASK_NAME`). Status `201`. *(Endpoint **path + response
+shape** are the G6 contract — `/pill-proposals/generate` sub-resource action vs. a distinct
+`/pill-generations` resource is a G6 design point, §4.3.)*
+
+**(c) Envelope + authz only.** Non-admin → `403` via `_require_admin`; malformed body → `422` via the
+AC-CD6 uniform envelope (Pydantic validation); no business logic in the router (AC-CD2).
+
+**(d) No domain / FE / persistence change.** A3 owns the enqueue + fan-out + cost-share; A2 owns the
+prompt; A5 owns the FE. A4 is purely the HTTP seam.
+
+### 4.3 Embedded ratification-class item — SURFACED (blocking A4 execution, Gate 2)
+
+**G6 — generation API contract + new AC-CD.** Class (ii)/(iv) (new code anchor — the task mandates
+"new CD anchors for any API contracts"). Decisions for the spec author: **(i)** endpoint shape —
+`POST /v1/pill-proposals/generate` (sub-resource action; output *is* proposals — **recommended**) vs.
+a distinct `POST /v1/pill-generations` resource; **(ii)** response shape — the batch wrapper
+`{generation_batch_id, count, tasks[]}` (**recommended**) vs. a bare `Page[PillProposalResponse]`;
+**(iii)** mint a **new AC-CD** recording the generation API contract (mirroring AC-CD6's REST/envelope
+conventions), and whether the **Path-3 signal-write endpoints** (Stage B) ride the same AC-CD or a
+separate one. **Blocks A4 execution** (the endpoint + its AC-CD are the contract). *(Inherits A1/A2/A3
+holds — A4 exposes their output over HTTP.)*
+
+### 4.4 Tests (AC-CD15 — integration, zero-network via stub provider)
+
+1. **Happy path:** `POST /v1/pill-proposals/generate` as admin with a topic + `target_count=3` → `201`
+   + `count==3` + 3 `tasks`; a follow-up `GET /v1/pill-proposals` lists the 3 (queue reuse). Stub
+   provider, no network.
+2. **Authz:** non-admin (testee) → `403` (envelope shape); unauthenticated → `401`.
+3. **Validation:** `target_count` out of bounds → `422`; `available_difficulty_min > max` → `422`
+   (the `_DifficultyRange` validator); empty topic → `422`. All via the AC-CD6 uniform envelope.
+4. **Thin-router guard:** the endpoint calls `enqueue_pill_generation` and commits — no business logic
+   in the router (AC-CD2); the batch `generation_batch_id` round-trips into the task payloads.
+
+**Acceptance:** the tests pass under the three-layer green gate; **codegen-drift** check passes (the
+new endpoint + schemas regenerate the FE OpenAPI types cleanly); structure-gate passes.
+
+### 4.5 Scope fence
+
+Thin router + two new schemas only. Reuses `enqueue_pill_generation` (A3), `_require_admin` (AC-CD5),
+the AC-CD6 envelope, and the existing `GET /v1/pill-proposals` queue — **unchanged**. **No** FE
+(Slice 5), **no** domain/prompt/persistence change, **no** Path-3 endpoints (Stage B/C), **no**
+migration. The refiner endpoint `POST /v1/pill-proposals` is untouched (recommended-direction keeps
+the refiner).
+
+### 4.6 Reviewer findings folded — Slice 4 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 4; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 5–10 detail sections append below as each prior slice seals — slice-iterative, one PR
 throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global
 `Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
 
