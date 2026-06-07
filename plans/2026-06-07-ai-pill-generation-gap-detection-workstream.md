@@ -265,14 +265,25 @@ mint/amend, spec amendment, or scope decision) and is held **pending** — no de
 loop proceeds on the non-baked, already-sanctioned framing (scoping/sequencing) while these wait.
 Each will additionally be posted as a tagged PR comment addressed to the spec author.
 
-**Ratified — scope boundary (class (iii), authenticated in-session channel, 2026-06-07).** The
-spec author has **ratified** the path-scope boundary through the direct authenticated channel
-(role files §8.3): **Paths 2 and 3 are in scope; Path 1 (the single-pill refiner pre-deploy hack)
-is out of scope.** This was previously asserted in §9 as a settled hand-off on *inferred* grounding
-— a §8.3-pending state (auditor **A-3** / overseer **OV-3**); it is now a citable, authenticated
-ruling and is **resolved**. This ratifies **only** the scope boundary; it is **not** blanket
-ratification of the 12 items below (see the per-item note after the table, and §8 OV-1). §9 is
-updated to cite this ruling rather than the inferred hand-off.
+**Ratified — scope boundary (class (iii), 2026-06-07).** The spec author **ratified** the
+path-scope boundary through the **direct authenticated channel to the plan-overseer (merge-executor)**
+— the reference channel role files §8.3 requires. **Authoritative origin:** the plan-overseer's
+round-2 authentication record, PR #105 review
+[`pullrequestreview-4445323052`](https://github.com/jaydomains/acumen/pull/105#pullrequestreview-4445323052)
+(cite **that** record, not this planner's earlier relay, per the spec author's explicit instruction).
+Ruling, verbatim in substance:
+
+> **Path 2** (batch pill **generator**: topic → N drafts) — **IN scope**;
+> **Path 3** (§6.5 autonomous gap-detection) — **IN scope**;
+> **Path 1** (manual Claude-in-chat → `POST /v1/pill-proposals` → approve in admin UI) — **NOT a
+> workstream item**: zero code changes, a manual operator workflow on already-shipped functionality;
+> excluded because **there is nothing to build**, not considered-and-rejected.
+
+This was previously asserted in §9 as a settled hand-off on *inferred* grounding — a §8.3-pending
+state (auditor **A-3** / overseer **OV-3**); it is now a citable, authenticated ruling and is
+**resolved** (overseer **OV-3r** asked only that the provenance cite the authoritative record above).
+This ratifies **only** the scope boundary; it is **not** blanket ratification of the 12 items below
+(see the per-item note after the table, and §8 OV-1).
 
 | ID | Class | Decision to rule | Why it's the spec author's |
 |---|---|---|---|
@@ -345,10 +356,15 @@ ratified so far; the other 12 remain surfaced-but-unruled.
   a **fresh** session implements (`SESSION_START.md`). This plan neither amends a spec doc nor an
   anchor.
 - Flipping draft→ready or merging (the **overseer's** actions).
-- Path 1 of the prior investigation framing (the single-pill refiner pre-deploy hack) — **out of
-  scope by ratified spec-author scope decision** (authenticated in-session channel, 2026-06-07;
-  recorded as the ratified item in §7, class (iii)). This replaces the earlier *inferred* hand-off
-  grounding that auditor A-3 / overseer OV-3 correctly flagged as §8.3-pending.
+- Path 1 of the prior investigation framing — the **manual Claude-in-chat →
+  `POST /v1/pill-proposals` → approve-in-admin-UI** operator workflow — is **out of scope by ratified
+  spec-author scope decision** (class (iii); authoritative origin = the plan-overseer's authenticated
+  record, PR #105 review
+  [`pullrequestreview-4445323052`](https://github.com/jaydomains/acumen/pull/105#pullrequestreview-4445323052);
+  recorded as the ratified item in §7). It is excluded because **there is nothing to build** (zero
+  code changes on already-shipped functionality), **not** considered-and-rejected. This replaces the
+  earlier *inferred* hand-off grounding that auditor A-3 / overseer OV-3 correctly flagged as
+  §8.3-pending.
 - Any code under `app/` or `frontend/` — this PR is `plans/**` only.
 
 ---
@@ -376,3 +392,14 @@ is the **overseer's + spec-author's** gate, not a content blocker: the in-sessio
 gates **no** part of the normal-class plan-doc merge, and any downstream use requires the ruling to
 reach the **overseer** through the direct authenticated channel independently — the plan does not
 self-authenticate it.
+
+**Round 3 (re-verified @ `22c3d93`):** auditor posted its **final-marker + approval** (content
+correctness, `1a28fc5` on `claude/sleepy-knuth-X42DU`, content-bound to `22c3d93`); overseer
+confirmed **OV-1/OV-2/OV-3 resolved** and recorded the scope ruling as **authenticated directly to
+the merge-executor**. One residual **OV-3r** (spec-author-directed): re-cite the scope-ratification
+provenance in §7/§9 to the **overseer's authentication record**
+([`pullrequestreview-4445323052`](https://github.com/jaydomains/acumen/pull/105#pullrequestreview-4445323052))
+as the authoritative origin rather than this planner's relay. **OV-3r folded** @ the next SHA (§7
+ratified block + §9 updated). This content change **re-stales the auditor's `22c3d93` marker** (the
+auditor anticipated this and re-verifies/refreshes at the new SHA); convergence requires all three
+markers at one SHA + the three-layer green gate.
