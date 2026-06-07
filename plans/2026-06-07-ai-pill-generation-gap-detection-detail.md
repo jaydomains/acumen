@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) SEALED @ `18a719a` · Slice 2 (A2) — planner `final for Slice 2` marker posted (content-invariant @ §2/`30315fb`); auditor S2-1/S2-2 RESOLVED + overseer governance SEAL; both seal here → Slice 2 fully seals. Slice 3 (A3) next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1 (A1) + 2 (A2) SEALED (planner marker + both reviewer seals at one content-SHA each) · Slice 3 (A3) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -656,7 +656,119 @@ append). Round-trips: **S2-1 → 1/5**, **OV-S2.11 → 1/5**, **S2-2 → 1/5**.
 
 ---
 
-*(Slices 3–10 detail sections append below as each prior slice seals — slice-iterative, one PR
+## Slice 3 (A3) — N-draft fan-out + `processing_tasks` persistence + band decomposition
+
+**Status: Slice 3 (A3) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending the inherited A1 holds (G1 + G7) and A2 hold (G4a/G4b/G7(7b)
+— A3 persists the generated drafts incl. any `grounding_refs`), plus A3's own gate G3 (per-band
+difficulty decomposition). Detail-planning is not gated.** Written **against the recommended
+direction**: reuse the existing `processing_tasks` queue + `create_pill` approval path **unchanged**;
+fan one generation call out to **N** queue rows; drafts carry the existing `available_difficulty_min/
+max` axis (richer per-band metadata surfaced as G3).
+
+**Implements:** the domain layer that turns one `Operation.pill_generation` call into **N admin-
+reviewable proposals** — `enqueue_pill_generation` persists N `ProcessingTask` rows that the existing
+list/approve/reject queue + FE tab consume unchanged. Stops there: **no** endpoint (Slice 4), **no**
+FE (Slice 5), **no** prompt change (A2 owns the v1.1.0 prompt).
+
+### 3.1 Grounding (verified against the tree at this SHA)
+
+- **The refiner is one-in-one-out; A3 is one-call-N-out.** `enqueue_pill_proposal` (`catalogue.py:488`)
+  makes **one** `provider.generate(Operation.pill_proposal, …)` call and persists **one**
+  `ProcessingTask` (`catalogue.py:524-544`), `payload = {"proposal": result.content, "provenance":
+  {provider, model, prompt_version, tokens, cost_usd}}`. A3 mirrors this but the generator returns
+  `{"drafts": [...]}` (A1/A2 contract) → **N** rows.
+- **Queue + approval are reusable unchanged.** `list_pill_proposals` filters by `task_name ==
+  PROPOSAL_TASK_NAME` (`catalogue.py:547-555`); `approve_pill_proposal` (`:567`) reads
+  `payload["proposal"]` and calls `create_pill(subject_id, name, description,
+  available_difficulty_min/max, discoverable=True, estimated_minutes, ai_safety_classification)`
+  (`catalogue.py:586-596` → `create_pill` sig confirmed); `reject_pill_proposal` (`:616`). The FE
+  proposals tab reads `payload` generically (`proposals-tab.tsx` — `parseProposalPayload`). **So N
+  generated drafts persisted under `PROPOSAL_TASK_NAME` with a `payload.proposal`-shaped body flow
+  through the entire existing queue with zero queue/FE change.**
+- **Band decomposition is a range expansion, not a column.** `_expand_supported_bands(pill)` =
+  `range(pill.available_difficulty_min, max+1)` (`calibration.py:~300`); **the Pill model carries no
+  `supported_bands` column** — the supported set *is* the min/max range. So "per-band decomposition"
+  richer than the min/max pair (e.g. per-band anchor-pool intent per AC-D20) would need a **new
+  data-model column** (AC-CD4) → G3.
+- **Cost provenance is summed per operation.** `OP_TO_METHOD`/`cost.py` + the proposal's
+  `payload.provenance.cost_usd` are folded into the monthly per-op aggregate (AC-CD8 sum-to-call-
+  total). **One generation call → N rows** means naively stamping full provenance on each of N rows
+  would **N×-count** the single call's spend — a real invariant risk A3 must handle (3.2c).
+- **`ProcessingTask`** (`models.py:1174`): `task_name` (indexed), `status` (pending→done), `payload`
+  (JSONB). Reusing it + a JSONB payload shape needs **no migration**.
+
+### 3.2 Build choices — concrete (recommended direction)
+
+**(a) N-draft fan-out — `enqueue_pill_generation(db, *, topic, subject_id, target_count,
+available_difficulty_min, available_difficulty_max, …)` in `catalogue.py`.** One
+`resolve_provider(Operation.pill_generation).generate(...)` call → `result.content["drafts"]`; persist
+**one `ProcessingTask` per draft** under `PROPOSAL_TASK_NAME`, each `payload = {"proposal": draft,
+"provenance": {…}, "source": "generation", "generation_batch_id": <uuid>}`. The `source` +
+`generation_batch_id` distinguish generator-origin rows from refiner rows and group the batch — both
+ride the existing JSONB `payload` (no migration, no queue/FE change).
+
+**(b) Approval reuse — unchanged.** A generated draft's row is approved by the **existing**
+`approve_pill_proposal` → `create_pill` (the draft's `name`/`description`/`subject_id`/difficulty/
+`safety_relevant` map 1:1 to `create_pill` args, already wired at `catalogue.py:586`). No new approval
+path. *(`grounding_refs` from A2 rides `payload.proposal` for admin display; `create_pill` ignores it
+— pills carry no citations column, correct.)*
+
+**(c) Cost-attribution invariant — stamp once per call, not per row.** To preserve AC-CD8
+sum-to-call-total across the fan-out: the **full** `provenance` (tokens, `cost_usd`) is stamped on
+**one** row of the batch (or a batch-provenance record keyed by `generation_batch_id`); the other N−1
+rows carry `provenance: {generation_batch_id, cost_usd: 0.0}` (or a `"cost_attributed_to": <row_id>`
+ref). The per-op monthly sum then equals the single call's cost, **not** N×. *(Build-design detail,
+folded as a stated requirement — not ratification-class; if it forces a column it would surface, but
+JSONB covers it.)*
+
+**(d) Band decomposition — min/max only at A3.** Each draft persists
+`available_difficulty_min/max`; on approval `create_pill` stores them and `_expand_supported_bands`
+yields the per-band set. **No richer per-band metadata** at A3 — that is **G3**.
+
+### 3.3 Embedded ratification-class item — SURFACED (blocking A3 execution, Gate 2)
+
+**G3 — per-band difficulty decomposition depth.** Class (i)/(ii) (AC-D9 / AC-CD4). Does a generated
+draft carry **only** the existing `available_difficulty_min/max` range (which `_expand_supported_bands`
+already consumes — **no data-model change**), or **richer per-band metadata** — e.g. per-band
+anchor-pool intent per AC-D20, which the Pill model does **not** currently carry and would need a new
+**AC-CD4 column** + migration? **Recommendation: min/max range only** (the merged workstream plan §3.3
+notes the existing axis drives `_expand_supported_bands` + bootstrap anchor-pool sizing already; richer
+per-band is unneeded at v1 and is a data-model amendment). **Blocks A3 execution** only insofar as the
+draft schema's difficulty fields are the G3 decision; the fan-out/persistence/approval-reuse is
+G3-independent. *(Inherits A1 G1/G7 + A2 G4/G7(7b) as upstream holds — A3 persists their output.)*
+
+### 3.4 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+1. **Fan-out:** `enqueue_pill_generation` with a stub returning `{"drafts": [3 items]}` persists **3**
+   `ProcessingTask` rows under `PROPOSAL_TASK_NAME`, each `payload.proposal` a draft + shared
+   `generation_batch_id`; `list_pill_proposals` returns all 3 (queue reuse).
+2. **Cost-invariant:** the batch's summed `provenance.cost_usd` across the N rows == the single
+   generate call's `cost_usd` (not N×) — the core 3.2(c) assertion.
+3. **Approval reuse:** approving one generated row calls `create_pill` (materialises a pill with the
+   draft's difficulty + safety self-classification); `reject_pill_proposal` marks the row done.
+4. **Band decomposition:** an approved draft's pill yields `_expand_supported_bands == range(min,
+   max+1)`; no `supported_bands` column referenced.
+5. **Zero-network:** all via the `StubAIProvider` `pill_generation` path under the `conftest.py` guard.
+
+**Acceptance:** the five tests pass under the three-layer green gate; structure-gate passes (no new
+module beyond `catalogue.py` additions); **no migration** (reuses `processing_tasks` + JSONB payload).
+
+### 3.5 Scope fence
+
+Reuses `processing_tasks`, `create_pill`, `approve_pill_proposal`/`reject_pill_proposal`, the FE
+proposals tab — **unchanged**. **No** endpoint (Slice 4), **no** FE (Slice 5), **no** prompt/version
+change (A2 owns v1.1.0), **no** migration, **no** signal capture (Stage B). The `pill_proposal`
+refiner enqueue path is untouched (recommended-direction keeps it).
+
+### 3.6 Reviewer findings folded — Slice 3 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 3; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 4–10 detail sections append below as each prior slice seals — slice-iterative, one PR
 throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global
 `Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
 
