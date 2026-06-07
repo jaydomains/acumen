@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–4 (A1–A4) SEALED · Slice 5 (A5, FE) detail next. (4/10 slices sealed; Stage A nearly complete.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–4 (A1–A4) SEALED · Slice 5 (A5, FE) detail posted — awaiting plan-auditor + plan-overseer review. (4/10 sealed; A5 closes Stage A.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -896,9 +896,100 @@ Auditor S4-P1…S4-P11 otherwise Confirms (G6 well-surfaced; every §4.1 cite ve
 
 ---
 
-*(Slices 5–10 detail sections append below as each prior slice seals — slice-iterative, one PR
-throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global
-`Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
+## Slice 5 (A5, FE) — admin "generate pills from a topic" surface
+
+**Status: Slice 5 (A5) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3,
+A4 G6 — A5 is the FE over A4's endpoint) plus A5's own gate G8 (FE scope: is this surface in *this*
+workstream or a follow-up FE-N phase?) and its fe-spec amendment. Detail-planning is not gated.**
+Written **against the recommended direction**: a "Generate pills" entry on the **existing** admin
+catalogue proposals tab — a form (topic + subject + count + difficulty) calling A4's `POST
+/v1/pill-proposals/generate`; the N drafts then render in the **existing** proposals queue (built).
+**Closes Stage A.**
+
+**Implements:** the admin entry point for Path-2 generation. The proposals queue that displays the
+resulting drafts already exists (`proposals-tab.tsx`); A5 adds only the **generate-entry form +
+mutation**. FE phase, governed by AC-CD20–24.
+
+### 5.1 Grounding (verified against the tree at this SHA)
+
+- **The results surface already exists.** `frontend/src/app/(authed)/(admin)/admin/catalogue/
+  _components/proposals-tab.tsx` renders the proposal queue (status filter, table, drawer,
+  approve/reject) generically over `payload` (`parseProposalPayload`). **A4's generated drafts land
+  here unchanged** (they persist under `PROPOSAL_TASK_NAME`, A3). A5 adds the **input** surface only.
+- **Query/mutation conventions (AC-CD21).** `frontend/src/lib/queries/admin-proposals.ts` —
+  `useAdminPillProposals` (`adminKeys.proposals.list`), `useApproveProposal`/`useRejectProposal`
+  mutations; types come from the **generated** `components["schemas"][...]` (`api.d.ts`). A5 adds a
+  `useGeneratePills` mutation against A4's `PillGenerationCreate`/`PillGenerationBatchResponse`
+  (available once A4's codegen lands — A5 depends on A4).
+- **Catalogue surface shape.** `admin/catalogue/page.tsx` + `catalogue-shell.tsx` host the tabs;
+  `pill-modal.tsx` is the existing form-in-a-modal pattern to mirror for the generate form.
+- **Spec home.** The admin catalogue surface is spec'd in `fe-specs/FE-8-admin-catalogue.md`; it has
+  **no "generate from topic" surface today** (grep: only a static title mention). Adding it is an
+  **fe-spec amendment** (overseer pre-registered OV-S5.6) → rides G8.
+- **FE anchors:** routing/admin-guard **AC-CD20** (`CODE_SPEC.md:952`), query+form+error-envelope
+  **AC-CD21** (`:1008`), theme/primitives **AC-CD23** (`:1129`); visual-content deferral **AC-CD24**
+  (N/A — no images here).
+
+### 5.2 Build choices — concrete (recommended direction)
+
+**(a) Generate-entry form** on the proposals tab — a "Generate pills" button opening a form
+(mirroring `pill-modal.tsx`): fields `topic` (textarea), `subject` (select), `target_count` (number,
+bounded), difficulty min/max. Per **AC-CD21** form pattern + error-envelope display.
+
+**(b) `useGeneratePills` mutation** (`admin-proposals.ts`) — `POST /v1/pill-proposals/generate` (A4)
+via `openapi-fetch` + `unwrap()`; typed by the generated `PillGenerationCreate` /
+`PillGenerationBatchResponse`. **On success: invalidate `adminKeys.proposals.list`** (cross-resource
+invalidation per AC-CD21) so the N new drafts appear in the queue; toast "N drafts generated."
+
+**(c) Admin-guard + routing** per **AC-CD20** (the surface lives under the existing
+`(admin)/admin/catalogue` route group — already guarded). No new route.
+
+**(d) Reuse the queue for results** — no new display surface; the drafts render in the existing
+proposals table/drawer.
+
+### 5.3 Embedded ratification-class item — SURFACED (blocking A5 execution, Gate 2)
+
+**G8 — FE scope.** Class (iii) (scope decision) + an **fe-spec amendment** (class (ii), `fe-specs/
+FE-8-admin-catalogue.md`). Does the admin "generate from topic" surface ship in **this workstream**
+(as A5, closing Stage A — **recommended**, since the generator is admin-unusable without an entry
+surface) or as a **follow-up FE-N phase**? And the fe-spec amendment adding the surface to FE-8 is
+spec-author-authored (overseer OV-S5.6). **Blocks A5 execution.** *(Inherits A1–A4 holds — A5 is the
+FE over the full A1–A4 stack.)*
+
+### 5.4 Tests (FE — vitest per AC-CD21, no network)
+
+1. **Form render/validate:** the generate form renders its fields; `target_count` bounds +
+   difficulty min≤max validate; submit disabled until valid.
+2. **Mutation + invalidation:** a mocked `POST /v1/pill-proposals/generate` success invalidates
+   `proposals.list` (the queue refetches) + toasts the count; the drafts appear in the table.
+3. **Error-envelope display:** a mocked AC-CD6 error envelope renders via the AC-CD21 error path (no
+   crash; field/form error shown).
+4. **Admin-guard:** the surface is within the guarded `(admin)` group (AC-CD20).
+
+**Acceptance:** vitest + eslint + prettier + tsc + build green (the `frontend.yml` `checks` job);
+**codegen-drift** green (A5 consumes A4's already-committed types — no new schema). E2E (`[skip e2e]`
+where applicable).
+
+### 5.5 Scope fence
+
+FE only — generate form + `useGeneratePills` mutation + wiring into the existing proposals tab.
+Reuses the proposals queue display, `openapi-fetch`/`unwrap()`, AC-CD20–23 patterns — **unchanged**.
+Consumes A4's endpoint + committed generated types (depends on A4). **No** backend change, **no** new
+route, **no** new display surface, **no** images (AC-CD24). The fe-spec (FE-8) amendment adding the
+surface is the **spec author's** PR (rides G8), not this executor slice. **Closes Stage A.**
+
+### 5.6 Reviewer findings folded — Slice 5 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 5; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 6–10 (B1, B2, C1, C2, D1 — Stages B/C/D) detail sections append below as each prior slice
+seals — slice-iterative, one PR throughout. Appending a later slice does **not** re-stale a sealed
+slice (§0.1, OV-S1.7). The global `Status: final — approved by planner (all slices)` marker lands at
+the bottom after Slice 10 seals.)*
 
 ---
 
