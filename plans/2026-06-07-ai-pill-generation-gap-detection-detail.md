@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: STAGES A+B COMPLETE — Slices 1–7 SEALED (7/10). Slice 8 (C1, Stage C — gap-detection job: signals→topics→generator) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Stages A+B complete (7/10) · Slice 8 (C1, Stage C — gap-detection job: signals→topics→generator + dedup) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1218,10 +1218,115 @@ Confirms; this §7 fold re-stales it → re-verify pending). Round-trips: **S7-1
 
 ---
 
-*(Slices 8–10 (C1, C2, D1 — Stages C/D) detail sections append below as each prior slice seals —
-slice-iterative, one PR throughout. Appending a later slice does **not** re-stale a sealed slice
-(§0.1, OV-S1.7). The global `Status: final — approved by planner (all slices)` marker lands at the
-bottom after Slice 10 seals.)*
+## Slice 8 (C1, Stage C) — gap-detection job (signals → topics → generator) + dedup/idempotency
+
+**Status: Slice 8 (C1) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending G2 (the §6.5 amendment separating signal-analysis from
+generation — C1 *is* the signal-analysis half) + G5 (the signal store + dedup columns) + the inherited
+Stage-A generator holds (C1 *calls* `enqueue_pill_generation`, so it inherits A1 G1/G7, A2
+G4a/G4b/G7(7b), A3 G3, A4 G6). Detail-planning is not gated.** **This is the slice that closes the
+Path-3-on-Path-2 dependency** (workstream §5). Written **against the recommended direction**: a domain
+sweep job reading the deduped Stage-B signals, clustering them into gap topics, and invoking the
+Stage-A generator — with **first-class dedup/idempotency** (the merged-plan §4.2 requirement).
+
+**Implements:** the §6.5 signal-analysis half — *"analyses recent test generation + Testee behaviour
+to surface coverage gaps"* and emits proposals **with no admin prompt**. Stops there: **no** cron
+registration (C2/Slice 9 — this slice is the *job*, that slice is the *schedule*), **no** new signal
+capture (B1/B2), **no** generator internals (A3).
+
+### 8.1 Grounding (verified against the tree at this SHA)
+
+- **Domain sweep-job pattern to mirror.** `run_calibration_sweep(db)` (`calibration.py:951`),
+  `aggregate_realism_flags(db)` (`drive_rag.py:965`), `run_engagement_sweep(...)`
+  (`engagement.py:355`) — each an `async def …(db) -> dict[str, Any]` returning telemetry, invoked by
+  a beat task. C1's `run_gap_detection_sweep(db)` mirrors this; **its beat registration is C2** (the
+  "eighth cron" — Slice 9, deliberately separate, since adding it breaks the seven-crons invariant).
+- **Dedup arm targets exist.** Live catalogue = `list_pills` (`catalogue.py:189`); open/pending
+  proposals = `ProcessingTask` rows with `task_name == PROPOSAL_TASK_NAME` (`catalogue.py:45`) +
+  `status == pending`. The third arm (already-rejected/admin-dismissed gaps) has **no durable
+  gap-keyed store today** — rejections live per-`ProcessingTask` (`reject_pill_proposal`), not
+  gap-keyed → C1 needs a durable rejected-gap suppression (rides G5).
+- **The generator primitive (A3).** `enqueue_pill_generation(db, *, topic, …)` (Slice 3) is the
+  call C1 makes per surviving gap topic — the structural reason C1 depends on Stage A.
+- **The authoritative dedup requirement is already locked in the merged plan §4.2** (workstream
+  `…workstream.md:186-198`, folding auditor A-2 + A-2r): three dedup arms + per-signal consume/decay
+  + durable gap-keyed rejection + a materially-stronger-evidence re-surface threshold carrying a
+  "previously rejected" marker. C1's detail **implements that locked requirement**, it does not
+  re-decide it.
+
+### 8.2 Build choices — concrete (recommended direction)
+
+**(a) New domain job `run_gap_detection_sweep(db) -> dict` (`app/domain/<gap_detection>.py`).**
+Mirrors the sweep-job shape; returns telemetry (signals read, topics clustered, proposals generated,
+deduped-out by arm, signals consumed). New module → absorbable structural addition
+(`SESSION_START.md` carve-out) folded into the handover.
+
+**(b) Read + cluster signals → candidate gap topics.** Read the deduped Stage-B G5 signals
+(count-weighted by `hit_count`/distinct-searcher), cluster into candidate *topics* (e.g. by
+normalized-query/tag similarity). The clustering mechanism is a build-design detail; each candidate
+carries a **gap-key** (stable identity for dedup) + the cited evidence (the signal(s) + counts → the
+A1/A2 `evidence_count`/`gap_signal`).
+
+**(c) Three-arm dedup BEFORE generating (merged §4.2 — the heart of C1).** Drop a candidate gap if it
+matches **(a)** the live catalogue (`list_pills`), **(b)** an open/pending proposal
+(`PROPOSAL_TASK_NAME` + `pending`), or **(c)** an already-rejected/admin-dismissed gap (the durable
+gap-keyed suppression — new, rides G5). **Durable rejection (A-2r):** a rejected gap is **not**
+re-proposed merely because per-signal evidence decayed in — rejection is a *separate, gap-keyed*
+suppression; the **one** exception is materially-stronger fresh evidence past a threshold, which
+re-surfaces it **only** carrying a "previously rejected" marker (admin never re-evaluates cold).
+
+**(d) Invoke the generator + consume signals.** For each surviving gap topic, call
+`enqueue_pill_generation(db, topic=…, …)` (A3) with the cited gap signal; **mark the producing
+signals consumed/decayed** (`consumed_at`, B1/B2) so they don't re-fire. **Idempotency:** a repeated
+pass with no new signals generates nothing (the three arms + consume marking guarantee it).
+
+### 8.3 Embedded ratification-class items — SURFACED (blocking C1 execution, Gate 2)
+
+- **G2 — §6.5 amendment (signal-analysis vs generation).** Class (ii). §6.5 conflates signal-analysis
+  and proposal-output; C1 is the signal-analysis half. Amend §6.5 to separate (a) capture / (b)
+  gap-detection / (c) generation / (d) approval (the workstream §7 G2). **Blocks C1 execution.**
+- **G5 (extended) — the durable rejected-gap suppression store.** Class (ii) (data-model). Arm (c)
+  needs a gap-keyed rejection store that doesn't exist today (rejections are per-`ProcessingTask`,
+  not gap-keyed) → a new column/table on the G5 spine + the gap-key shape + the re-surface threshold.
+  **Blocks C1 execution.**
+- *(Inherits the Stage-A generator holds — C1 calls `enqueue_pill_generation`, so A1 G1/G7, A2 G4,
+  A3 G3, A4 G6 all gate C1 execution transitively.)*
+
+### 8.4 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+1. **Signals → generation:** with seeded Stage-B signals and a stub provider,
+   `run_gap_detection_sweep` clusters and calls `enqueue_pill_generation` once per surviving gap;
+   telemetry counts match.
+2. **Three-arm dedup:** a gap already in the catalogue / an open pending proposal / a rejected-gap is
+   **not** generated (one assertion per arm).
+3. **Consume + idempotency:** producing signals are marked `consumed_at`; a **second** pass with no
+   new signals generates **nothing** (the idempotency core).
+4. **Durable rejection (A-2r):** a rejected gap is not re-proposed on a later pass with merely-decayed
+   evidence; it **re-surfaces only** past the stronger-evidence threshold, carrying the "previously
+   rejected" marker.
+5. **Zero-network:** all via the stub `pill_generation` path; no real provider.
+
+**Acceptance:** tests pass under the three-layer green gate; structure-gate passes (new domain module
+absorbable); any new dedup column/table migration up/down + table-count assertion (AC-CD4) pass.
+
+### 8.5 Scope fence
+
+The gap-detection **job** + its dedup only. **No** beat/cron registration (C2 — the eighth-cron
+mirror-sweep is its own slice), **no** new signal capture (B1/B2), **no** generator internals (A3 owns
+`enqueue_pill_generation`), **no** FE. Reads the G5 signal store; calls A3's enqueue. The §6.5 (G2) +
+G5-rejection-store amendments are the **spec author's** PR.
+
+### 8.6 Reviewer findings folded — Slice 8 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 8; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 9–10 (C2, D1) detail sections append below as each prior slice seals — slice-iterative, one
+PR throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The
+global `Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10
+seals.)*
 
 ---
 
