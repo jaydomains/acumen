@@ -1351,12 +1351,14 @@ distinction, re-surface marker, idempotency) is faithful + complete. Round-trips
 
 ## Slice 9 (C2, Stage C) — eighth cron registration + "seven crons" mirror-sweep
 
-**Status: Slice 9 (C2) — round-1 folded (S9-1: full 3-class crons grep — word/numeral/structural — +missed surfaces); awaiting reviewer re-verify.**
+**Status: Slice 9 (C2) — round-1 folded (S9-1 full 3-class crons grep; OV-S9.4 full transitive hold set); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending G9 (the "seven → eight crons" spec amendment + mirror-sweep
 — the direct parallel of Slice 1's "seven → eight AI operations"). Detail-planning is not gated.**
-C2 registers C1's `run_gap_detection_sweep` as the **eighth** beat task; it inherits C1's holds (G2,
-G5) transitively (it schedules C1). Written **against the recommended direction**, with the
+C2 registers C1's `run_gap_detection_sweep` as the **eighth** beat task; scheduling C1 means C2
+**transitively inherits C1's full hold set** — G2, G5 (C1's own) **plus the Stage-A domain holds C1
+carries: A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3** — but **not A4/G6** (C1 calls the A3 domain fn,
+bypassing the endpoint — OV-S8.4 / OV-S9.4). Written **against the recommended direction**, with the
 **Slice-1 lesson applied proactively**: completeness by reproducible grep across all phrasing classes
 + the construction-oracle floor, **not** by recall.
 
@@ -1421,7 +1423,8 @@ there is no "stay seven" build (the workstream needs the autonomous trigger).
 precedent (workstream §7 G9; the PR-014 six→seven sweep is the in-body-override precedent). Ruling:
 amend SPEC §8.9 + the AC-CD7 / ROADMAP / CHECKLIST / SESSION_START mirrors (A-spec) to record the
 eighth cron; the code/test floors (A-code + B) ride C2 execution. **Blocks C2 execution** (the
-beat-schedule count + the SPEC §8.9 invariant). *(Inherits C1's G2/G5 — C2 schedules C1.)*
+beat-schedule count + the SPEC §8.9 invariant). *(Transitively inherits C1's **full** hold set — G2,
+G5 + the A1 G1/G7, A2 G4, A3 G3 domain holds C1 carries; **not** A4/G6 — C2 schedules C1, OV-S9.4.)*
 
 ### 9.4 Tests (AC-CD15 — zero-network)
 
@@ -1450,8 +1453,10 @@ Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped /
 |---|---|---|---|
 | **S9-1** | auditor | Refine | I applied the S1-1 lesson but only **2** grep classes (word + structural) where S1-1's terminating shape needed **3** — and grep-A missed the "**entry**" phrasing — a partial-fold (the S1-1 failure in its mirror slice). **Folded:** §9.1 now carries the full **3 classes** — (A) word incl. `entry/entries`, (A2) **numeral**, (B) structural **widened** to `worker.py`/`tests/`. Added the missed surfaces: `worker.py:7` ("seven-entry", different file), `test_p11_beat_schedule.py:1`/`:38` (test prose beyond the floor); **classified** the numeral `test_worker_session_loop_isolation.py:3` ("6/7") **historical** (leave, like SESSION_START:131) + excluded the `CODE_SPEC:726` "§8 cron" false positive. Set now complete by the 3-class construction. |
 
+| **OV-S9.4** | overseer | Refine | The transitive hold **under-listed** C1's domain holds — C2 schedules C1, so it inherits C1's own G2/G5 **plus** the Stage-A domain holds C1 carries (A1 G1/G7, A2 G4, A3 G3; not A4/G6 per OV-S8.4). **Folded:** §9 header + §9.3 now list the full transitive set. (OV-S9.6 — the 3-class crons sweep — RESOLVED: matched the overseer's pre-run set.) |
+
 Auditor S9-P1…S9-P10 otherwise Confirms (the construction-oracle floor approach + C2-schedules-C1 split
-+ G9 surface all correct). Round-trips: **S9-1 → 1/5**.
++ G9 surface all correct); overseer OV-S9.6 resolved. Round-trips: **S9-1 → 1/5**, **OV-S9.4 → 1/5**.
 
 ---
 
