@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–6 SEALED (6/10; Stage A + B1) · Slice 7 (B2, Stage B — question-tag + scope-clarification signal capture) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–6 SEALED (6/10; Stage A + B1) · Slice 7 (B2, Stage B — question-tag + scope-clarification signal capture) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1106,7 +1106,93 @@ Confirms; this §6 fold re-stales it → re-verify pending). Round-trips: **S6-1
 
 ---
 
-*(Slices 7–10 (B2, C1, C2, D1) detail sections append below as each prior slice seals —
+## Slice 7 (B2, Stage B) — question-tag + admin-scope-clarification signal capture
+
+**Status: Slice 7 (B2) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending G5 (the same signal-capture data model as B1 — B2 reuses
+the table-shape decision, incl. the polymorphic-vs-separate-tables call). Detail-planning is not
+gated.** **B2 is independent of the Stage-A generator holds** (capture-only). Written **against the
+recommended direction**: two more §6.5 signals captured into the **same G5-decided store**, deduped
+the same way B1 was (S6-1 precedent).
+
+**Implements:** the remaining two §6.5 input signals (`SPEC.md:344`) — *"recent generated questions
+and their pill tags"* (weak/uncategorised question pill-tags) and *"recent assignments where admin
+manually clarified scope."* Stops there: **no** gap-detection (C1), **no** cron (C2), **no**
+generator wiring.
+
+### 7.1 Grounding (verified against the tree at this SHA)
+
+- **Signal 2 (question-tag gap) derives from the weakness loop.** `weakness.py:138-139` produces
+  `weak_pills` per attempt; generated questions carry pill tags. A "tag gap" = a recent question
+  whose pill-tag is **weak** (repeatedly failed) or **uncategorised** (doesn't map cleanly to a
+  catalogue pill). The capture point is the weakness/tagging path (post-grade).
+- **Signal 3 (admin scope-clarification) has NO current mechanism.** `assignments.py` —
+  `create_assignment` (`:100`) targets a pill/path; grep finds **no clarification/note field** on
+  `Assignment` and no "clarify scope" action. So signal 3 needs a **new capture surface** (a
+  clarification note/action on an assignment) before there is anything to capture — a real sub-gap
+  (workstream §4.1). This is the least-built of the three signals.
+- **Shared store (G5).** B1's `discovery_search_miss` + its `UniqueConstraint`/upsert dedup (S6-1)
+  set the pattern; G5's open question is whether the three signals are **separate tables** or **one
+  polymorphic `gap_signal`** — **B2 is the slice that pays for re-litigating it if G5 isn't ruled as
+  one table-shape decision** (the reason §6.3 recommended deciding once).
+
+### 7.2 Build choices — concrete (recommended direction)
+
+**(a) Signal 2 — question-tag-gap capture.** At the post-grade weakness/tagging path, when a
+question's pill-tag is weak (failed past a threshold) or uncategorised, **upsert** a signal keyed on
+the (normalized) tag/pill — `hit_count`/`last_seen_at`/distinct-context, **same dedup contract as
+B1** (S6-1). Fail-soft; domain-layer.
+
+**(b) Signal 3 — admin scope-clarification capture.** Add the **capture surface** (none today): an
+optional clarification note on an assignment (a field + the admin action that sets it), and on set,
+**upsert** a scope-clarification signal (the clarification text + the assignment's pill/path context).
+The *mechanism* (assignment-clarification field + action) is itself a small data-model + surface
+addition → folds into **G5** (and touches the assignment surface) — **surfaced, not baked**.
+
+**(c) Shared store + dedup.** Both signals land in the **G5-decided** store (separate tables or the
+polymorphic `gap_signal` with `signal_type`), each with B1's `UniqueConstraint`+upsert dedup
+(`hit_count`, distinct-context) so C1 gets count-weighted, non-flooding signals.
+
+**(d) Migration.** Whatever tables/columns G5 rules (incl. the assignment-clarification field) →
+Alembic up/down + the table-count assertion (AC-CD4).
+
+### 7.3 Embedded ratification-class item — SURFACED (blocking B2 execution, Gate 2)
+
+**G5 (shared with B1) — extended for B2's two signals.** Class (ii) (SPEC §5 / AC-CD4). Beyond B1's
+decisions, B2 adds: **(i)** does the G5 store hold all three signals (the polymorphic-vs-separate
+call — **must be ruled here at the latest**, since B2 is the second writer); **(ii)** the **signal-3
+capture mechanism** — an assignment-clarification field + admin action (a new surface, since none
+exists today) — its shape + whether it's in-scope for B2 or a prerequisite; **(iii)** signal-2's
+weak/uncategorised threshold + tag-normalisation. **Blocks B2 execution.** *(No new G-letter — this is
+G5's B2 extension; recorded so the spec author rules the full signal data model once.)*
+
+### 7.4 Tests (AC-CD15 — `app/domain/*` + migration, zero-network)
+
+1. **Signal 2 captured + deduped:** a weak/uncategorised question-tag upserts one signal row;
+   repeated → `hit_count` increments (one row), per the B1/S6-1 dedup contract.
+2. **Signal 3 captured:** setting an assignment scope-clarification upserts a scope-clarification
+   signal with the clarification text + pill/path context.
+3. **Fail-soft:** a signal-write error never breaks grading / the assignment action.
+4. **Migration:** up/down clean; table-count assertion reflects the G5-ruled tables/columns (AC-CD4).
+
+**Acceptance:** tests pass under the three-layer green gate; `migration-chain` + table-count assertion
+pass; structure-gate passes.
+
+### 7.5 Scope fence
+
+The two remaining §6.5 signal captures + (for signal 3) the assignment-clarification capture surface
+only. **No** gap-detection job (C1), **no** cron (C2), **no** generator wiring, **no** FE beyond the
+minimal assignment-clarification admin action (if G5 rules it in-scope). Reuses B1's dedup contract +
+the G5 store. The SPEC §5 / AC-CD4 amendment is the **spec author's** PR (rides G5).
+
+### 7.6 Reviewer findings folded — Slice 7 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 7; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 8–10 (C1, C2, D1 — Stages C/D) detail sections append below as each prior slice seals —
 slice-iterative, one PR throughout. Appending a later slice does **not** re-stale a sealed slice
 (§0.1, OV-S1.7). The global `Status: final — approved by planner (all slices)` marker lands at the
 bottom after Slice 10 seals.)*
