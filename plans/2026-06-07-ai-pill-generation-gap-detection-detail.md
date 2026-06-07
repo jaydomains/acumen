@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–4 (A1–A4) SEALED · Slice 5 (A5, FE) detail posted — awaiting plan-auditor + plan-overseer review. (4/10 sealed; A5 closes Stage A.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–4 SEALED · Slice 5 (A5, FE) round-1 folded (S5-1 invalidation idiom `.all()`); overseer sealed @`fa5f949`, auditor re-verify pending. (4/10 sealed; A5 closes Stage A.)** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -898,7 +898,7 @@ Auditor S4-P1…S4-P11 otherwise Confirms (G6 well-surfaced; every §4.1 cite ve
 
 ## Slice 5 (A5, FE) — admin "generate pills from a topic" surface
 
-**Status: Slice 5 (A5) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 5 (A5) — round-1 folded (S5-1: invalidation now `adminKeys.proposals.all()` per the module idiom); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3,
 A4 G6 — A5 is the FE over A4's endpoint) plus A5's own gate G8 (FE scope: is this surface in *this*
@@ -940,8 +940,11 @@ bounded), difficulty min/max. Per **AC-CD21** form pattern + error-envelope disp
 
 **(b) `useGeneratePills` mutation** (`admin-proposals.ts`) — `POST /v1/pill-proposals/generate` (A4)
 via `openapi-fetch` + `unwrap()`; typed by the generated `PillGenerationCreate` /
-`PillGenerationBatchResponse`. **On success: invalidate `adminKeys.proposals.list`** (cross-resource
-invalidation per AC-CD21) so the N new drafts appear in the queue; toast "N drafts generated."
+`PillGenerationBatchResponse`. **On success: invalidate `adminKeys.proposals.all()`** — matching the
+sibling mutations `useApproveProposal` (`admin-proposals.ts:75`) and `useRejectProposal` (`:90`) and
+the §C.1 cross-resource lock (the `.all()` family, not the narrower `.list` — it also covers any
+`proposals.*` count/badge query that should refresh after generating N drafts; auditor S5-1) so the N
+new drafts appear in the queue; toast "N drafts generated."
 
 **(c) Admin-guard + routing** per **AC-CD20** (the surface lives under the existing
 `(admin)/admin/catalogue` route group — already guarded). No new route.
@@ -963,7 +966,7 @@ FE over the full A1–A4 stack.)*
 1. **Form render/validate:** the generate form renders its fields; `target_count` bounds +
    difficulty min≤max validate; submit disabled until valid.
 2. **Mutation + invalidation:** a mocked `POST /v1/pill-proposals/generate` success invalidates
-   `proposals.list` (the queue refetches) + toasts the count; the drafts appear in the table.
+   `adminKeys.proposals.all()` (the queue refetches) + toasts the count; the drafts appear in the table.
 3. **Error-envelope display:** a mocked AC-CD6 error envelope renders via the AC-CD21 error path (no
    crash; field/form error shown).
 4. **Admin-guard:** the surface is within the guarded `(admin)` group (AC-CD20).
@@ -982,7 +985,15 @@ surface is the **spec author's** PR (rides G8), not this executor slice. **Close
 
 ### 5.6 Reviewer findings folded — Slice 5 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 5; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S5-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S5-1** | auditor | Refine | §5.2(b) cited `adminKeys.proposals.list` for invalidation, but the module idiom (and the §C.1 cross-resource lock A5 cites) is `adminKeys.proposals.all()` — `useApproveProposal:75` + `useRejectProposal:90`. **Folded:** §5.2(b) + §5.4 test 2 now use `.all()`, matching the siblings (covers any `proposals.*` count/badge too). Verified against the live module. Minor/transportability. |
+
+Auditor S5-P1…S5-P10 otherwise Confirms (G8 FE-scope + the FE-8 fe-spec amendment both correctly
+surfaced; reuse faithful; closes Stage A). Overseer **SEALED Slice 5 governance @ `fa5f949`** (10
+Confirms; this §5 fold re-stales it → re-verify pending). Round-trips: **S5-1 → 1/5**.
 
 ---
 
