@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–8 SEALED (8/10) · Slice 9 (C2, Stage C — eighth cron + "seven crons" mirror-sweep) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–8 SEALED (8/10) · Slice 9 (C2) round-1 folded (S9-1 full 3-class crons grep) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1351,7 +1351,7 @@ distinction, re-surface marker, idempotency) is faithful + complete. Round-trips
 
 ## Slice 9 (C2, Stage C) — eighth cron registration + "seven crons" mirror-sweep
 
-**Status: Slice 9 (C2) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 9 (C2) — round-1 folded (S9-1: full 3-class crons grep — word/numeral/structural — +missed surfaces); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending G9 (the "seven → eight crons" spec amendment + mirror-sweep
 — the direct parallel of Slice 1's "seven → eight AI operations"). Detail-planning is not gated.**
@@ -1370,11 +1370,12 @@ crons" count invariant** — the exact parallel of Slice 1's "seven AI operation
 workstream-plan G9). Enumerated by reproducible grep (re-run at execution HEAD), **two classes**:
 
 ```
-# (A) textual "seven crons" surfaces (spec + code prose), all trees
-grep -rniE 'seven[- ](cron|scheduled|beat|§?8\.9)|seven §?8\.9 crons|all seven (cron|task)|seven crons' \
-     SPEC.md CODE_SPEC.md ROADMAP.md CHECKLIST.md SESSION_START.md app/ tests/ | grep -viE 'operation|prompt'
-# (B) structural floors — the beat_schedule dict + the exact-count test floor (NO 'seven' word needed)
-grep -rnE 'beat_schedule\b|_EXPECTED_ENTRIES|len\(beat_schedule\)|== 7' app/beat_schedule.py tests/integration/test_p11_beat_schedule.py
+# (A) textual WORD — incl. entry/entries (the 'seven-entry' phrasing grep-A first missed), all trees
+grep -rniE 'seven[- ](cron|scheduled|beat|entry|entries|task|§?8\.9)|(all|the|of|full) seven[- ](cron|task|entr|§?8\.9)' SPEC.md CODE_SPEC.md ROADMAP.md CHECKLIST.md SESSION_START.md app/ tests/ | grep -viE 'operation|prompt'
+# (A2) textual NUMERAL — '7-cron','6/7', etc. (the third class S1-1 needed; classify each historical-vs-live)
+grep -rniE '\b[678][- ]?(cron|scheduled|task|entr)|\b6/7\b' SPEC.md CODE_SPEC.md ROADMAP.md CHECKLIST.md SESSION_START.md app/ tests/ | grep -viE 'operation|prompt|§8 cron'
+# (B) structural floors — beat_schedule dict + exact-count test floor (no 'seven' word), WIDENED to worker/tests
+grep -rnE 'beat_schedule\b|_EXPECTED_ENTRIES|len\(beat_schedule\)|== 7' app/beat_schedule.py app/worker.py tests/
 ```
 
 - **(A) — spec-side (ride the G9 amendment PR, spec-author-authored):** **SPEC §8.9** (enumerates the
@@ -1384,7 +1385,14 @@ grep -rnE 'beat_schedule\b|_EXPECTED_ENTRIES|len\(beat_schedule\)|== 7' app/beat
   PR-014 six→seven crons sweep" — is **historical precedent prose**, not a live count mirror; leave
   as-is.)*
 - **(A) — code-side (ride C2 execution, in-body-override):** `app/beat_schedule.py:4` (module
-  docstring), `app/worker.py:42/153/170/188/205/223/242` ("the seven §8.9 crons" wrapper docstrings).
+  docstring), `app/worker.py:7` (*"full **seven-entry** schedule"* — a **different file location** from
+  the wrappers; the "entry" phrasing grep-A first missed, auditor S9-1), `app/worker.py:42/153/170/188/205/223/242`
+  ("the seven §8.9 crons" wrapper docstrings), **test prose** `tests/integration/test_p11_beat_schedule.py:1`
+  (module docstring) + `:38` (comment) — beyond the floor logic at `:22`/`:36` (S9-1).
+- **(A2) — numeral class (classified, S9-1):** `tests/e2e/test_worker_session_loop_isolation.py:3`
+  (*"a 24h beat soak surfaced **6/7** scheduled tasks…"*) is **historical** (a past soak incident,
+  like `SESSION_START.md:131`'s six→seven note) → **leave**, not a live count. *(`CODE_SPEC.md:726`
+  "§8 cron" is a false positive — a §-reference, not a count.)*
 - **(B) — structural floors (ride C2 execution; the construction oracle):** `app/beat_schedule.py:38`
   (`beat_schedule` dict — add the 8th entry); **`tests/integration/test_p11_beat_schedule.py:36`
   `test_beat_schedule_has_exactly_seven_entries` (`assert len(beat_schedule) == 7` + `_EXPECTED_ENTRIES`
@@ -1436,7 +1444,14 @@ test floors ride C2 execution.
 
 ### 9.6 Reviewer findings folded — Slice 9 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 9; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S9-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S9-1** | auditor | Refine | I applied the S1-1 lesson but only **2** grep classes (word + structural) where S1-1's terminating shape needed **3** — and grep-A missed the "**entry**" phrasing — a partial-fold (the S1-1 failure in its mirror slice). **Folded:** §9.1 now carries the full **3 classes** — (A) word incl. `entry/entries`, (A2) **numeral**, (B) structural **widened** to `worker.py`/`tests/`. Added the missed surfaces: `worker.py:7` ("seven-entry", different file), `test_p11_beat_schedule.py:1`/`:38` (test prose beyond the floor); **classified** the numeral `test_worker_session_loop_isolation.py:3` ("6/7") **historical** (leave, like SESSION_START:131) + excluded the `CODE_SPEC:726` "§8 cron" false positive. Set now complete by the 3-class construction. |
+
+Auditor S9-P1…S9-P10 otherwise Confirms (the construction-oracle floor approach + C2-schedules-C1 split
++ G9 surface all correct). Round-trips: **S9-1 → 1/5**.
 
 ---
 
