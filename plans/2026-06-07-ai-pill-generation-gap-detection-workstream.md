@@ -184,11 +184,18 @@ gap-driven**, feeding the Path-2 generator with no admin prompt.
    structural reason Path 3 depends on Path 2 (§5). **Dedup / idempotency is a first-class
    requirement of this job, not an afterthought** (auditor A-2): a repeated cron pass must **not**
    re-propose a gap already covered by an existing pill or an open/pending proposal — it dedups
-   against (a) the live catalogue and (b) the `processing_tasks` proposal queue before generating,
-   and a signal that produced a proposal is marked consumed/decayed so it does not re-fire. Without
-   this the queue floods and the §6.5 "evaluate in 30 s" bar is defeated. The dedup *mechanism* (key
-   shape, decay window, consumed-marking) is a build-design detail folded here as a stated
-   requirement; if it forces a new column it rides **G5**.
+   against (a) the live catalogue, (b) the `processing_tasks` open/pending proposal queue, **and (c)
+   already-rejected / admin-dismissed gaps** before generating, and a signal that produced a
+   proposal is marked consumed/decayed so it does not re-fire. **Admin rejection is durable across
+   passes** (auditor A-2r): a rejected gap is **not** re-proposed on a later pass merely because new
+   per-signal evidence decayed in — the consume/decay marking is per-signal, so durable rejection is
+   a *separate, gap-keyed* suppression. The one sanctioned exception is materially-stronger fresh
+   evidence past a threshold, which **may** re-surface a previously-rejected gap **but only carrying
+   a "previously rejected" marker** so the admin re-evaluates with that context, never cold. Without
+   all three dedup arms the queue floods and the §6.5 "evaluate in 30 s" bar is defeated. The dedup
+   *mechanism* (gap-key shape, decay window, consumed/rejected marking, the re-surface threshold) is
+   a build-design detail folded here as a stated requirement; if it forces a new column it rides
+   **G5**.
 3. **Autonomous trigger (new cron)** — an **eighth** beat task. This collides with the load-bearing
    **"seven crons"** invariant mirrored across `SPEC.md:477`, `CODE_SPEC.md` (AC-CD7),
    `ROADMAP.md` P11, `CHECKLIST.md`, `SESSION_START.md` — changing it is a spec amendment with a
@@ -359,3 +366,13 @@ All 7 round-1 findings folded at this SHA; none was a halt-class condition; none
 | **OV-1** | overseer | Refine | §8 now states the **two-gate** distinction explicitly: plan-doc merge = normal class (override window is the checkpoint); each §7 item ratified separately, downstream. §7 carries the matching per-item note. |
 | **OV-2** | overseer | Refine | Same fix as A-4 (concurrent catch). |
 | **OV-3** | overseer | Refine | Same resolution as A-3 — scope boundary lifted to a ratified §7 item via the authenticated channel. |
+
+**Round 2 (re-verified @ `6a6443c`):** auditor confirmed A-1, A-3, A-4 resolved; A-2 core resolved
+with one residual **A-2r** (rejected-gap durability). **A-2r folded** @ this SHA — §4.2 dedup now has
+a third arm covering already-rejected/admin-dismissed gaps, makes admin rejection **durable across
+passes**, and allows re-surfacing only on materially-stronger fresh evidence carrying a "previously
+rejected" marker (never cold). The auditor's A-3 §8.3 **authentication caveat** is acknowledged and
+is the **overseer's + spec-author's** gate, not a content blocker: the in-session ruling correctly
+gates **no** part of the normal-class plan-doc merge, and any downstream use requires the ruling to
+reach the **overseer** through the direct authenticated channel independently — the plan does not
+self-authenticate it.
