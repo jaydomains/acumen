@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) — round-2 fold (S1-1: +2 missed count surfaces); overseer seal @`021094b` re-staled by this content change (re-verify pending); auditor + overseer re-verify pending. Slice 2 (A2) held.**
+**Status: Slice 1 (A1) — round-3 fold (OV-S1.12: +2 missed surfaces `provider.py:4` + `test_p5_prompts` floor, +1 planner-found `test_p5_resolve` block; completeness now grep-backed not asserted; `DECISIONS.md:96` reclassified class-(i)). No planner marker yet; auditor + overseer re-verify pending. Slice 2 (A2) held.**
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -125,7 +125,7 @@ each before the next is posted.
 
 ## Slice 1 (A1) — new generation prompt entry + `Operation` wiring + provider stub
 
-**Status: Slice 1 (A1) — round-2 fold (S1-1 +2 missed count surfaces; OV-S1.7/OV-S1.12 folded r1); awaiting auditor + overseer re-verify at new content-SHA (§1.7).**
+**Status: Slice 1 (A1) — round-3 fold (OV-S1.12 completeness: §1.4 now grep-backed + 3 more surfaces; §1.3 class-(i)+(ii)); OV-S1.7 resolved; awaiting auditor + overseer re-verify at new content-SHA (§1.7).**
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated spec-author ratification of G1 and G7.**
 This detail is written **against the recommended direction** (mint a new
@@ -254,10 +254,15 @@ baked; the build above is the **recommended** direction, not a decided one.
   refiner's stable `v1.0.0` prompt. A distinct op is the clean, AC-CD8-faithful shape. **Blocks A1
   execution** (the enum value + default-set membership are the anchor change).
   **Ratification scope (auditor S1-1 + overseer OV-S1.12):** ruling **G1 = MINT *entails* a
-  class-(ii) `SPEC.md` + `DECISIONS.md` amendment** — the ops-count + the **enumerated-ops lists** at
-  `SPEC.md:296/397/443/523` and **`DECISIONS.md:96`** (AC-D1 Implications — an AC-D anchor body), the
-  SPEC §6 subsection structure, plus the `CODE_SPEC.md:308` / `provider.py:122` / `README.md:3` /
-  `app/ai/prompts/__init__.py:3` mirrors (full enumeration in §1.4). **The spec author should
+  class-**(i)+(ii)** amendment** (overseer OV-S1.12 r3): amending **`DECISIONS.md:96`** (AC-D1
+  *Implications*) is a **class-(i) AC-D anchor-body** change (`REQUIRED_READING.md` §7(i)), while the
+  `SPEC.md` / `CODE_SPEC.md` edits are class-(ii) — so the **authenticated ratification scope is
+  broader than a pure spec edit**. The full surface set — the ops-count + the **enumerated-ops lists**
+  at `SPEC.md:296/397/443/523` and `DECISIONS.md:96`, the SPEC §6 subsection structure, plus the
+  `CODE_SPEC.md:308` / `provider.py:4` / `provider.py:122` / `README.md:3` /
+  `app/ai/prompts/__init__.py:3` mirrors **and** the functional op-set floors (`_REGISTRY`,
+  `test_p5_prompts._REGISTERED_OPERATIONS`, `test_p5_resolve` resolution block) — is enumerated, with
+  reproducible greps, in §1.4. **The spec author should
   ratify G1 with that full amendment scope in view**, and the downstream G1 amendment PR must fold
   **all** count surfaces — not just the prompt-registry entry; the overseer (merge-executor) will
   require the count amendment folded completely, not partially. **If ruled EXTEND**, the entire sweep
@@ -291,8 +296,34 @@ across both spec and code. This is the **exact parallel of the "seven crons" mir
 workstream plan named for G9** (workstream §4 / `…workstream.md:199-202`); without enumerating it the
 G1 amendment PR risks a **silent partial-fold** (AC-CD8 body updated, the count surfaces left stale)
 — the §7 fold-completeness failure. **The entire sweep below dissolves if the spec author rules
-G1 = EXTEND** (no new op → the count stays seven). The **complete** count-surface set, verified via a
-full-tree grep at this SHA (auditor-confirmed exhaustive at S1-1 round 2 — no further surfaces):
+G1 = EXTEND** (no new op → the count stays seven).
+
+**Completeness — by reproducible grep, not assertion (overseer OV-S1.12).** A count invariant has
+**two** kinds of surface — a textual *"seven"* and a **functional op-set floor that carries no
+"seven" word** — so a single keyword grep is insufficient (the round-1/round-2 "verified/exhaustive"
+claims were each wrong because they were enumerations-by-recall, not grep output). The set below is
+what these greps return at **`a235259`** (this branch; `app/`, `SPEC.md`, `DECISIONS.md`,
+`CODE_SPEC.md` are byte-identical to `main` `741f862` — only `plans/**` differs); **re-run them at
+execution HEAD before the G1 amendment PR**:
+
+```
+# (A) textual count surfaces — phrasing-agnostic, ALL doc + code + fe trees
+grep -rniE 'seven[- ](value|ai|distinct|operation|prompt)|(all|of|the|each) seven (ai )?(operation|prompt)|five of seven|eighth (ai )?operation' \
+     SPEC.md CODE_SPEC.md DECISIONS.md ROADMAP.md CHECKLIST.md FE_ROADMAP.md FE_CHECKLIST.md \
+     SESSION_START.md app/ tests/ frontend/src | grep -viE 'cron|seventh integrity'
+# (B) functional op-set / prompt-registry floors (NO "seven" word — (A) cannot see these)
+grep -rnE 'registered_operations|_REGISTERED_OPERATIONS|_REGISTRY|resolve_model\(Operation' app/ tests/
+```
+
+(A) returns `SPEC.md:296/372/397/443/523`, `DECISIONS.md:96`, `CODE_SPEC.md:308`,
+`app/ai/provider.py:4`, `app/ai/provider.py:122`, `app/ai/prompts/__init__.py:3`,
+`app/ai/prompts/README.md:3` — **and nothing in `ROADMAP`/`CHECKLIST`/`FE_*`/`SESSION_START`/
+`frontend/`** (verified empty; the wider trees carry no op-count surface) — plus the SPEC §6.1–6.7
+subsection structure, which is structural and not grep-visible. *(False positive excluded:
+`DECISIONS.md:608` "seventh integrity layer" = AC-D24, not an op count.)* (B) returns the functional
+floors in the code-side list below. The two greps together are the **complete** set — this is the
+*evidence* that supersedes the round-1/round-2 "exhaustive" *assertions* (which were
+enumeration-by-recall and each wrong); **re-run both at execution HEAD** before the G1 amendment PR:
 
 **Spec surfaces — swept in the G1/G2 spec-amendment PR** (authored by the **spec author**;
 `SESSION_START.md` — the implementer does not author the clarification). The AC-CD8 anchor *body*
@@ -316,8 +347,11 @@ change recording the new op rides this same PR:
   AC-D23). Each is a separate version-controlled prompt."* By-name enumeration; most likely to
   silently rot (anchor Implications, not prose). (auditor S1-1 round 2 — missed in round 1.)
 
-**Code / registry surfaces — swept in A1's execution** (in-body-override rule — the authored
-prose/anchor is truth, these mirrors are swept to match; not a separate spec PR):
+**Code / registry — textual count mirrors, swept in A1's execution** (in-body-override rule — the
+authored prose/anchor is truth, these mirrors are swept to match; not a separate spec PR):
+- `app/ai/provider.py:4` — module docstring *"…the **seven-value** `Operation` enum that drives
+  per-operation model + prompt_version resolution…"* → eight-value. **Twin of `:122` in the same
+  file** (round-2 swept `:122` but not `:4` — a partial-fold *within one file*; overseer OV-S1.12 r3).
 - `app/ai/provider.py:122` — the `Operation` enum docstring *"**The seven AI operations** of AC-CD8
   v1.6 plus `embed`…"* → eight (code-comment mirror of the AC-CD8 count).
 - `app/ai/prompts/README.md:3` — *"**The seven AI operation prompts** (SPEC §6) live here…"*. This is
@@ -329,8 +363,27 @@ prose/anchor is truth, these mirrors are swept to match; not a separate spec PR)
 - `.env.example` — add `ANTHROPIC_MODEL_PILL_GENERATION=` sibling to the existing `anthropic_model_*`
   examples (env-default discoverability, AC-CD18).
 
+**Code — functional op-set floors, swept in A1's execution** (these carry **no "seven" word**; a
+textual grep misses them — they break the build if not updated when the op set grows):
+- `app/ai/prompts/__init__.py:37-51` (`_REGISTRY`) — register the `pill_generation` prompt so
+  `get_prompt`/`registered_operations()` resolve it (the real Anthropic provider fetches its template
+  through this seam).
+- `tests/unit/test_p5_prompts.py:22` (`_REGISTERED_OPERATIONS`) + `:46`
+  (`assert registered_operations() == frozenset(_REGISTERED_OPERATIONS)`) — add `pill_generation` to
+  the floor list or the op-set assertion fails (overseer OV-S1.12 r3).
+- `tests/unit/test_p5_resolve.py:264-271` — the per-op `resolve_model` coded-default assertion block;
+  add `assert resolve_model(Operation.pill_generation) == cfg.anthropic_model_pill_generation`
+  (the test counterpart of the `resolve_model` map entry in §1.2(b); planner-found beyond OV-S1.12 r3).
+- `tests/unit/test_p5_resolve.py:54` (`_ALL_OPS = list(Operation)`) — **dynamic, auto-includes** the
+  new op; no edit, but the per-op isolation loop at `:371` then exercises `pill_generation`, so the
+  new op must satisfy that invariant (the stub branch in §1.2(b) ensures it does).
+
+*(Verified there is **no** config-field-set floor — no test asserts the set/count of
+`anthropic_model_*` fields; the new field is covered by the `test_p5_resolve.py:264-271` resolution
+assertion above.)*
+
 No SPEC/DECISIONS/CODE_SPEC edit is made **in A1 itself** — the spec-side surfaces above are the spec
-author's amendment PR; A1 execution carries only the code/registry mirrors.
+author's amendment PR; A1 execution carries only the code/registry mirrors + functional floors.
 
 ### 1.5 Tests (AC-CD15 — `app/ai/*` + `app/domain/*` near-full coverage, zero-network)
 
@@ -364,22 +417,25 @@ Slice 4); no `frontend/**` (Slice 5); no migration (A1 adds no table/column — 
 reuse is Slice 3); no signal-capture model (Stage B); no beat schedule (Slice 9). The `pill_proposal`
 refiner path is **untouched** (recommended-direction keeps it).
 
-### 1.7 Reviewer findings folded — Slice 1 round 1 (set-diff record; role files §6)
+### 1.7 Reviewer findings folded — Slice 1 (rounds 1–3 set-diff record; role files §6)
 
-Both reviewers' round-1 findings folded at this SHA; none dropped; none a halt-class condition.
+Findings folded across three rounds; none dropped; none a halt-class condition. The completeness gap
+(S1-1 ≡ OV-S1.12, the content/governance twins) took three rounds because the first two folds
+*asserted* exhaustiveness instead of *proving* it — the round-3 fix replaces the assertion with the
+reproducible grep itself (§1.4).
 
 | ID | Reviewer | Tag | Resolution |
 |---|---|---|---|
-| **S1-1** | auditor | Missing (r1) → Refine (r2) | **r1:** §1.4 rewritten as the **"seven → eight AI operations" count mirror-sweep** (spec-side `SPEC.md:296/372/397/443/523`+§6+`CODE_SPEC.md:308` ride G1/G2 PR; code-side `provider.py:122`+`README.md:3` ride A1 exec), referenced from §1.3; +`:397`/`:443` beyond the finding. **r2:** auditor's full-tree grep caught my "all surfaces" claim was itself a partial-fold — **added the 2 missed in-scope surfaces:** `DECISIONS.md:96` (AC-D1 Implications, by-name, spec-side, rides G1/G2 PR) + `app/ai/prompts/__init__.py:3` (twin of README:3, code-side). Set now auditor-confirmed exhaustive. Dissolves if G1 = EXTEND. |
-| **OV-S1.7** | overseer | Refine | §0.1 + Loop-mechanics now state **marker-binding granularity** explicitly: a per-slice seal binds to **its own slice-section content** (appending a later slice does not re-stale it; editing a sealed slice does + forces re-seal); per-slice seals are interim checkpoints that **never sum to merge authorization** — Gate 1 binds to the **global** whole-doc content-SHA + green + window. |
-| **OV-S1.12** | overseer | Refine | Governance dimension of S1-1: ruling **G1 = mint entails a class-(ii) SPEC amendment**, and §1.4's partial sweep was a silent-partial-fold risk. Folds **together with S1-1** — the §1.4 enumeration + the §1.3 G1 **ratification-scope** statement (the spec author ratifies G1 knowing the count amendment is entailed; the overseer will require it folded completely). Dissolves if G1 = extend. |
+| **S1-1 ≡ OV-S1.12** | auditor (content) + overseer (governance), twins | Missing→Refine, **r1→r3** | Same completeness gap, found three times by progressively deeper greps. **r1:** §1.4 became the "seven → eight" sweep (`SPEC.md:296/372/397/443/523`+§6+`CODE_SPEC.md:308`; `provider.py:122`+`README.md:3`); +`:397`/`:443` beyond the finding. **r2 (auditor grep):** +`DECISIONS.md:96`, +`prompts/__init__.py:3`. **r3 (overseer grep, auditor concurred):** +`provider.py:4` (twin of `:122`), + the **functional op-set floors** that carry no "seven" word — `test_p5_prompts._REGISTERED_OPERATIONS`+assertion, `__init__._REGISTRY`; **planner-found beyond both:** `test_p5_resolve.py:264-271` resolution block (+`_ALL_OPS` auto-includes). **Process fix:** §1.4 now carries the **two reproducible greps + their output** (textual across all doc/code/fe trees + functional), not the word "exhaustive". **Class fix:** §1.3 → **class-(i)+(ii)** (`DECISIONS.md:96` is class-(i) AC-D anchor body). Dissolves if G1 = EXTEND. |
+| **OV-S1.7** | overseer | Refine (resolved r1, held r2/r3) | §0.1 + Loop-mechanics state **marker-binding granularity**: a per-slice seal binds to **its own slice-section content** (appending a later slice does not re-stale it; editing a sealed slice does + forces re-seal); per-slice seals are interim checkpoints that **never sum to merge authorization** — Gate 1 binds the **global** whole-doc content-SHA + green + window. Unchanged since r1 (§0.1 byte-identical) — overseer re-confirmed RESOLVED at r2. |
 | OV-S1.11 | overseer | Confirm (governance ruling) | Not a finding — the overseer ruled the `anthropic_model_pill_generation` config field an **absorbable AC-CD18 addition riding G1**, not a 4th ratification class. Reflected in §1.2(c) with the execution caveat. |
 
 All 12 auditor pre-registered positions (S1-P1…S1-P12) and overseer OV-S1.1–.6/.8–.10 were
-**Confirms** (no action). Round-trips after this fold: **S1-1 → 2/5** (r1 fold + r2 completeness
-fold), **OV-S1.7 → 1/5**, **OV-S1.12 → 1/5**. The round-2 §1.4 content change **re-stales** the
-overseer's `021094b` content-bound seal — the overseer re-verifies at the new content-SHA (it
-anticipated this).
+**Confirms** (no action). Round-trips: **S1-1 → 3/5**, **OV-S1.12 → 3/5** (the completeness twins),
+**OV-S1.7 → 1/5** (resolved). The round-3 §1.4 content change **re-stales both reviewers' withdrawn
+seals** (auditor `514d923`, overseer `021094b`/its later seal) — both re-verify at the new
+content-SHA and **re-run the grep themselves** before re-sealing. **No planner marker is posted while
+the twins are open.**
 
 ---
 
