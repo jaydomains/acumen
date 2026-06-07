@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–8 SEALED (8/10) · Slice 9 (C2) round-1 folded (S9-1 full 3-class crons grep) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: STAGES A+B+C COMPLETE — Slices 1–9 SEALED (9/10). Slice 10 (D1, Stage D — incremental bootstrap-on-approve) detail next — the final slice.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1351,7 +1351,7 @@ distinction, re-surface marker, idempotency) is faithful + complete. Round-trips
 
 ## Slice 9 (C2, Stage C) — eighth cron registration + "seven crons" mirror-sweep
 
-**Status: Slice 9 (C2) — round-1 folded (S9-1 full 3-class crons grep; OV-S9.4 full transitive hold set); awaiting reviewer re-verify.**
+**Status: final for Slice 9 — approved by planner** (content-bound §9 @ `00bda8a`; auditor S9-1 RESOLVED + seal + overseer OV-S9.4/OV-S9.6 RESOLVED + seal; bind §9@`00bda8a`. Content-invariant marker — §9.1–§9.6 byte-identical. **Completes Stage C** — autonomous gap-detection loop closed.)
 
 **Execution-gate (Gate 2): BLOCKED pending G9 (the "seven → eight crons" spec amendment + mirror-sweep
 — the direct parallel of Slice 1's "seven → eight AI operations"). Detail-planning is not gated.**
