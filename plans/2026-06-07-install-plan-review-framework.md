@@ -1,6 +1,6 @@
 # Plan — Install the multi-party plan-review framework into Acumen
 
-**Status: draft — under multi-party review (planner authored)**
+**Status: final — approved by planner**
 
 Role: this is the **planner's** plan artifact for the recursive self-install of the three-party
 plan-review framework (planner · plan-auditor · plan-overseer). It is reviewed by an independent
