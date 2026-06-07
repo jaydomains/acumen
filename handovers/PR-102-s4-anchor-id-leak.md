@@ -24,9 +24,21 @@
 
 ## What was decided in this PR
 
-- **Scope = V2's audited testee-facing set: 13 sites** (overseer-authorized "Option B", then re-confirmed "Option A" once the full picture emerged). The plan enumerated 7; verify-before-write found 6 more testee-facing rendered leaks. (A later exhaustive sweep found the *total* rendered-`AC-D` set across the app is ~28 — the extra ~15 are admin-surface and out of V2's audited scope; see the discovery section.)
-- **Spec-lock gate honored:** of the 13, four were spec-verbatim — `GradingOverlay` phase copy (FE-4-runner.md:119, new discovery) and, unexpectedly, two of the plan's "4a, no spec gate" sites (`JITQueue` → FE-5-streaming.md:520; `grade-review-queue` → FE-9-admin-ops.md:248). These were surfaced (not silently amended) and unblocked by the user-authored standalone doc-only amendment **PR #101** (`40b81cd`), which landed on `main` before this commit — same spec-drift pattern as #96/#97. The Safety* group (4b) was already covered by FE-3 amendment #97.
+- **Scope = V2's audited testee-facing set: 13 sites** (plan's 7 + 6 found in verify-before-write). The 13-site outcome was authorized across two distinct overseer rulings whose option-labels are easy to confuse (see the **Authorization trail** below, which records both verbatim — audit F2):
+  - **"Option B"** answered *should Slice 4 expand from the plan's 7 to all 13 testee-facing leaks?* → yes, strip all 13. (Commit `19c1183`.)
+  - **"Option A"** answered, *once a later exhaustive sweep revealed the total rendered-`AC-D` set is ~28,* *should V2 close at its audited testee scope (13) or attempt full ~28 closure?* → testee scope (13); the extra ~15 admin-surface occurrences are deferred (discovery section). (Commit `5080e91`.)
+
+  Both converge on the same 13 sites; they are answers to different questions, not a flip-flop. (Commit `19c1183`'s message says "Option B"; `5080e91` + this handover say "Option A" — reconciled here.)
+- **Spec-lock gate honored:** of the 13, four were spec-verbatim — `GradingOverlay` phase copy (FE-4-runner.md:119) and two of the plan's "4a, no spec gate" sites (`JITQueue` → FE-5-streaming.md:520; `grade-review-queue` → FE-9-admin-ops.md:248). These were surfaced (not silently amended) and unblocked by the standalone doc-only amendment **PR #101** (`40b81cd`) before this commit. **Provenance (audit F1):** #101 was authored by a **separate Claude session** (git author `Claude`, session `01K13tng…`) at the spec author's **explicit direction** (overseer ruling "Option (a) … Separate session will author the spec amendment PR" — see Authorization trail), and is **distinct from this executor session** (`018p4Ti…`). The spec-drift rule's intent (`SESSION_START.md:80–85` — the implementing session must not self-authorize/author the amendment that unblocks it) was honored: the executor did not author #101. Note this differs from #96/#97, which were **hand-authored by the spec author (`J`)** — so the earlier "user-authored / same pattern as #96/#97" wording was imprecise and is corrected here. The Safety* group (4b) was covered by FE-3 amendment #97 (also `J`-authored).
 - New anchors: none. Existing anchors depended on: AC-D4/6/9/11/19/21/25 (now removed from UI text only; anchors remain in DECISIONS/CODE_SPEC and in code comments).
+
+## Authorization trail (audit F1 + F2 — durable record of the overseer rulings)
+
+These rulings were given by the overseer/spec author in the executing session (session `018p4Ti…`); recorded here verbatim so the decision trail is locatable in a committed artifact (they were not previously in any PR comment or repo file — audit F2):
+
+1. **7→13 scope expansion ("Option B"):** *"Option B authorized for Slice 4. Strip the decorative '· AC-Dxx' / '(AC-Dxx)' suffix on all 13 sites (plan's 7 + your discovered 6), keeping readable copy in each. Spec-lock check first … If any … is spec-locked: pause and surface for spec-author ruling …"*
+2. **Spec-amendment authoring route ("Option (a)"):** *"Option (a) ruled. Separate session will author the spec amendment PR (3 files: FE-4-runner.md, FE-5-streaming.md, FE-9-admin-ops.md, strip the '· AC-Dxx' decoration …). Pause Slice 4 until that PR merges to main, then resume."* — i.e., the overseer explicitly authorized a separate (non-executor) session to author #101.
+3. **V2 scope when the ~28-site total emerged ("Option A"):** *"Option A ruled. V2 closes as its audited testee-facing scope."* — keep the 13; defer the ~15 admin-surface occurrences to the post-deploy UI-hygiene tier.
 
 ## Drift flags raised and how they were resolved
 
@@ -49,6 +61,7 @@ A full exhaustive sweep (`grep -rnE "AC-D[0-9]" frontend/src`, untruncated) foun
 These are explicitly **out of this workstream** (noted per the workstream contract):
 
 - **Admin `AC-D` occurrences (~15 sites)** — spec-author ruling needed on intentional ops scaffolding vs leak; if leak, post-deploy amendment cycle for FE-8/FE-9 eyebrows + direct strip for tooltips. Tracked in the discovery section above.
+- **FE-4:136 model-name drift (audit F3)** — the #101-amended `FE-4-runner.md:136` re-quotes phase iii verbatim as `… · OpenAI gpt-4o-mini · 60s ceiling`, but `GradingOverlay.tsx:53` renders `… · OpenAI · 60s ceiling` (no model name). **Pre-existing** — Slice 4 only stripped the ` per AC-D19` suffix; the model name was never in the phase copy (Slice 2 didn't touch `FROZEN_PHASES`). #101 baked the residual drift into the amended contract rather than reconciling it. Spec-author decides: drop `gpt-4o-mini` from FE-4:136, or restore it to the phase copy. Out of V2's scope; non-blocking.
 
 - **Original audit cycle WS1–WS4 remainder** (typed wire contracts + seam tests; transactional CRUD+audit+validation; real-DB integration tier; observability/perf/a11y) — still unstarted.
 - **DEC-S3-C** — `meQueryKeys.attempts()` invalidation on submit (≤30s stale window) — deferred.
