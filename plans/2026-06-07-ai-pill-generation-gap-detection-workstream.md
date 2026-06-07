@@ -138,7 +138,11 @@ must be ruled first; that is a surface (role files §7(a)/(b)), not a `plan-unwo
 count, difficulty envelope, seed reference material); output **N candidate pill drafts**, each
 with: name, description, parent subject, **per-band difficulty decomposition**, **grounding refs**
 (citations to the material the draft was grounded in), safety self-classification (AC-D21),
-rationale. Each draft lands as a `processing_tasks` row in the **existing** approve/reject queue.
+rationale, and — per the **§6.5 output + quality bar** (`SPEC.md:346,348`) — an **`evidence count`**
+and an explicit **cited gap signal** ("must cite the specific gap signal"; admin evaluates in 30 s).
+For admin-driven Path-2 generation the evidence is the topic prompt + grounding refs; for
+Path-3-driven generation it is the captured signal(s) that opened the gap (§4). Each draft lands as
+a `processing_tasks` row in the **existing** approve/reject queue.
 
 **Shape (conditional on §7 rulings):**
 
@@ -177,7 +181,14 @@ gap-driven**, feeding the Path-2 generator with no admin prompt.
    columns ⇒ SPEC §5 + AC-CD4 data-model amendment + new `AC-CD` — see **G5**.
 2. **Gap-detection analysis (new)** — a periodic job reads the captured signals, clusters them into
    candidate *topics*, and **invokes the Path-2 generator** for each gap topic. This is the
-   structural reason Path 3 depends on Path 2 (§5).
+   structural reason Path 3 depends on Path 2 (§5). **Dedup / idempotency is a first-class
+   requirement of this job, not an afterthought** (auditor A-2): a repeated cron pass must **not**
+   re-propose a gap already covered by an existing pill or an open/pending proposal — it dedups
+   against (a) the live catalogue and (b) the `processing_tasks` proposal queue before generating,
+   and a signal that produced a proposal is marked consumed/decayed so it does not re-fire. Without
+   this the queue floods and the §6.5 "evaluate in 30 s" bar is defeated. The dedup *mechanism* (key
+   shape, decay window, consumed-marking) is a build-design detail folded here as a stated
+   requirement; if it forces a new column it rides **G5**.
 3. **Autonomous trigger (new cron)** — an **eighth** beat task. This collides with the load-bearing
    **"seven crons"** invariant mirrored across `SPEC.md:477`, `CODE_SPEC.md` (AC-CD7),
    `ROADMAP.md` P11, `CHECKLIST.md`, `SESSION_START.md` — changing it is a spec amendment with a
@@ -247,6 +258,15 @@ mint/amend, spec amendment, or scope decision) and is held **pending** — no de
 loop proceeds on the non-baked, already-sanctioned framing (scoping/sequencing) while these wait.
 Each will additionally be posted as a tagged PR comment addressed to the spec author.
 
+**Ratified — scope boundary (class (iii), authenticated in-session channel, 2026-06-07).** The
+spec author has **ratified** the path-scope boundary through the direct authenticated channel
+(role files §8.3): **Paths 2 and 3 are in scope; Path 1 (the single-pill refiner pre-deploy hack)
+is out of scope.** This was previously asserted in §9 as a settled hand-off on *inferred* grounding
+— a §8.3-pending state (auditor **A-3** / overseer **OV-3**); it is now a citable, authenticated
+ruling and is **resolved**. This ratifies **only** the scope boundary; it is **not** blanket
+ratification of the 12 items below (see the per-item note after the table, and §8 OV-1). §9 is
+updated to cite this ruling rather than the inferred hand-off.
+
 | ID | Class | Decision to rule | Why it's the spec author's |
 |---|---|---|---|
 | **G1** | AC-CD8 / AC-D7 | Does the Path-2 generator **extend** `Operation.pill_proposal` or **mint a new operation** (e.g. `pill_generation`)? Refiner (name+desc→1) and generator (topic→N) have **different input/output contracts**. | Anchor change — `REQUIRED_READING.md` §7(i)/(ii). |
@@ -262,15 +282,30 @@ Each will additionally be posted as a tagged PR comment addressed to the spec au
 | **G-SEQ** | scope | **One sequenced workstream vs. a split** (§5 recommends one sequenced chain) — confirm or override. | Workstream scope — §7(iii). |
 | **G-PHASE** | ROADMAP | This is **post-P11** new capability — new ROADMAP phase(s) (e.g. P13/P14) or a named non-phase workstream? | Roadmap/scope — §7(iii). |
 
+**Per-item ratification (overseer OV-1).** The 12 items above (G1–G10, G-SEQ, G-PHASE) each require
+their **own** explicit, item-specific, authenticated ratification (role files §8.3 — authenticated /
+explicit / current) **before the downstream amendment/execution PR that depends on them proceeds**.
+They are ratified **per item, when their downstream PRs open** — not in bulk here. Merging *this*
+plan-doc PR ratifies **none** of them, and a blanket "I approve the plan" is **not** ratification of
+any embedded decision (§8, gate 2). The scope-boundary ruling recorded above is the **one** §7 item
+ratified so far; the other 12 remain surfaced-but-unruled.
+
 ---
 
 ## 8. Loop mechanics (role files §4–§8)
 
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = exact
-  `claude/gallant-turing-geu9e`; `WATCH_INCLUDE` = `plan-auditor|plan-overseer` ref-space; tight
-  poll cadence; manual pre-existing-ref scan at arm time; proactive re-arm ~25 min; dormancy bound
-  2 watcher lifetimes (~1h, `REQUIRED_READING.md` §7) — planner is the standing re-initiator and
-  does not stand down on the bound.
+  `claude/gallant-turing-geu9e`; `WATCH_INCLUDE` = the **actual reviewer ref-space this loop** —
+  `claude/(sleepy-knuth-X42DU|happy-curie-xs4vy)` (auditor `claude/sleepy-knuth-X42DU`, overseer
+  `claude/happy-curie-xs4vy`), **verified from `git ls-remote`** (auditor A-4 / overseer OV-2: the
+  PR-#104-inherited `plan-auditor|plan-overseer` token matched **neither** `claude/<random>`
+  branch, leaving the watcher blind to reviewer pushes). Reviewer branches in this repo use
+  `claude/<random>` naming, **not** role-named tokens — so the include is scoped to the literal
+  branch names, backstopped by the broad arm + a **manual pre-existing-ref scan at every (re-)arm**
+  to catch any reviewer re-branch. Tight poll cadence; proactive re-arm ~25 min; dormancy bound 2
+  watcher lifetimes (~1h, `REQUIRED_READING.md` §7) — planner is the standing re-initiator and does
+  not stand down on the bound. *(The live armed watcher was re-configured to this include in the
+  same revision — the plan text and the running watcher now agree.)*
 - **On every wake:** `git ls-remote` + fetch + diff reviewer commits **and** read both reviewers'
   PR comments (watcher is comment-blind); verify each finding against the live text; fold or push
   back.
@@ -278,11 +313,20 @@ Each will additionally be posted as a tagged PR comment addressed to the spec au
   the same commit (`plans/.wake-log-pr<N>-planner.md`, per-thread `X/5`).
 - **Final marker:** content-invariant `Status: final — approved by planner` commit on this canonical
   branch + an approval comment, bound to the SHA.
-- **Convergence:** three markers at one SHA + the **three-layer green gate** (CI + Gitar +
-  mergeable, `REQUIRED_READING.md` §7) → **24h override window** (collapses to zero if the spec
-  author is present) → the **overseer** flips draft→ready + squash-merges. Because this plan's
-  rulings include **ratification-class** items (§7), the merge additionally requires **explicit,
-  authenticated** spec-author ratification (role files §8.3; `REQUIRED_READING.md` §7).
+- **Convergence — two distinct gates (overseer OV-1; do not conflate).**
+  - **Gate 1 — this plan-doc PR's own merge is NORMAL class.** The diff is `plans/**`-only and
+    bakes **no** ratification-class change (it surfaces, it does not amend a spec or anchor), so it
+    is **auto-merge eligible**: three sign-offs at one SHA + the **three-layer green gate** (CI +
+    Gitar + mergeable, `REQUIRED_READING.md` §7) + the **24h override window** (which **is** the
+    spec author's checkpoint on the plan, collapsing to zero if the spec author is present) → the
+    **overseer** flips draft→ready + squash-merges. Merging the plan **executes nothing, amends no
+    spec, and ratifies no §7 item.**
+  - **Gate 2 — each §7 decision is ratified separately, downstream.** The 12 surfaced items
+    (G1–G10, G-SEQ, G-PHASE) each require **explicit, item-specific, authenticated, current**
+    ratification (role files §8.3) **before the downstream amendment/execution PR that depends on
+    them proceeds**. A single "I approve the plan" is **not** blanket ratification of the embedded
+    decisions — the relayed/blanket-ratification failure §8.3 guards against. (The scope-boundary
+    item in §7 is the one already ratified, via the authenticated in-session channel.)
 - The planner **never** flips draft→ready and **never** merges; stays subscribed through merge;
   stands down only on merge verified via `git ls-remote`.
 
@@ -294,6 +338,24 @@ Each will additionally be posted as a tagged PR comment addressed to the spec au
   a **fresh** session implements (`SESSION_START.md`). This plan neither amends a spec doc nor an
   anchor.
 - Flipping draft→ready or merging (the **overseer's** actions).
-- Path 1 of the prior investigation framing (out of this scope by the spec author's hand-off — only
-  Paths 2 and 3 were assigned).
+- Path 1 of the prior investigation framing (the single-pill refiner pre-deploy hack) — **out of
+  scope by ratified spec-author scope decision** (authenticated in-session channel, 2026-06-07;
+  recorded as the ratified item in §7, class (iii)). This replaces the earlier *inferred* hand-off
+  grounding that auditor A-3 / overseer OV-3 correctly flagged as §8.3-pending.
 - Any code under `app/` or `frontend/` — this PR is `plans/**` only.
+
+---
+
+## 10. Reviewer findings folded — round 1 (set-diff record; role files §6)
+
+All 7 round-1 findings folded at this SHA; none was a halt-class condition; none dropped.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-1** | auditor | Missing/Refine | §3 output contract now carries `evidence count` + cited gap signal per §6.5 (`SPEC.md:346,348`). |
+| **A-2** | auditor | Refine | §4.2 makes proposal **dedup/idempotency** a first-class requirement of the gap-detection job (dedup vs catalogue + proposal queue; consume/decay signals). |
+| **A-3** | auditor | Refine | Resolved by the **ratified** scope boundary (§7 ratified item; §9 updated to cite the authenticated ruling, not an inferred hand-off). |
+| **A-4** | auditor | Refine | §8 watcher `WATCH_INCLUDE` corrected to the real reviewer branches; live watcher re-armed to match. |
+| **OV-1** | overseer | Refine | §8 now states the **two-gate** distinction explicitly: plan-doc merge = normal class (override window is the checkpoint); each §7 item ratified separately, downstream. §7 carries the matching per-item note. |
+| **OV-2** | overseer | Refine | Same fix as A-4 (concurrent catch). |
+| **OV-3** | overseer | Refine | Same resolution as A-3 — scope boundary lifted to a ratified §7 item via the authenticated channel. |
