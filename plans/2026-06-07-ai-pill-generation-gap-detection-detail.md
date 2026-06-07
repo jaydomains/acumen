@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–8 SEALED (8/10; Stages A+B + the C1 gap-detection job). Slice 9 (C2, Stage C — eighth cron + "seven crons" mirror-sweep) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–8 SEALED (8/10) · Slice 9 (C2, Stage C — eighth cron + "seven crons" mirror-sweep) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1349,10 +1349,100 @@ distinction, re-surface marker, idempotency) is faithful + complete. Round-trips
 
 ---
 
-*(Slices 9–10 (C2, D1) detail sections append below as each prior slice seals — slice-iterative, one
-PR throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The
-global `Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10
-seals.)*
+## Slice 9 (C2, Stage C) — eighth cron registration + "seven crons" mirror-sweep
+
+**Status: Slice 9 (C2) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending G9 (the "seven → eight crons" spec amendment + mirror-sweep
+— the direct parallel of Slice 1's "seven → eight AI operations"). Detail-planning is not gated.**
+C2 registers C1's `run_gap_detection_sweep` as the **eighth** beat task; it inherits C1's holds (G2,
+G5) transitively (it schedules C1). Written **against the recommended direction**, with the
+**Slice-1 lesson applied proactively**: completeness by reproducible grep across all phrasing classes
++ the construction-oracle floor, **not** by recall.
+
+**Implements:** the autonomous trigger — schedules the gap-detection job so proposals surface with no
+admin prompt. Stops there: **no** job logic (C1 owns it), **no** bootstrap-on-approve (D1).
+
+### 9.1 Grounding (verified against the tree at this SHA) — the "seven crons" invariant
+
+Adding the gap-detection cron makes an **eighth** beat task, colliding with a load-bearing **"seven
+crons" count invariant** — the exact parallel of Slice 1's "seven AI operations" (and the
+workstream-plan G9). Enumerated by reproducible grep (re-run at execution HEAD), **two classes**:
+
+```
+# (A) textual "seven crons" surfaces (spec + code prose), all trees
+grep -rniE 'seven[- ](cron|scheduled|beat|§?8\.9)|seven §?8\.9 crons|all seven (cron|task)|seven crons' \
+     SPEC.md CODE_SPEC.md ROADMAP.md CHECKLIST.md SESSION_START.md app/ tests/ | grep -viE 'operation|prompt'
+# (B) structural floors — the beat_schedule dict + the exact-count test floor (NO 'seven' word needed)
+grep -rnE 'beat_schedule\b|_EXPECTED_ENTRIES|len\(beat_schedule\)|== 7' app/beat_schedule.py tests/integration/test_p11_beat_schedule.py
+```
+
+- **(A) — spec-side (ride the G9 amendment PR, spec-author-authored):** **SPEC §8.9** (enumerates the
+  seven crons), `CODE_SPEC.md:110` (tree comment), `:337` (AC-CD7 prose), `:632` (AC-CD7 decision),
+  `ROADMAP.md:193`/`:196`, `CHECKLIST.md:137` (the "Seven crons scheduled" row + its Evidence),
+  `SESSION_START.md:338` (P11 phase-table "seven crons scheduled"). *(`SESSION_START.md:131` — "the
+  PR-014 six→seven crons sweep" — is **historical precedent prose**, not a live count mirror; leave
+  as-is.)*
+- **(A) — code-side (ride C2 execution, in-body-override):** `app/beat_schedule.py:4` (module
+  docstring), `app/worker.py:42/153/170/188/205/223/242` ("the seven §8.9 crons" wrapper docstrings).
+- **(B) — structural floors (ride C2 execution; the construction oracle):** `app/beat_schedule.py:38`
+  (`beat_schedule` dict — add the 8th entry); **`tests/integration/test_p11_beat_schedule.py:36`
+  `test_beat_schedule_has_exactly_seven_entries` (`assert len(beat_schedule) == 7` + `_EXPECTED_ENTRIES`
+  at `:22`)** — **fails-by-design when the 8th lands** (the construction oracle, exactly like Slice-1's
+  `set(OP_TO_METHOD) == set(Operation)`); `::test_celery_app_registered_tasks_include_all_seven`;
+  `tests/unit/test_p11_celery_wrappers.py` (7 wrapper smoke tests → 8); `tests/unit/test_worker_task_failure.py:3`.
+
+### 9.2 Build choices — concrete (recommended direction)
+
+**(a) Register the eighth cron.** Add a `gap_detection.sweep` entry to `beat_schedule` (`beat_schedule.py:38`)
+with a sane cadence (e.g. daily off-peak, after the other daily crons) → its `task` = a new
+`app/worker.py` wrapper that calls `run_gap_detection_sweep` (C1), mirroring the existing seven
+wrappers (no autoretry, structured failure surfacing — the worker.py pattern); update
+`_EXPECTED_ENTRIES` (`test_p11_beat_schedule.py:22`) + the `== 7`→`== 8` assertion + add the 8th
+wrapper smoke test.
+
+**(b) "Seven → eight crons" mirror-sweep** — exactly the §1.4 method: spec surfaces (A-spec) ride the
+**G9 amendment PR**; code docstrings (A-code) + the test floors (B) ride C2 execution; the
+construction oracle (`len(beat_schedule) == 7`) catches the code-side by construction. **Dissolves
+nothing if G9=keep-seven** — but G9 is what *authorises* the eighth cron, so unlike G1's extend-branch
+there is no "stay seven" build (the workstream needs the autonomous trigger).
+
+### 9.3 Embedded ratification-class item — SURFACED (blocking C2 execution, Gate 2)
+
+**G9 — "seven → eight crons" spec amendment + mirror-sweep.** Class (ii) (spec amendment) with
+precedent (workstream §7 G9; the PR-014 six→seven sweep is the in-body-override precedent). Ruling:
+amend SPEC §8.9 + the AC-CD7 / ROADMAP / CHECKLIST / SESSION_START mirrors (A-spec) to record the
+eighth cron; the code/test floors (A-code + B) ride C2 execution. **Blocks C2 execution** (the
+beat-schedule count + the SPEC §8.9 invariant). *(Inherits C1's G2/G5 — C2 schedules C1.)*
+
+### 9.4 Tests (AC-CD15 — zero-network)
+
+1. **Eighth entry:** `beat_schedule` has **8** entries; `_EXPECTED_ENTRIES` + the count assertion
+   updated; the new `gap_detection.sweep` entry has a valid `crontab` schedule + `task`.
+2. **Wrapper:** the new worker wrapper calls `run_gap_detection_sweep` (mocked), carries no autoretry,
+   writes no audit row on failure (the worker.py contract); +1 wrapper smoke test.
+3. **Construction oracle:** confirm `test_beat_schedule_has_exactly_seven_entries` (renamed/retargeted
+   to eight) + `test_celery_app_registered_tasks_include_all_eight` pass at the new count.
+
+**Acceptance:** the three-layer green gate; the beat-schedule + celery-registry tests pass at eight;
+structure-gate passes.
+
+### 9.5 Scope fence
+
+The eighth-cron registration + the "seven → eight" mirror-sweep only. **No** job logic (C1 owns
+`run_gap_detection_sweep`), **no** bootstrap-on-approve (D1), **no** FE. The SPEC §8.9 / AC-CD7 /
+ROADMAP / CHECKLIST / SESSION_START amendment is the **spec author's** G9 PR; the code docstrings +
+test floors ride C2 execution.
+
+### 9.6 Reviewer findings folded — Slice 9 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 9; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slice 10 (D1) detail section appends below once Slice 9 seals — slice-iterative, one PR throughout.
+Appending it does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global `Status: final —
+approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
 
 ---
 
