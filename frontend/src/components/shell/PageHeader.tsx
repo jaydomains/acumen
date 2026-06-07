@@ -35,15 +35,21 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 w-full lg:w-auto">
         {eyebrow ? <div className="eyebrow mb-2">{eyebrow}</div> : null}
-        <h1 className="h-1">{title}</h1>
+        <h1 className="font-serif text-[26px] leading-[1.18] tracking-[-0.018em] sm:text-[30px] lg:text-[36px] break-words">
+          {title}
+        </h1>
         {subtitle ? (
-          <div className="text-ink-3 mt-2 max-w-[52ch] text-[14px]">{subtitle}</div>
+          <div className="text-ink-3 mt-3 max-w-[52ch] text-[14px] leading-[1.6] break-words">
+            {subtitle}
+          </div>
         ) : null}
       </div>
       {actions ? (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex w-full lg:w-auto flex-wrap items-center gap-2">
+          {actions}
+        </div>
       ) : null}
     </div>
   );

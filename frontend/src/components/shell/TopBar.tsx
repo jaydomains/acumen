@@ -65,7 +65,8 @@ export function TopBar({ crumb, rightSlot, onMenuClick, className }: TopBarProps
     <header
       className={cn(
         "sticky top-0 z-30 flex items-center gap-3.5",
-        "px-7 py-3.5 bg-bg border-b border-line",
+        "px-4 py-3 sm:px-6 lg:px-7 bg-bg/95 backdrop-blur border-b border-line",
+        "supports-[padding:max(0px)]:pt-[max(0.75rem,env(safe-area-inset-top))]",
         className,
       )}
       data-testid="topbar"

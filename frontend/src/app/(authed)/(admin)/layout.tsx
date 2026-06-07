@@ -43,7 +43,7 @@ function AdminShell({ children }: { children: ReactNode }) {
       />
       <div className="flex flex-col min-w-0">
         <TopBar onMenuClick={() => setNavOpen(true)} />
-        <main className="px-4 py-6 sm:px-6 md:px-8 lg:px-12 lg:py-9 max-w-[1340px] w-full mx-auto">
+        <main className="px-4 py-5 sm:px-6 sm:py-6 md:px-8 lg:px-10 lg:py-8 xl:px-12 max-w-[1340px] w-full mx-auto min-w-0">
           {children}
         </main>
       </div>

@@ -131,14 +131,17 @@ export function Rail({ role, activeRoute, variant = "sidebar", className }: Rail
             href={item.href}
             data-active={active}
             className={cn(
-              "flex items-center gap-2.5 px-2.5 rounded-none",
+              "flex items-center gap-2.5 pl-2 pr-2.5 rounded-none",
               // ≥44px touch target in the mobile drawer; denser on desktop.
               isDrawer ? "py-3 min-h-11" : "py-2",
               "text-[13px] font-medium",
               "transition-colors duration-150",
+              // border-l-2 on both states so active/inactive share the same
+              // total left inset (2px border + pl-2) — no horizontal shift.
+              "border-l-2",
               active
-                ? "bg-ink text-bg-raised"
-                : "text-ink-2 hover:bg-bg-deep hover:text-ink",
+                ? "bg-accent-soft text-accent-ink border-accent"
+                : "text-ink-2 hover:bg-bg-deep hover:text-ink border-transparent",
             )}
           >
             <Icon name={item.icon} size={16} className="shrink-0 opacity-75" />
@@ -147,9 +150,7 @@ export function Rail({ role, activeRoute, variant = "sidebar", className }: Rail
               <span
                 className={cn(
                   "font-mono text-[10px] px-1.5 py-px",
-                  active
-                    ? "bg-bg-raised/15 text-bg-raised"
-                    : "bg-accent-soft text-accent-ink",
+                  active ? "bg-accent text-bg-raised" : "bg-accent-soft text-accent-ink",
                 )}
                 data-testid={`rail-badge-${item.id}`}
               >
