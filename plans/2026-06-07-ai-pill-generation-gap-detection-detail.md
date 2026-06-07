@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) detail posted — awaiting plan-auditor + plan-overseer review**
+**Status: Slice 1 (A1) — round-1 findings folded (S1-1, OV-S1.7, OV-S1.12); awaiting reviewer re-verification**
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -47,6 +47,22 @@ next slice's detail is pushed. Per-slice `Status: final for Slice N` markers acc
 converges; the **global** `Status: final — approved by planner (all slices)` marker lands at the
 bottom only after the last slice seals. Every commit carries one wake-log line
 (`plans/.wake-log-pr106-planner.md`) and runs the audit-ID set-diff gate (role files §5/§6).
+
+**Marker-binding granularity (overseer OV-S1.7; role files §8 content-binding).** Markers bind to
+**content**, not the raw branch-tip SHA — and the slice-iterative pattern relies on a **per-section**
+reading of "content", made explicit here so a fresh session does not mis-read "bound to the SHA" as
+raw-tip binding:
+- A **per-slice seal** (`Status: final for Slice N` + the three parties' Slice-N sign-offs) binds to
+  **Slice N's own section content**. Appending **Slice N+1's** detail section is a content change
+  *elsewhere* in the doc and therefore **does not re-stale** an already-sealed Slice N. **Editing a
+  sealed slice's section** (e.g. revising it to a later G-ruling per §1.3, or a cross-slice fix)
+  **does** re-stale that slice's seal and forces a re-seal at the new content.
+- Per-slice seals are **interim checkpoints; they never sum to a merge authorization.** Gate 1 merge
+  (§0.2) requires the **global** three sign-offs at the **final whole-doc content-SHA** + the
+  three-layer green gate + the override window — a stack of per-slice seals is not a merge gate.
+- Reviewer markers sit **off** the canonical branch, on each reviewer's own branch
+  (`REQUIRED_READING.md` §6 D3), so a head-move on this branch never dislodges them; the planner's
+  per-slice/global markers are content-invariant commits on this canonical branch.
 
 ### 0.2 Two gates — do not conflate (carried from workstream plan §8, overseer OV-1)
 
@@ -109,7 +125,7 @@ each before the next is posted.
 
 ## Slice 1 (A1) — new generation prompt entry + `Operation` wiring + provider stub
 
-**Status: Slice 1 (A1) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 1 (A1) — round-1 findings folded (S1-1, OV-S1.7, OV-S1.12); awaiting reviewer re-verification (§1.7).**
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated spec-author ratification of G1 and G7.**
 This detail is written **against the recommended direction** (mint a new
@@ -212,8 +228,13 @@ Add `anthropic_model_pill_generation` (env-default, AC-CD18), sibling to
 `anthropic_model_pill_proposal`, same default-model expression. One new `Settings` field; follows
 the locked `anthropic_model_<op>` pattern — an **absorbable structural addition**
 (`SESSION_START.md` structural-additions carve-out: structure-gate passes, well-rationalised against
-AC-CD18) folded into the slice handover, **not** a separate spec PR. *(Surfaced for the overseer to
-confirm the carve-out applies and is not silently a fourth ratification-class change.)*
+AC-CD18) folded into the slice handover, **not** a separate spec PR. *(Overseer **OV-S1.11 ruled**
+this an absorbable AC-CD18-pattern model-ID env-default — **not** a fourth ratification-class change.
+It is **consequent on G1** (the field exists only if `pill_generation` is minted) and therefore
+**rides G1's ratification** rather than constituting a separate gate. **Caveat carried to A1
+execution:** the carve-out holds only while A1 stays within one sibling field + one prompt module; if
+execution adds multiple modules or touches the structure-gate, it escalates to a separate
+spec-clarification PR — `SESSION_START.md`.)*
 
 **(d) No domain / router / FE in A1.** `enqueue_*` + N-row persistence is Slice 3; the endpoint is
 Slice 4. A1's only callable surface is `resolve_provider(Operation.pill_generation).generate(...)`
@@ -232,6 +253,14 @@ baked; the build above is the **recommended** direction, not a decided one.
   (`catalogue.py:517-523` sums spend per op), and couple the generator's evolving schema to the
   refiner's stable `v1.0.0` prompt. A distinct op is the clean, AC-CD8-faithful shape. **Blocks A1
   execution** (the enum value + default-set membership are the anchor change).
+  **Ratification scope (auditor S1-1 + overseer OV-S1.12):** ruling **G1 = MINT *entails* a
+  class-(ii) `SPEC.md` amendment** — the ops-count + the **enumerated-ops lists** at
+  `SPEC.md:296/397/443/523`, the SPEC §6 subsection structure, plus the `CODE_SPEC.md:308` /
+  `provider.py:122` / `README.md:3` mirrors (full enumeration in §1.4). **The spec author should
+  ratify G1 with that full amendment scope in view**, and the downstream G1 amendment PR must fold
+  **all** count surfaces — not just the prompt-registry entry; the overseer (merge-executor) will
+  require the count amendment folded completely, not partially. **If ruled EXTEND**, the entire sweep
+  dissolves (no eighth op → the count stays seven).
 
 - **G7 — prompt-registry version + trajectory.**
   Class (ii)/(iv). Two sub-questions: **(7a)** does `pill_proposal` **stay** (refiner retained as a
@@ -253,15 +282,45 @@ baked; the build above is the **recommended** direction, not a decided one.
 > detail seals**, written against the same recommended direction; A2's *execution* inherits the A1
 > hold plus its own G4 gate.
 
-### 1.4 Docs / mirror sweeps in A1's execution (forward-noted)
+### 1.4 Docs / mirror sweeps — incl. the "seven → eight AI operations" count invariant (auditor S1-1)
 
-- `app/ai/prompts/README.md` — add the `pill_generation` registry row (registry contract is the
-  authored truth; the README is a mirror — `SESSION_START.md` in-body-override rule).
-- `.env.example` — add `ANTHROPIC_MODEL_PILL_GENERATION=` sibling to the existing
-  `anthropic_model_*` examples (env-default discoverability, AC-CD18).
-- No SPEC/DECISIONS/CODE_SPEC edit in A1 itself — the AC-CD8 anchor *body* change (recording the new
-  op) is part of the **G1 spec-amendment PR** the spec author authors, **not** this executor slice
-  (`SESSION_START.md` — implementer does not author the clarification).
+Minting `pill_generation` (the G1 *recommended* direction) makes an **eighth** AI operation, which
+collides with a load-bearing **"seven AI operations / seven prompts" count invariant** mirrored
+across both spec and code. This is the **exact parallel of the "seven crons" mirror-sweep the
+workstream plan named for G9** (workstream §4 / `…workstream.md:199-202`); without enumerating it the
+G1 amendment PR risks a **silent partial-fold** (AC-CD8 body updated, the count surfaces left stale)
+— the §7 fold-completeness failure. **The entire sweep below dissolves if the spec author rules
+G1 = EXTEND** (no new op → the count stays seven). All count surfaces verified at this SHA:
+
+**Spec surfaces — swept in the G1/G2 spec-amendment PR** (authored by the **spec author**;
+`SESSION_START.md` — the implementer does not author the clarification). The AC-CD8 anchor *body*
+change recording the new op rides this same PR:
+- `SPEC.md:296` — *"Acumen runs **seven distinct AI operations**…"* + enumerates the 5 Anthropic + 2
+  OpenAI ops **by name** (content edit: add the 8th + its provider, not just a number bump).
+- `SPEC.md:372` — *"**All seven prompts** live in version control…"*.
+- `SPEC.md:397` — *"primary AI provider for **five of seven** operations… (generation, grading,
+  weakness, learning material, pill proposal)"* → **six of eight** (`pill_generation` is
+  Anthropic-default per AC-D12; add it to the enumerated Anthropic set).
+- `SPEC.md:443` — §8.4 migration seed: *"AI prompts at v1.1 versions for **all seven operations**"*.
+- `SPEC.md:523` — SiteMesh notes: *"Acumen's **seven AI operations**…"* enumerated **by name**
+  (content edit).
+- **SPEC §6 structure** — §6.1–6.7 = seven subsections; the generator needs its own §6 subsection.
+  This **overlaps the G2** ("separate §6.5 signal-analysis from generation") amendment — coordinate
+  the two so §6 gains the generator subsection once, not twice.
+- `CODE_SPEC.md:308` — AC-CD8 prose: *"**The seven operations** route to the four protocol methods"*.
+
+**Code / registry surfaces — swept in A1's execution** (in-body-override rule — the authored
+prose/anchor is truth, these mirrors are swept to match; not a separate spec PR):
+- `app/ai/provider.py:122` — the `Operation` enum docstring *"**The seven AI operations** of AC-CD8
+  v1.6 plus `embed`…"* → eight (code-comment mirror of the AC-CD8 count).
+- `app/ai/prompts/README.md:3` — *"**The seven AI operation prompts** (SPEC §6) live here…"*. This is
+  a **one-paragraph note, not a row table** (auditor S1-1 sub-issue — there is no "row" to add); the
+  sweep is a **count edit** ("seven → eight") plus naming the new prompt module.
+- `.env.example` — add `ANTHROPIC_MODEL_PILL_GENERATION=` sibling to the existing `anthropic_model_*`
+  examples (env-default discoverability, AC-CD18).
+
+No SPEC/DECISIONS/CODE_SPEC edit is made **in A1 itself** — the spec-side surfaces above are the spec
+author's amendment PR; A1 execution carries only the code/registry mirrors.
 
 ### 1.5 Tests (AC-CD15 — `app/ai/*` + `app/domain/*` near-full coverage, zero-network)
 
@@ -295,6 +354,21 @@ Slice 4); no `frontend/**` (Slice 5); no migration (A1 adds no table/column — 
 reuse is Slice 3); no signal-capture model (Stage B); no beat schedule (Slice 9). The `pill_proposal`
 refiner path is **untouched** (recommended-direction keeps it).
 
+### 1.7 Reviewer findings folded — Slice 1 round 1 (set-diff record; role files §6)
+
+Both reviewers' round-1 findings folded at this SHA; none dropped; none a halt-class condition.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S1-1** | auditor | Missing | §1.4 rewritten as an explicit **"seven → eight AI operations" count mirror-sweep** — spec-side surfaces (`SPEC.md:296/372/397/443/523`, SPEC §6 structure, `CODE_SPEC.md:308`) ride the G1/G2 amendment PR; code/registry surfaces (`provider.py:122` enum docstring, `README.md:3` one-paragraph note — *not* a row, count edit, S1-1 sub-issue) ride A1 execution. Referenced from the G1 surface §1.3; dissolves if G1 = EXTEND. Folded **beyond** the finding: also enumerated `SPEC.md:397` ("five of seven") + `SPEC.md:443` ("all seven operations"), which the inline did not list. |
+| **OV-S1.7** | overseer | Refine | §0.1 + Loop-mechanics now state **marker-binding granularity** explicitly: a per-slice seal binds to **its own slice-section content** (appending a later slice does not re-stale it; editing a sealed slice does + forces re-seal); per-slice seals are interim checkpoints that **never sum to merge authorization** — Gate 1 binds to the **global** whole-doc content-SHA + green + window. |
+| **OV-S1.12** | overseer | Refine | Governance dimension of S1-1: ruling **G1 = mint entails a class-(ii) SPEC amendment**, and §1.4's partial sweep was a silent-partial-fold risk. Folds **together with S1-1** — the §1.4 enumeration + the §1.3 G1 **ratification-scope** statement (the spec author ratifies G1 knowing the count amendment is entailed; the overseer will require it folded completely). Dissolves if G1 = extend. |
+| OV-S1.11 | overseer | Confirm (governance ruling) | Not a finding — the overseer ruled the `anthropic_model_pill_generation` config field an **absorbable AC-CD18 addition riding G1**, not a 4th ratification class. Reflected in §1.2(c) with the execution caveat. |
+
+All 12 auditor pre-registered positions (S1-P1…S1-P12) and overseer OV-S1.1–.6/.8–.10 were
+**Confirms** (no action). Round-trips after this fold: **S1-1 → 1/5**, **OV-S1.7 → 1/5**,
+**OV-S1.12 → 1/5**.
+
 ---
 
 *(Slices 2–10 detail sections append below as each prior slice seals — slice-iterative, one PR
@@ -317,8 +391,10 @@ after Slice 10 seals.)*
 - **Each revision:** set-diff gate (role files §6) → commit the plan change → one wake-log line in
   the same commit (`plans/.wake-log-pr106-planner.md`, per-thread `X/5`).
 - **Per-slice marker:** a `Status: final for Slice N` commit on this canonical branch + an approval
-  comment, bound to the SHA; the **global** `Status: final — approved by planner (all slices)` lands
-  after the last slice seals.
+  comment, bound to **Slice N's section content** (not the raw branch-tip SHA — §0.1, OV-S1.7: a
+  later-slice append does not re-stale a sealed slice; editing a sealed slice does). The **global**
+  `Status: final — approved by planner (all slices)` lands after the last slice seals and is what
+  Gate 1 merge binds to (the final whole-doc content-SHA).
 - **Convergence — two gates (§0.2; do not conflate):** Gate 1 (this PR's normal-class merge) vs.
   Gate 2 (per-G-item authenticated ratification, downstream).
 - The planner **never** flips draft→ready and **never** merges; stays subscribed through merge;
