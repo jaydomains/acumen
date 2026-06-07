@@ -1,6 +1,6 @@
 # Plan — AI pill generation + autonomous gap-detection workstream (SPEC §6.5)
 
-**Status: draft — under multi-party review**
+**Status: final — approved by planner**
 
 Role: this is the **planner's** plan artifact, authored as a draft PR and hardened through the
 independent **plan-auditor** (content correctness) and **plan-overseer** (workflow-governance
