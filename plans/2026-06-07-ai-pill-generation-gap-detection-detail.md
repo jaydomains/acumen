@@ -339,7 +339,26 @@ grep -rnE 'dict\[Operation|\[operation\]|set\(Operation\)|list\(Operation\)|froz
 
 Keying (B) on **structure** is what *ends* the round-1→4 recursion: a `dict[Operation]` map or an
 `[operation]` subscript cannot hide from a grep on its own type/access shape, the way a recalled
-variable-name list could. The three lists together are the **complete** set:
+variable-name list could.
+
+**The construction oracle (overseer OV-S1.12 convergence steer) — what makes completeness
+regress-proof, not grep-dependent.** The codebase carries its *own* completeness oracle for the
+**code** surfaces: `tests/unit/test_p5_cost.py:137` (`assert set(OP_TO_METHOD) == set(Operation)`),
+`test_p5_prompts.py:46` (`registered_operations() == frozenset(_REGISTERED_OPERATIONS)`),
+`test_p5_resolve.py:54/264-271` (`_ALL_OPS = list(Operation)` isolation loop + per-op block), and the
+A1 stub test (§1.5 — the stub-switch returns the generic dict, no `drafts` key, and fails) — each
+**red-flags its surface the moment `Operation.pill_generation` is added and the suite runs**. So the
+execution method that *cannot* regress is two-tier: **(1) doc/spec surfaces** — no test ever catches a
+stale "seven"/"7" in prose or a docstring, so the **`A`+`A2` greps are load-bearing and must be
+exhaustive** (this is the genuinely fragile class); **(2) code surfaces** — **the executor adds the
+enum member and brings the full suite + `mypy` green at execution HEAD**, which is the construction
+backstop that catches every coverage-tested + exercised-subscript site. `B` + §1.2(b) then cover the
+**two oracle-blind** code surfaces the suite alone would *not* catch at stub-only A1: `anthropic.py:61`
+`_MAX_OUTPUT_TOKENS` (subscript `KeyError` only at a *real-provider* call — latent past A1's stub) and
+`_ANTHROPIC_DEFAULT_OPS` membership (silent wrong-routing — no test asserts it). **Grep proves the
+un-oracled (docs + the two blind maps); the green suite proves the rest.**
+
+The three grep-lists + the construction oracle together are the **complete** set:
 
 **Spec surfaces — swept in the G1/G2 spec-amendment PR** (authored by the **spec author**;
 `SESSION_START.md` — the implementer does not author the clarification). The AC-CD8 anchor *body*
@@ -466,11 +485,14 @@ by construction** (§1.4).
 All 12 auditor pre-registered positions (S1-P1…S1-P12) and overseer OV-S1.1–.6/.8–.10 were
 **Confirms** (no action). Round-trips: **S1-1 → 4/5**, **OV-S1.12 → 4/5** (the completeness twins —
 **one round from the §7(d) 5/5 escalation bound**; both reviewers state the round-4 structural-grep
-consolidation is the *convergence* fold, not the escalation one), **OV-S1.7 → 1/5** (resolved). The
-round-4 §1.4 content change re-stales both reviewers' withdrawn seals — both re-verify and **re-run
-all three greps themselves** at the new content-SHA before re-sealing. **No planner marker while the
-twins are open.** If a *fifth* surface appears, the twins hit 5/5 and I escalate to the spec author
-(role files §7(d)) rather than push a sixth blind round.
+consolidation is the *convergence* fold, not the escalation one), **OV-S1.7 → 1/5** (resolved). Round
+4 also folds the overseer's **construction-oracle backstop** convergence-steer (§1.4 — grep proves the
+un-oracled docs + 2 oracle-blind code maps; the green suite proves the rest); the overseer signalled
+**seal-on-landing** once this lands. The round-4 §1.4 content change re-stales both reviewers'
+withdrawn seals — both re-verify and **re-run all three greps themselves** at the new content-SHA
+before re-sealing. **No planner marker while the twins are open.** If a *fifth* surface appears, the
+twins hit 5/5 and I escalate to the spec author (role files §7(d)) rather than push a sixth blind
+round.
 
 ---
 
