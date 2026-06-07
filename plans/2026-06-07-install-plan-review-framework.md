@@ -36,6 +36,32 @@ project-level precedent — the framework itself); it does **not** auto-merge an
 Out of scope: the execution-trio and audit-trio role files; any `SESSION_START.md` edit; flipping
 draft→ready or merging (the overseer's actions).
 
+## Provenance — byte-identical port (re-verification record) [folds A-7]
+
+The transportable-role-files design rests on the ports being byte-identical to upstream. Recorded
+here so any later session can re-verify without trusting prose:
+
+- **Source repo / ref:** `jaydomains/throughline` @ commit `7d0a2521133e7054f3827fbb347cb5fa06511cfa`.
+- **Source → destination paths** (identical relative paths under `.claude/`): `roles/planner.md`,
+  `roles/plan-auditor.md`, `roles/plan-overseer.md`,
+  `skills/counterpart-change-detector/SKILL.md`,
+  `skills/counterpart-change-detector/reference/operating-guide.md`,
+  `skills/counterpart-change-detector/scripts/watch-counterpart.sh` (mode `0755`).
+- **SHA-256 (full) — acumen == throughline @ source ref, all MATCH:**
+
+  | sha256 | file |
+  |---|---|
+  | `fde7eb337442051a61d59f12632b70a4a30d4cdd4eb256dfb97700059bff11fc` | `.claude/roles/planner.md` |
+  | `6a9e1381fa826024a7e684ae8495abb875104176a5d8d3b8dac87fffd9463803` | `.claude/roles/plan-auditor.md` |
+  | `c9a3e5bb647a713d8b707ed67f90a500d6b76958dd936e2ab1456e5269ba82f1` | `.claude/roles/plan-overseer.md` |
+  | `c74df4f25115f933fe28dddf0e3343d12cae32520fa1f5d7c4f0699469bca9e2` | `.claude/skills/counterpart-change-detector/SKILL.md` |
+  | `9a6bb1fcd9ea200fbd314a061f95dcbcefb263fef875883cb5e875b546aecbbe` | `.claude/skills/counterpart-change-detector/reference/operating-guide.md` |
+  | `b118a4f95899e584167c6bb1e207e8732b27aa6defa886b8957c84df51790a37` | `.claude/skills/counterpart-change-detector/scripts/watch-counterpart.sh` |
+
+  Re-verify: `sha256sum .claude/roles/*.md .claude/skills/counterpart-change-detector/SKILL.md
+  .claude/skills/counterpart-change-detector/reference/operating-guide.md
+  .claude/skills/counterpart-change-detector/scripts/watch-counterpart.sh`.
+
 ## Acumen audit pass (role files map cleanly; divergences → REQUIRED_READING, not role edits)
 
 | # | Divergence | Routing |
