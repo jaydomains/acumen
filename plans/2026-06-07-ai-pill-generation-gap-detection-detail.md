@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Stage A complete (Slices 1–5 SEALED, 5/10) · Slice 6 (B1, Stage B — discovery-search-miss signal capture) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Stage A complete (5/10) · Slice 6 (B1) round-1 folded (S6-1 dedup-constraint); overseer sealed @`3b89fc8`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -999,7 +999,7 @@ Confirms; this §5 fold re-stales it → re-verify pending). Round-trips: **S5-1
 
 ## Slice 6 (B1, Stage B) — discovery-search-miss signal capture
 
-**Status: Slice 6 (B1) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 6 (B1) — round-1 folded (S6-1: dedup `UniqueConstraint` + upsert, mirroring `RealismFlag`); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending B1's gate G5 (signal-capture data model — new table +
 SPEC §5 / AC-CD4 amendment + new AC-CD). Detail-planning is not gated.** **B1 is independent of the
@@ -1030,18 +1030,25 @@ gap-detection (C1), **no** generator wiring.
 
 ### 6.2 Build choices — concrete (recommended direction)
 
-**(a) New table `discovery_search_miss` (`app/models.py`).** `Base, TimestampMixin`; `id = _pk()`;
-`tenant_id = _tenant_fk()` (indexed); `query: str` (the raw search needle, length-bounded);
-`result_count: int` (matches found — 0 or poor); `searcher_id` (FK to the Testee, nullable);
-optional filter context (`subject_id`, `difficulty`); `consumed_at: datetime | None` (for C1's
-consume/decay dedup — Slice 8). Mirrors `RealismFlag`'s shape. Indexed on `tenant_id` + `created_at`
-(recency queries by C1).
+**(a) New table `discovery_search_miss` (`app/models.py`) — deduped/aggregated, not per-event
+(auditor S6-1).** `Base, TimestampMixin`; `id = _pk()`; `tenant_id = _tenant_fk()` (indexed);
+`normalized_query: str` (lowercased/trimmed needle — the dedup key); `result_count: int` (matches at
+last occurrence); `hit_count: int` (occurrences, incremented on upsert); `distinct_searcher_count` (or
+include `searcher_id` in the key) so C1 can weight by **distinct** searchers, not raw events;
+`last_seen_at: datetime`; optional filter context (`subject_id`, `difficulty`); `consumed_at: datetime
+| None` (C1 consume/decay — Slice 8). **Crucially mirrors `RealismFlag`'s *defining* feature** — its
+`UniqueConstraint("question_id","testee_id")` (`models.py:805`), one row per logical signal, **not**
+per event: `__table_args__ = (UniqueConstraint("tenant_id", "normalized_query", name="uq_discovery_
+search_miss"),)`. Indexed on `tenant_id` + `last_seen_at` (recency queries by C1).
 
 **(b) Write point — in `list_discoverable_pills` (`catalogue.py:289`), pre-paginate.** When `search`
 is set **and** the filtered count ≤ the poor-match threshold (recommend **0** at v1; a "few" threshold
-is a G5 tuning knob), insert a `discovery_search_miss` row (query, result_count, searcher, filter
-context). Fail-soft: a signal-write error never breaks discovery (best-effort capture). The write is
-domain-layer (thin router unchanged, AC-CD2).
+is a G5 tuning knob), **upsert** the `discovery_search_miss` row keyed on `(tenant_id,
+normalized_query)`: on conflict **increment `hit_count`**, bump `last_seen_at`, refresh `result_count`
+(and the distinct-searcher count) — **not** a per-event insert (so a repeat-searcher or a popular
+missing topic bounds to one row + a count, instead of flooding the table and skewing C1's demand
+signal — auditor S6-1). Fail-soft: a signal-write error never breaks discovery (best-effort capture).
+Domain-layer (thin router unchanged, AC-CD2).
 
 **(c) Migration.** New Alembic migration (real up/down per the migration discipline); the
 first-migration table-count assertion test updates (AC-CD4). One table, no backfill.
@@ -1053,10 +1060,13 @@ the *column* to support it lands here).
 ### 6.3 Embedded ratification-class item — SURFACED (blocking B1 execution, Gate 2)
 
 **G5 — signal-capture data model.** Class (ii) (SPEC §5 / AC-CD4 data-model amendment) + a new
-AC-CD. Decisions: **(i)** the `discovery_search_miss` table shape (columns above) — and whether the
-**three** §6.5 signals (this + B2's question-tag + scope-clarification) are **separate tables** or
-**one polymorphic `gap_signal` table** with a `signal_type` discriminator (a structural call that
-spans B1+B2 — **recommended: decide once here** so B2 doesn't re-litigate); **(ii)** the poor-match
+AC-CD. Decisions: **(i)** the `discovery_search_miss` table shape (columns above) — including the
+**dedup/aggregation contract** (the `UniqueConstraint` + upsert with `hit_count` /
+distinct-searcher count, mirroring `RealismFlag`'s constraint — auditor S6-1; it *is* part of the
+table shape, so it rides this G5 decision) — **and** whether the **three** §6.5 signals (this +
+B2's question-tag + scope-clarification) are **separate tables** or **one polymorphic `gap_signal`
+table** with a `signal_type` discriminator (a structural call that spans B1+B2 — **recommended:
+decide once here** so B2 doesn't re-litigate); **(ii)** the poor-match
 threshold (0 vs "few"); **(iii)** retention/decay + the `consumed_at` consume marker (supports C1
 dedup); **(iv)** mint the **new AC-CD** for the signal-capture data model. **Blocks B1 execution**
 (the table + the SPEC §5 / AC-CD4 amendment). *(G5 also gates B2 and C1 — it is the Stage-B/C
@@ -1064,8 +1074,9 @@ data-model spine; recommend ruling the table-shape question once, covering all t
 
 ### 6.4 Tests (AC-CD15 — `app/domain/*` coverage + migration, zero-network)
 
-1. **Miss captured:** a discovery call with `search` set + **0** matches inserts one
-   `discovery_search_miss` row (query, result_count=0, searcher, filter context).
+1. **Miss captured + deduped:** a discovery call with `search` set + **0** matches upserts one
+   `discovery_search_miss` row (normalized_query, result_count=0, hit_count=1); **the same miss
+   repeated yields one row with `hit_count==2`** (not two rows) — the S6-1 dedup assertion.
 2. **Hit not captured:** a search **with** matches inserts **no** row; a search with `search=None`
    inserts no row.
 3. **Fail-soft:** a forced signal-write error does not break the discovery response (best-effort).
@@ -1083,7 +1094,15 @@ AC-CD4 amendment + new AC-CD are the **spec author's** PR (rides G5), not this e
 
 ### 6.6 Reviewer findings folded — Slice 6 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 6; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S6-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S6-1** | auditor | Refine | B1 "mirrors `RealismFlag`" but copied only columns, not its defining **`UniqueConstraint` dedup** (`models.py:805`) — a per-event insert would **flood** the table + **skew** C1's demand signal (one user's 1000 retries ≈ a 1000-strong gap). **Folded:** §6.2(a) adds `UniqueConstraint(tenant_id, normalized_query)` + `hit_count`/`last_seen_at`/distinct-searcher columns; §6.2(b) write is now an **upsert** (increment `hit_count`, not per-event insert); §6.3 G5(i) folds the dedup/aggregation into the table-shape decision; §6.4 test 1 asserts dedup (repeat → `hit_count==2`, one row). Verified the precedent constraint. Not gating. |
+
+Auditor S6-P1…S6-P10 otherwise Confirms (G5 well-surfaced incl. the decide-3-signal-shape-once point;
+miss point + fail-soft + migration verified). Overseer **SEALED Slice 6 governance @ `3b89fc8`** (10
+Confirms; this §6 fold re-stales it → re-verify pending). Round-trips: **S6-1 → 1/5**.
 
 ---
 
