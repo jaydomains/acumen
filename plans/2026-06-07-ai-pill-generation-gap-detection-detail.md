@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–6 SEALED (6/10) · Slice 7 (B2) round-1 folded (S7-1 signal-3 feature-scope + codegen); overseer sealed @`9e1a973`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: STAGES A+B COMPLETE — Slices 1–7 SEALED (7/10). Slice 8 (C1, Stage C — gap-detection job: signals→topics→generator) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1108,7 +1108,7 @@ Confirms; this §6 fold re-stales it → re-verify pending). Round-trips: **S6-1
 
 ## Slice 7 (B2, Stage B) — question-tag + admin-scope-clarification signal capture
 
-**Status: Slice 7 (B2) — round-1 folded (S7-1: signal-3 feature surfaced as a distinct scope decision + codegen-drift, parallel to G8/S4-1); awaiting reviewer re-verify.**
+**Status: final for Slice 7 — approved by planner** (content-bound §7 @ `e2e0fb3`; auditor S7-1 RESOLVED + overseer OV-S7.11 RESOLVED + governance re-seal; bind §7@`e2e0fb3`. Content-invariant marker — §7.1–§7.6 byte-identical. **Completes Stage B** — all three §6.5 signals captured.)
 
 **Execution-gate (Gate 2): BLOCKED pending G5 (the same signal-capture data model as B1 — B2 reuses
 the table-shape decision, incl. the polymorphic-vs-separate-tables call). Detail-planning is not
