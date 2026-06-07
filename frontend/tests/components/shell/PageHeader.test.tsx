@@ -23,9 +23,11 @@ describe("PageHeader", () => {
     expect(screen.getByText("DASHBOARD").className).toContain("eyebrow");
   });
 
-  it("uses the .h-1 typography class for the title", () => {
+  it("uses the responsive serif typography classes for the title", () => {
     render(<PageHeader title="Operations" />);
-    expect(screen.getByText("Operations").className).toContain("h-1");
+    expect(screen.getByText("Operations").className).toContain(
+      "font-serif text-[26px] leading-[1.18] tracking-[-0.018em] sm:text-[30px] lg:text-[36px] break-words",
+    );
   });
 
   it("omits the eyebrow when not provided", () => {
