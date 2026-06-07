@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–6 SEALED (6/10; Stage A + B1) · Slice 7 (B2, Stage B — question-tag + scope-clarification signal capture) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–6 SEALED (6/10) · Slice 7 (B2) round-1 folded (S7-1 signal-3 feature-scope + codegen); overseer sealed @`9e1a973`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1108,7 +1108,7 @@ Confirms; this §6 fold re-stales it → re-verify pending). Round-trips: **S6-1
 
 ## Slice 7 (B2, Stage B) — question-tag + admin-scope-clarification signal capture
 
-**Status: Slice 7 (B2) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 7 (B2) — round-1 folded (S7-1: signal-3 feature surfaced as a distinct scope decision + codegen-drift, parallel to G8/S4-1); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending G5 (the same signal-capture data model as B1 — B2 reuses
 the table-shape decision, incl. the polymorphic-vs-separate-tables call). Detail-planning is not
@@ -1147,8 +1147,13 @@ B1** (S6-1). Fail-soft; domain-layer.
 **(b) Signal 3 — admin scope-clarification capture.** Add the **capture surface** (none today): an
 optional clarification note on an assignment (a field + the admin action that sets it), and on set,
 **upsert** a scope-clarification signal (the clarification text + the assignment's pill/path context).
-The *mechanism* (assignment-clarification field + action) is itself a small data-model + surface
-addition → folds into **G5** (and touches the assignment surface) — **surfaced, not baked**.
+**This mechanism is a *new admin feature*, not merely a G5 column (auditor S7-1):** a field **+ an
+admin action** on `Assignment`, exposed on the live `/v1/assignments` API (`api.d.ts:783`) + an admin
+FE control. Two consequences it carries: **(1) codegen-drift** — the new field/action regenerates
+`frontend/openapi/schema.json` + `frontend/src/types/api.d.ts` or `codegen:check` fails (the **S4-1**
+lesson; named in §7.5); **(2) feature-scope** — it is an admin *capability* on the assignment surface,
+so it gets its **own scope sub-decision** (build-in-this-workstream vs prerequisite/follow-up,
+**parallel to G8's FE-scope**), surfaced in §7.3 — **not** silently folded into "G5 data model."
 
 **(c) Shared store + dedup.** Both signals land in the **G5-decided** store (separate tables or the
 polymorphic `gap_signal` with `signal_type`), each with B1's `UniqueConstraint`+upsert dedup
@@ -1159,13 +1164,22 @@ Alembic up/down + the table-count assertion (AC-CD4).
 
 ### 7.3 Embedded ratification-class item — SURFACED (blocking B2 execution, Gate 2)
 
-**G5 (shared with B1) — extended for B2's two signals.** Class (ii) (SPEC §5 / AC-CD4). Beyond B1's
-decisions, B2 adds: **(i)** does the G5 store hold all three signals (the polymorphic-vs-separate
-call — **must be ruled here at the latest**, since B2 is the second writer); **(ii)** the **signal-3
-capture mechanism** — an assignment-clarification field + admin action (a new surface, since none
-exists today) — its shape + whether it's in-scope for B2 or a prerequisite; **(iii)** signal-2's
-weak/uncategorised threshold + tag-normalisation. **Blocks B2 execution.** *(No new G-letter — this is
-G5's B2 extension; recorded so the spec author rules the full signal data model once.)*
+**Two distinct surfaced items (auditor S7-1 — don't conflate the data model with the feature):**
+
+- **G5 (shared with B1) — the signal-store data model.** Class (ii) (SPEC §5 / AC-CD4). Beyond B1's
+  decisions: **(i)** does the G5 store hold all three signals (the polymorphic-vs-separate call —
+  **must be ruled here at the latest**, since B2 is the second writer); **(ii)** signal-2's
+  weak/uncategorised threshold + tag-normalisation. *(No new G-letter — G5's B2 extension; the spec
+  author rules the full signal data model once.)*
+- **Signal-3 admin-feature scope — a *distinct* scope sub-decision, parallel to G8 (auditor S7-1).**
+  Signal 3 is categorically unlike signals 1–2: it requires **building the admin feature that
+  generates the signal** — a clarification field **+ admin action** on `Assignment` (`models.py:339`
+  has none today), exposed on the live `/v1/assignments` API (`api.d.ts:783`) + an admin FE control.
+  That is a **feature**, not a data-model column: **(a)** scope — build the assignment
+  scope-clarification feature **in this workstream** or treat it as a **prerequisite/follow-up**?
+  (parallel to G8's FE-scope, **not** a G5 addendum); **(b)** it carries the **S4-1 codegen-drift**
+  consequence (regen + commit `frontend/openapi/schema.json` + `api.d.ts` — §7.5). **Blocks B2
+  execution** (signals 1–2 can proceed under G5; signal-3 additionally needs this feature ruling).
 
 ### 7.4 Tests (AC-CD15 — `app/domain/*` + migration, zero-network)
 
@@ -1181,14 +1195,26 @@ pass; structure-gate passes.
 
 ### 7.5 Scope fence
 
-The two remaining §6.5 signal captures + (for signal 3) the assignment-clarification capture surface
-only. **No** gap-detection job (C1), **no** cron (C2), **no** generator wiring, **no** FE beyond the
-minimal assignment-clarification admin action (if G5 rules it in-scope). Reuses B1's dedup contract +
-the G5 store. The SPEC §5 / AC-CD4 amendment is the **spec author's** PR (rides G5).
+The two remaining §6.5 signal captures + (for signal 3, **if its feature is ruled in-scope**) the
+assignment-clarification capture surface only. **No** gap-detection job (C1), **no** cron (C2), **no**
+generator wiring. **Signal-3's feature, if in-scope, touches `frontend/` codegen** — its
+`/v1/assignments` field/action regenerates `frontend/openapi/schema.json` + `frontend/src/types/
+api.d.ts` (regenerate **and commit**, or `codegen:check` fails — the **S4-1** lesson) + a minimal
+admin FE control; signals 1–2 add **no** FE. Reuses B1's dedup contract + the G5 store. The SPEC §5 /
+AC-CD4 amendment is the **spec author's** PR (rides G5); signal-3's feature scope is its own ruling
+(§7.3).
 
 ### 7.6 Reviewer findings folded — Slice 7 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 7; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S7-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S7-1** | auditor | Refine | Signal-3's clarification mechanism is a **new admin feature** (a field + action on `Assignment` `models.py:339`, on the live `/v1/assignments` API `api.d.ts:783` + an FE control), not just a G5 column — I'd under-represented it by folding it into "G5 data model." **Folded:** §7.2(b) now names it a feature carrying (1) **codegen-drift** (regen+commit `schema.json`+`api.d.ts`, the S4-1 lesson) and (2) a **distinct feature-scope** decision; §7.3 splits it **out of G5** into its own scope sub-decision **parallel to G8** (G5 keeps only the signal-store data model); §7.5 names the codegen artifacts. Signals 1–2 proceed under G5; signal-3 additionally needs the feature ruling. |
+
+Auditor S7-P1…S7-P10 otherwise Confirms (B2 correctly **reuses** B1's G5 shape + S6-1 dedup, no
+re-litigation; capture-only; completes Stage B). Overseer **SEALED Slice 7 governance @ `9e1a973`** (10
+Confirms; this §7 fold re-stales it → re-verify pending). Round-trips: **S7-1 → 1/5**.
 
 ---
 
