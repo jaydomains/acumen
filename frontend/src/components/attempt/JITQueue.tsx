@@ -75,7 +75,7 @@ export function JITQueue({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-3">
-          Queue · AC-D25
+          Queue
         </span>
         {streaming && (
           <span

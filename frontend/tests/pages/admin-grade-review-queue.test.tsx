@@ -77,6 +77,16 @@ describe("grade-review queue — mount + auto-select", () => {
     expect(screen.getByText("Naledi P.")).toBeInTheDocument();
     expect(screen.getByText("Kabelo R.")).toBeInTheDocument();
   });
+
+  it("eyebrow dropped its AC-D19 anchor (V2 testee-facing scope)", async () => {
+    render(mountTree(<GradeReviewPage />));
+    // Targeted: the eyebrow text proves the strip (FE-9 amended #101).
+    // Scoped to the element — admin ops scaffolding elsewhere is out of V2.
+    const eyebrow = await screen.findByText(
+      "Cross-family review · batched per attempt · 60s ceiling",
+    );
+    expect(eyebrow.textContent ?? "").not.toMatch(/AC-D\d/);
+  });
 });
 
 describe("grade-review queue — detail + override", () => {

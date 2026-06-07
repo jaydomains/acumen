@@ -126,7 +126,7 @@ export default function PillDetailPage() {
         title={pill.name}
         subtitle={
           pill.safety_relevant
-            ? "Safety-tagged pill — curated external sources only (AC-D21)."
+            ? "Safety-tagged pill — curated external sources only."
             : "AI explainer below. Pick a difficulty and start practising."
         }
       />

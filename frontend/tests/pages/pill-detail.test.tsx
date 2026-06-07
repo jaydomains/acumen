@@ -221,8 +221,16 @@ describe("Pill detail page · safety branch", () => {
     render(mountTree(<PillDetailPage />));
     await waitFor(() => expect(screen.getByTestId("safety-empty")).toBeInTheDocument());
     expect(
-      screen.getByText("Per AC-D21 · Acumen never generates safety teaching content"),
+      screen.getByText("Acumen never generates safety teaching content."),
     ).toBeInTheDocument();
+    // V2 (testee-facing): the safety subtitle dropped its "(AC-D21)".
+    // Targeted to the subtitle element — the mock pill *description* fixture
+    // still carries an AC-D21 annotation (test data, not production copy),
+    // so a page-wide regex would be out of V2's scope here.
+    const subtitle = screen.getByText(
+      "Safety-tagged pill — curated external sources only.",
+    );
+    expect(subtitle.textContent ?? "").not.toMatch(/AC-D\d/);
   });
 });
 

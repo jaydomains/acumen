@@ -102,9 +102,13 @@ describe("AdaptiveLoopCard", () => {
     expect(screen.getByText(/in 3 days/)).toBeInTheDocument();
   });
 
-  it("step_down_hint surfaces the AC-D6 sub-line", () => {
-    render(<AdaptiveLoopCard steps={[step({ step_down_hint: true })]} status="ready" />);
+  it("step_down_hint surfaces the step-down sub-line (no anchor leak)", () => {
+    const { container } = render(
+      <AdaptiveLoopCard steps={[step({ step_down_hint: true })]} status="ready" />,
+    );
     expect(screen.getByText(/Stepped difficulty down/)).toBeInTheDocument();
+    // V2 (testee-facing): the sub-line dropped its "· AC-D6" decoration.
+    expect(container.textContent ?? "").not.toMatch(/AC-D\d/);
   });
 
   it("renders status pill labels for each tone", () => {
