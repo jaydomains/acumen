@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Stages A+B complete (7/10) · Slice 8 (C1, Stage C — gap-detection job: signals→topics→generator + dedup) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Stages A+B complete (7/10) · Slice 8 (C1) round-1 folded (S8-1 gap-key matching; OV-S8.4 A4/G6 hold) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1220,12 +1220,13 @@ Confirms; this §7 fold re-stales it → re-verify pending). Round-trips: **S7-1
 
 ## Slice 8 (C1, Stage C) — gap-detection job (signals → topics → generator) + dedup/idempotency
 
-**Status: Slice 8 (C1) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 8 (C1) — round-1 folded (S8-1 bidirectional gap-key matching; OV-S8.4 drop A4/G6 from transitive holds); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending G2 (the §6.5 amendment separating signal-analysis from
 generation — C1 *is* the signal-analysis half) + G5 (the signal store + dedup columns) + the inherited
-Stage-A generator holds (C1 *calls* `enqueue_pill_generation`, so it inherits A1 G1/G7, A2
-G4a/G4b/G7(7b), A3 G3, A4 G6). Detail-planning is not gated.** **This is the slice that closes the
+Stage-A generator holds. **C1 calls the A3 *domain function* `enqueue_pill_generation` directly,
+bypassing the A4 HTTP endpoint — so it inherits A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3, but NOT A4/G6**
+(the endpoint contract; overseer OV-S8.4). Detail-planning is not gated.** **This is the slice that closes the
 Path-3-on-Path-2 dependency** (workstream §5). Written **against the recommended direction**: a domain
 sweep job reading the deduped Stage-B signals, clustering them into gap topics, and invoking the
 Stage-A generator — with **first-class dedup/idempotency** (the merged-plan §4.2 requirement).
@@ -1269,9 +1270,19 @@ carries a **gap-key** (stable identity for dedup) + the cited evidence (the sign
 A1/A2 `evidence_count`/`gap_signal`).
 
 **(c) Three-arm dedup BEFORE generating (merged §4.2 — the heart of C1).** Drop a candidate gap if it
-matches **(a)** the live catalogue (`list_pills`), **(b)** an open/pending proposal
-(`PROPOSAL_TASK_NAME` + `pending`), or **(c)** an already-rejected/admin-dismissed gap (the durable
-gap-keyed suppression — new, rides G5). **Durable rejection (A-2r):** a rejected gap is **not**
+matches **(a)** the live catalogue, **(b)** an open/pending proposal (`PROPOSAL_TASK_NAME` +
+`pending`), or **(c)** an already-rejected/admin-dismissed gap (the durable gap-keyed suppression —
+new, rides G5). **The arms are heterogeneous and need a defined matching function (auditor S8-1):**
+arm (c) is gap-key ↔ gap-key (clean), but (a)/(b) match the candidate gap-key against existing **pill
+names** / **proposal drafts** (different shapes, never built from signals). **Recommended: make the
+G5 gap-key shape *bidirectionally computable*** — derivable from a candidate topic **and** from an
+existing pill/proposal — so all three arms reduce to a uniform gap-key ↔ gap-key comparison (else
+each arm needs its own match-function + similarity threshold). This is §6.5-quality-critical and folds
+into the **G5 gap-key shape decision** (§8.3). **Arm (a) pill-set is itself a sub-decision:**
+`list_pills` (`catalogue.py:189`) **includes retired pills** (AC-D14) — a gap covered only by a
+**retired** pill is arguably still an active gap, so arm (a) should match **active** pills, while a
+retired-pill match is closer to arm (c)'s durable suppression (don't cold-re-propose what the admin
+retired) — surfaced, not baked. **Durable rejection (A-2r):** a rejected gap is **not**
 re-proposed merely because per-signal evidence decayed in — rejection is a *separate, gap-keyed*
 suppression; the **one** exception is materially-stronger fresh evidence past a threshold, which
 re-surfaces it **only** carrying a "previously rejected" marker (admin never re-evaluates cold).
@@ -1286,12 +1297,18 @@ pass with no new signals generates nothing (the three arms + consume marking gua
 - **G2 — §6.5 amendment (signal-analysis vs generation).** Class (ii). §6.5 conflates signal-analysis
   and proposal-output; C1 is the signal-analysis half. Amend §6.5 to separate (a) capture / (b)
   gap-detection / (c) generation / (d) approval (the workstream §7 G2). **Blocks C1 execution.**
-- **G5 (extended) — the durable rejected-gap suppression store.** Class (ii) (data-model). Arm (c)
-  needs a gap-keyed rejection store that doesn't exist today (rejections are per-`ProcessingTask`,
-  not gap-keyed) → a new column/table on the G5 spine + the gap-key shape + the re-surface threshold.
+- **G5 (extended) — the durable rejected-gap suppression store + the bidirectional gap-key.** Class
+  (ii) (data-model). Two parts: **(1)** arm (c) needs a gap-keyed rejection store that doesn't exist
+  today (rejections are per-`ProcessingTask` `reject_pill_proposal:616`, not gap-keyed) → a new
+  column/table on the G5 spine + the re-surface threshold; **(2)** the **gap-key shape must be
+  *bidirectionally computable*** — derivable from a candidate topic **and** from an existing
+  pill/proposal — so the three heterogeneous dedup arms reduce to a uniform gap-key ↔ gap-key
+  comparison (else each arm needs an explicit match-function + similarity threshold) — the
+  §6.5-quality-critical decision (auditor S8-1), plus the arm-(a) retired-pill question (§8.2c).
   **Blocks C1 execution.**
-- *(Inherits the Stage-A generator holds — C1 calls `enqueue_pill_generation`, so A1 G1/G7, A2 G4,
-  A3 G3, A4 G6 all gate C1 execution transitively.)*
+- *(Inherits the Stage-A **domain** holds — C1 calls the A3 domain fn `enqueue_pill_generation`, so
+  A1 G1/G7, A2 G4, A3 G3 gate C1 transitively; **A4/G6 does NOT** — C1 bypasses the HTTP endpoint
+  (overseer OV-S8.4).)*
 
 ### 8.4 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
 
@@ -1319,7 +1336,16 @@ G5-rejection-store amendments are the **spec author's** PR.
 
 ### 8.6 Reviewer findings folded — Slice 8 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 8; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 2 added [S8-1, OV-S8.4]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S8-1** | auditor | Refine | The three dedup arms are **heterogeneous**: arm (c) is gap-key↔gap-key, but (a)/(b) match the candidate gap-key against pill names / proposal drafts (different shapes). **Folded:** §8.2(c) + §8.3 G5 now require the **gap-key be *bidirectionally computable*** (from a candidate topic AND an existing pill/proposal → all arms reduce to gap-key↔gap-key; else per-arm match-fn + threshold); + the arm-(a) **retired-pill** sub-question (`list_pills:189` includes retired → match active pills; retired-pill match ≈ durable suppression). |
+| **OV-S8.4** | overseer | Refine | The transitive-hold **over-claimed A4/G6** — C1 calls the A3 **domain function** `enqueue_pill_generation` directly, **bypassing the A4 HTTP endpoint**. **Folded:** §8 header + §8.3 now inherit **A1 G1/G7, A2 G4, A3 G3 — not A4/G6** (the endpoint contract). |
+
+Auditor S8-P1…S8-P12 / overseer Confirms: the A-2/A-2r dedup spine (3 arms, consume-vs-durable-rejection
+distinction, re-surface marker, idempotency) is faithful + complete. Round-trips: **S8-1 → 1/5**,
+**OV-S8.4 → 1/5**.
 
 ---
 
