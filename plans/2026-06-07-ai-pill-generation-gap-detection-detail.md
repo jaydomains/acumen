@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) SEALED (all 3 markers @ `18a719a`) · Slice 2 (A2) round-1 folded (both grounding paths G4-gated; cites fixed) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slice 1 (A1) SEALED @ `18a719a` · Slice 2 (A2) — planner `final for Slice 2` marker posted (content-invariant @ §2/`30315fb`); auditor S2-1/S2-2 RESOLVED + overseer governance SEAL; both seal here → Slice 2 fully seals. Slice 3 (A3) next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -514,7 +514,7 @@ out of the downstream G1 amendment PR.
 
 ## Slice 2 (A2) — grounding retrieval (RAG / web search) + per-draft citations
 
-**Status: Slice 2 (A2) — round-1 folded (S2-1≡OV-S2.11: both grounding paths now G4-gated, neither baked; S2-2 cites fixed); awaiting reviewer re-verify.**
+**Status: final for Slice 2 — approved by planner** (content-bound to §2 at `30315fb`; auditor S2-1 + S2-2 RESOLVED + overseer governance SEAL [OV-S2.1–.11]; both seal here. Content-invariant marker — §2.1–§2.6 body byte-identical. Slice 2 findings all resolved — §2.6.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the A1 holds — authenticated ratification of G1 + G7 —
 since A2 builds on the A1 primitive; and (b) A2's own gate G4, which covers BOTH grounding sources for
