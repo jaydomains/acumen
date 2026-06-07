@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: STAGES A+B+C COMPLETE — Slices 1–9 SEALED (9/10). Slice 10 (D1, Stage D — incremental bootstrap-on-approve) detail next — the final slice.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–9 SEALED (9/10) · Slice 10 (D1, Stage D — incremental bootstrap-on-approve, the FINAL slice) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1460,9 +1460,97 @@ Auditor S9-P1…S9-P10 otherwise Confirms (the construction-oracle floor approac
 
 ---
 
-*(Slice 10 (D1) detail section appends below once Slice 9 seals — slice-iterative, one PR throughout.
-Appending it does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global `Status: final —
-approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
+## Slice 10 (D1, Stage D) — incremental bootstrap-on-approve (AC-D7/AC-D23 closure)
+
+**Status: Slice 10 (D1) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending G10 (scope — close incremental-bootstrap-on-approve in
+this workstream or as a separate fix). Detail-planning is not gated.** **D1 is largely independent of
+Stages A–C** — it wires the **approve path generally** (every approved pill, refiner- *and*
+generator-origin), closing a pre-existing AC-D7/AC-D23 gap. Written **against the recommended
+direction**: wire `approve_pill_proposal` → a **per-pill** incremental bootstrap, reusing the existing
+idempotent primitives. **The final slice.**
+
+**Implements:** AC-D7's *"when a new pill is approved, an incremental bootstrap auto-runs per AC-D23"*
++ AC-D23's *"subsequent pill additions post-launch trigger an incremental bootstrap automatically —
+anchor pool generated, self-review run, safety links fetched, no operator action"* — **currently
+unwired** (workstream §2.3: `run_bootstrap` is called only from the manual admin trigger
+`admin.py:349`, never from `approve_pill_proposal`). Stops there: no other Stage-D work.
+
+### 10.1 Grounding (verified against the tree at this SHA)
+
+- **Approve does not bootstrap today.** `approve_pill_proposal` (`catalogue.py:567-613`) materialises
+  the pill via `create_pill` (re-runs the keyword auto-tag, honours the AI safety self-classification,
+  AC-D21), marks the task done — **but never calls `run_bootstrap`**. So an approved pill gets **no
+  anchor pool** until the operator next runs the full bootstrap (workstream §2.3 finding). This breaks
+  AC-D7/AC-D23's "auto-runs on approve" promise.
+- **The bootstrap primitives are idempotent + per-pill.** `run_bootstrap` (`bootstrap.py:64-152`)
+  walks `_active_pills` calling `generate_anchor_pool_for_pill(db, pill.id, top_up=True)` (anchors +
+  inline AC-D19 self-review) + `curate_links_for_pill` (safety pills) + Drive ingest; idempotent
+  (quota gate short-circuits populated pills). The **per-pill** steps are directly callable for a
+  single new pill — no need to walk the whole catalogue on every approval.
+- **A manual full-bootstrap path exists** (`admin.py:349` → `run_bootstrap`); D1 adds the *automatic,
+  scoped* trigger AC-D23 specifies, it doesn't replace the manual one.
+
+### 10.2 Build choices — concrete (recommended direction)
+
+**(a) Wire `approve_pill_proposal` → per-pill incremental bootstrap.** After `create_pill`
+(`catalogue.py:586`), trigger the incremental bootstrap **scoped to the new pill**:
+`generate_anchor_pool_for_pill(db, pill.id, top_up=True)` + (if `pill.safety_relevant`)
+`curate_links_for_pill(db, pill.id)` — the exact per-pill steps `run_bootstrap` runs, not a full
+catalogue walk. Idempotent (re-approve / re-run skips populated). Applies to **every** approved pill
+(Path-1 refiner + Path-2 generated) — AC-D7 says "when a new pill is approved," not "generated."
+
+**(b) Sync vs async.** At v1 scale a synchronous per-pill bootstrap on approve is acceptable
+(`bootstrap.py` note: synchronous admin path acceptable at v1; Celery wrapper is the production path
+for large sets) — but anchor generation is N AI calls per band, so a **Celery-task** trigger (enqueue
+the per-pill bootstrap, return the approval immediately) is the safer shape so the admin's approve
+click doesn't block on generation. Sync-vs-async is a G10 build-design sub-point.
+
+**(c) Web-search note.** `curate_links_for_pill` (safety pills) uses web search — already AC-D21-scoped
+to safety links (its existing use), so **no G4-style new-use issue** here (unlike A2's generation
+grounding). Reuses the existing safety-link path unchanged.
+
+### 10.3 Embedded ratification-class item — SURFACED (blocking D1 execution, Gate 2)
+
+**G10 — scope: close incremental-bootstrap-on-approve here or as a separate fix?** Class (iii)
+(workstream-scope decision). It's a pre-existing AC-D7/AC-D23 gap (not generator-specific), so it
+*could* be a standalone fix; but it's **small and completes the "approved generated pill gets its
+anchor pool" loop** this workstream builds — recommend **closing it here as D1**. Sub-point: the
+sync-vs-async trigger shape (§10.2b). **Blocks D1 execution.** *(D1 is approve-path-general — it does
+**not** inherit the Stage-A generator holds; it benefits any approved pill. The one coupling: a
+*generated* pill only reaches approval after Stage A ships, but the wiring itself is independent.)*
+
+### 10.4 Tests (AC-CD15 — `app/domain/*` coverage, zero-network)
+
+1. **Bootstrap fires on approve:** approving a proposal calls the per-pill incremental bootstrap → the
+   new pill gets an anchor pool (assert `generate_anchor_pool_for_pill` invoked for the new pill id);
+   a safety pill also gets `curate_links_for_pill`. Stub provider, no network.
+2. **Idempotent:** a second bootstrap pass on the same pill is a counter-zero no-op (quota gate).
+3. **Approve still succeeds if bootstrap defers:** if async (§10.2b), the approval returns before
+   generation completes; if a bootstrap step fails, the approval/pill is not rolled back (fail-soft —
+   the pill exists; bootstrap retried on the next pass), mirroring `run_bootstrap`'s recoverable modes.
+4. **Applies to both origins:** a refiner-approved and a generator-approved pill both trigger it.
+
+**Acceptance:** tests pass under the three-layer green gate; structure-gate passes; no migration (reuses
+existing primitives).
+
+### 10.5 Scope fence
+
+The approve→incremental-bootstrap wiring only. Reuses `generate_anchor_pool_for_pill`,
+`curate_links_for_pill`, `approve_pill_proposal`, `create_pill` — **unchanged**. **No** new generator/
+signal/cron work, **no** FE, **no** migration. The manual full-bootstrap path (`admin.py:349`) is
+untouched. **Closes Stage D — and the workstream's detail-plan.**
+
+### 10.6 Reviewer findings folded — Slice 10 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 10; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(All ten slices (A1–A5, B1–B2, C1–C2, D1) detail-planned. The global `Status: final — approved by
+planner (all slices)` marker lands at the bottom once Slice 10 seals across all three parties — the
+detail-plan complete + execution-ready, pending the per-item G-ratifications, §0.2 Gate 2.)*
 
 ---
 
