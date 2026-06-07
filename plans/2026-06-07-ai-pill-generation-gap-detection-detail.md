@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slice 1 (A1) — round-3 fold (OV-S1.12: +2 missed surfaces `provider.py:4` + `test_p5_prompts` floor, +1 planner-found `test_p5_resolve` block; completeness now grep-backed not asserted; `DECISIONS.md:96` reclassified class-(i)). No planner marker yet; auditor + overseer re-verify pending. Slice 2 (A2) held.**
+**Status: Slice 1 (A1) — round-4 fold (completeness closed by THREE structural greps: +numeral `DECISIONS.md:63`, +`anthropic.py:61` runtime-KeyError map, +`cost.py:132`, +`test_p5_cost:137`; twins at 4/5). No planner marker yet; auditor + overseer re-verify pending. Slice 2 (A2) held.**
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -125,7 +125,7 @@ each before the next is posted.
 
 ## Slice 1 (A1) — new generation prompt entry + `Operation` wiring + provider stub
 
-**Status: Slice 1 (A1) — round-3 fold (OV-S1.12 completeness: §1.4 now grep-backed + 3 more surfaces; §1.3 class-(i)+(ii)); OV-S1.7 resolved; awaiting auditor + overseer re-verify at new content-SHA (§1.7).**
+**Status: Slice 1 (A1) — round-4 fold (completeness closed by three structural greps — word/numeral/structural; §1.4); twins S1-1≡OV-S1.12 at 4/5; OV-S1.7 resolved; awaiting auditor + overseer re-verify (re-run greps) at new content-SHA (§1.7).**
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated spec-author ratification of G1 and G7.**
 This detail is written **against the recommended direction** (mint a new
@@ -221,7 +221,11 @@ consumes it). No `TBD`, no speculative fields (`SESSION_START.md` doc-hygiene).
   schema (incl. `evidence_count`, `gap_signal`), safety self-classified against the existing tiny
   `_STUB_SAFETY_CUES` cue list (`:34`) for parity with the proposal stub.
 - Add `Operation.pill_generation: "anthropic_model_pill_generation"` to the `resolve_model` map
-  (`:418-427`).
+  (`:418-427`) — strict `[operation]` subscript at `:427`, so a missing entry `KeyError`s.
+- Add `Operation.pill_generation` to **`app/ai/anthropic.py:61` `_MAX_OUTPUT_TOKENS`** (sane cap, e.g.
+  ~4000 for an N-draft response) — the real provider strict-subscripts it at `anthropic.py:146`, so a
+  missing entry is a **generate-time `KeyError`** (build-correctness; auditor S1-1 r4), and to
+  **`app/ai/cost.py:132` `OP_TO_METHOD`** as `"generate"` (cost-dashboard op→method routing).
 
 **(c) Config field — `app/config.py`.**
 Add `anthropic_model_pill_generation` (env-default, AC-CD18), sibling to
@@ -258,11 +262,12 @@ baked; the build above is the **recommended** direction, not a decided one.
   *Implications*) is a **class-(i) AC-D anchor-body** change (`REQUIRED_READING.md` §7(i)), while the
   `SPEC.md` / `CODE_SPEC.md` edits are class-(ii) — so the **authenticated ratification scope is
   broader than a pure spec edit**. The full surface set — the ops-count + the **enumerated-ops lists**
-  at `SPEC.md:296/397/443/523` and `DECISIONS.md:96`, the SPEC §6 subsection structure, plus the
-  `CODE_SPEC.md:308` / `provider.py:4` / `provider.py:122` / `README.md:3` /
-  `app/ai/prompts/__init__.py:3` mirrors **and** the functional op-set floors (`_REGISTRY`,
-  `test_p5_prompts._REGISTERED_OPERATIONS`, `test_p5_resolve` resolution block) — is enumerated, with
-  reproducible greps, in §1.4. **The spec author should
+  at `SPEC.md:296/397/443/523`, `DECISIONS.md:96`, and the **numeral** `DECISIONS.md:63`, the SPEC §6
+  subsection structure, plus the `CODE_SPEC.md:308` / `provider.py:4` / `provider.py:122` /
+  `README.md:3` / `__init__.py:3` mirrors **and** the functional maps/floors — incl.
+  **`anthropic.py:61` (`_MAX_OUTPUT_TOKENS`, a runtime `KeyError` if unset)**, `cost.py:132`
+  (`OP_TO_METHOD`), `_REGISTRY`, and the `test_p5_*` floors — is enumerated, with three reproducible
+  greps (word / numeral / structural), in §1.4. **The spec author should
   ratify G1 with that full amendment scope in view**, and the downstream G1 amendment PR must fold
   **all** count surfaces — not just the prompt-registry entry; the overseer (merge-executor) will
   require the count amendment folded completely, not partially. **If ruled EXTEND**, the entire sweep
@@ -298,32 +303,43 @@ G1 amendment PR risks a **silent partial-fold** (AC-CD8 body updated, the count 
 — the §7 fold-completeness failure. **The entire sweep below dissolves if the spec author rules
 G1 = EXTEND** (no new op → the count stays seven).
 
-**Completeness — by reproducible grep, not assertion (overseer OV-S1.12).** A count invariant has
-**two** kinds of surface — a textual *"seven"* and a **functional op-set floor that carries no
-"seven" word** — so a single keyword grep is insufficient (the round-1/round-2 "verified/exhaustive"
-claims were each wrong because they were enumerations-by-recall, not grep output). The set below is
-what these greps return at **`a235259`** (this branch; `app/`, `SPEC.md`, `DECISIONS.md`,
-`CODE_SPEC.md` are byte-identical to `main` `741f862` — only `plans/**` differs); **re-run them at
-execution HEAD before the G1 amendment PR**:
+**Completeness — by reproducible grep keyed on STRUCTURE, not recalled names (auditor S1-1 +
+overseer OV-S1.12).** A count invariant appears in **three surface-classes**: textual-**word**,
+textual-**numeral**, and **structural** (a total map over `Operation`, a strict `[operation]`
+subscript that `KeyError`s, or an op-set floor). Rounds 1–4 each *under-grepped*: assert → word-only
+grep (missed the numeral) → a **name-listed** functional grep that was itself enumeration-by-recall
+(missed `OP_TO_METHOD` / `_MAX_OUTPUT_TOKENS`). The terminating fix (auditor S1-1 r4) is to key the
+structural grep on the **type signature / access pattern that defines the surface**, never on
+remembered names — then it cannot miss a member *by construction*. The three greps return the
+complete set at **`697c857`** (`app/`/`SPEC.md`/`DECISIONS.md`/`CODE_SPEC.md` byte-identical to
+`741f862`); **re-run all three at execution HEAD before the G1 amendment PR**:
 
 ```
-# (A) textual count surfaces — phrasing-agnostic, ALL doc + code + fe trees
+# (A) textual — WORD forms, all doc/code/fe trees
 grep -rniE 'seven[- ](value|ai|distinct|operation|prompt)|(all|of|the|each) seven (ai )?(operation|prompt)|five of seven|eighth (ai )?operation' \
-     SPEC.md CODE_SPEC.md DECISIONS.md ROADMAP.md CHECKLIST.md FE_ROADMAP.md FE_CHECKLIST.md \
-     SESSION_START.md app/ tests/ frontend/src | grep -viE 'cron|seventh integrity'
-# (B) functional op-set / prompt-registry floors (NO "seven" word — (A) cannot see these)
-grep -rnE 'registered_operations|_REGISTERED_OPERATIONS|_REGISTRY|resolve_model\(Operation' app/ tests/
+     SPEC.md CODE_SPEC.md DECISIONS.md ROADMAP.md CHECKLIST.md FE_ROADMAP.md FE_CHECKLIST.md SESSION_START.md app/ tests/ frontend/src | grep -viE 'cron|seventh integrity'
+# (A2) textual — NUMERAL forms (e.g. "7-operation -> 4-method") that (A) cannot match
+grep -rnE '[0-9]+-(operation|method|prompt)' SPEC.md CODE_SPEC.md DECISIONS.md app/ tests/ | grep -viE 'cron'
+# (B) STRUCTURAL — every total map over Operation, every strict [operation] subscript, every op-set floor (NAME-AGNOSTIC)
+grep -rnE 'dict\[Operation|\[operation\]|set\(Operation\)|list\(Operation\)|frozenset\(_REGISTERED' app/ tests/
 ```
 
-(A) returns `SPEC.md:296/372/397/443/523`, `DECISIONS.md:96`, `CODE_SPEC.md:308`,
-`app/ai/provider.py:4`, `app/ai/provider.py:122`, `app/ai/prompts/__init__.py:3`,
-`app/ai/prompts/README.md:3` — **and nothing in `ROADMAP`/`CHECKLIST`/`FE_*`/`SESSION_START`/
-`frontend/`** (verified empty; the wider trees carry no op-count surface) — plus the SPEC §6.1–6.7
-subsection structure, which is structural and not grep-visible. *(False positive excluded:
-`DECISIONS.md:608` "seventh integrity layer" = AC-D24, not an op count.)* (B) returns the functional
-floors in the code-side list below. The two greps together are the **complete** set — this is the
-*evidence* that supersedes the round-1/round-2 "exhaustive" *assertions* (which were
-enumeration-by-recall and each wrong); **re-run both at execution HEAD** before the G1 amendment PR:
+- **(A)** → `SPEC.md:296/372/397/443/523`, `DECISIONS.md:96`, `CODE_SPEC.md:308`, `provider.py:4`,
+  `provider.py:122`, `prompts/__init__.py:3`, `prompts/README.md:3`; **nothing** in
+  `ROADMAP`/`CHECKLIST`/`FE_*`/`SESSION_START`/`frontend` (false positive excluded: `DECISIONS.md:608`
+  "seventh integrity layer" = AC-D24). Plus SPEC §6.1–6.7 structure (not grep-visible).
+- **(A2)** → **`DECISIONS.md:63`** only (AC-CD8 index row *"…operation enum drives 7-operation →
+  4-method routing…"*).
+- **(B)** → the total maps `provider.py:418-427` (`resolve_model` — an **unannotated** dict literal,
+  caught by the `[operation]` subscript at `:427`, **not** by `dict[Operation`), `anthropic.py:61`
+  (`_MAX_OUTPUT_TOKENS`), `cost.py:132` (`OP_TO_METHOD`), `prompts/__init__.py:37` (`_REGISTRY`); and
+  the op-set floors `test_p5_prompts.py:46`, `test_p5_cost.py:137`, `test_p5_resolve.py:54`.
+  **`openai.py:76` is correctly OUT** — OpenAI-only `_MAX_OUTPUT_TOKENS`; an Anthropic-default op
+  never routes there (auditor confirmed).
+
+Keying (B) on **structure** is what *ends* the round-1→4 recursion: a `dict[Operation]` map or an
+`[operation]` subscript cannot hide from a grep on its own type/access shape, the way a recalled
+variable-name list could. The three lists together are the **complete** set:
 
 **Spec surfaces — swept in the G1/G2 spec-amendment PR** (authored by the **spec author**;
 `SESSION_START.md` — the implementer does not author the clarification). The AC-CD8 anchor *body*
@@ -346,6 +362,10 @@ change recording the new op rides this same PR:
   learning material generation, pill proposal, grade review per AC-D19, anchor self-review per
   AC-D23). Each is a separate version-controlled prompt."* By-name enumeration; most likely to
   silently rot (anchor Implications, not prose). (auditor S1-1 round 2 — missed in round 1.)
+- `DECISIONS.md:63` — **AC-CD8 index row, NUMERAL form**: *"…operation enum drives **7-operation →
+  4-method** routing…"* → **8-operation → 4-method**. Invisible to a `seven`-word grep *and* to a
+  `dict[Operation]` structural grep — only the numeral grep (A2) sees it. Twin of the `CODE_SPEC.md:308`
+  prose; rides the same G1/G2 amendment PR. (overseer OV-S1.12 round 4 — missed rounds 1–3.)
 
 **Code / registry — textual count mirrors, swept in A1's execution** (in-body-override rule — the
 authored prose/anchor is truth, these mirrors are swept to match; not a separate spec PR):
@@ -363,24 +383,36 @@ authored prose/anchor is truth, these mirrors are swept to match; not a separate
 - `.env.example` — add `ANTHROPIC_MODEL_PILL_GENERATION=` sibling to the existing `anthropic_model_*`
   examples (env-default discoverability, AC-CD18).
 
-**Code — functional op-set floors, swept in A1's execution** (these carry **no "seven" word**; a
-textual grep misses them — they break the build if not updated when the op set grows):
+**Code — functional surfaces, swept in A1's execution** (these carry **no count word**; only the
+structural grep (B) sees them — several **break the build / `KeyError` at runtime** if not updated
+when the op set grows). Total maps + strict subscripts that **must gain a `pill_generation` entry:**
+- `app/ai/anthropic.py:61` (`_MAX_OUTPUT_TOKENS: dict[Operation,int]`) — **runtime `KeyError`, not
+  doc-hygiene.** The real Anthropic provider does a **strict subscript** `max_tokens =
+  _MAX_OUTPUT_TOKENS[operation]` (`anthropic.py:146`); `pill_generation` is Anthropic-default (§1.2b),
+  so generate-time **throws** unless an entry is added (pick a sane cap, e.g. ~4000 for N drafts).
+  (auditor S1-1 r4.)
+- `app/ai/provider.py:418-427` (`resolve_model` coded-default **literal**) — strict subscript at
+  `:427`; add the `pill_generation: "anthropic_model_pill_generation"` entry (already in §1.2(b)) or
+  `resolve_model` `KeyError`s. Unannotated literal → caught by the `[operation]` arm of grep (B).
+- `app/ai/cost.py:132` (`OP_TO_METHOD: dict[Operation,str]`, total map) — add
+  `Operation.pill_generation: "generate"` (the cost dashboard's op→method routing). (auditor S1-1 r4.)
 - `app/ai/prompts/__init__.py:37-51` (`_REGISTRY`) — register the `pill_generation` prompt so
-  `get_prompt`/`registered_operations()` resolve it (the real Anthropic provider fetches its template
-  through this seam).
-- `tests/unit/test_p5_prompts.py:22` (`_REGISTERED_OPERATIONS`) + `:46`
-  (`assert registered_operations() == frozenset(_REGISTERED_OPERATIONS)`) — add `pill_generation` to
-  the floor list or the op-set assertion fails (overseer OV-S1.12 r3).
-- `tests/unit/test_p5_resolve.py:264-271` — the per-op `resolve_model` coded-default assertion block;
-  add `assert resolve_model(Operation.pill_generation) == cfg.anthropic_model_pill_generation`
-  (the test counterpart of the `resolve_model` map entry in §1.2(b); planner-found beyond OV-S1.12 r3).
-- `tests/unit/test_p5_resolve.py:54` (`_ALL_OPS = list(Operation)`) — **dynamic, auto-includes** the
-  new op; no edit, but the per-op isolation loop at `:371` then exercises `pill_generation`, so the
-  new op must satisfy that invariant (the stub branch in §1.2(b) ensures it does).
+  `get_prompt`/`registered_operations()` resolve it (the real provider fetches its template here).
+- `app/ai/provider.py:149-157` (`_ANTHROPIC_DEFAULT_OPS`) — add membership (already in §1.2(b)).
+- **OUT:** `app/ai/openai.py:76` (`_MAX_OUTPUT_TOKENS`) — OpenAI-only; an Anthropic-default op never
+  routes there (auditor confirmed).
 
-*(Verified there is **no** config-field-set floor — no test asserts the set/count of
-`anthropic_model_*` fields; the new field is covered by the `test_p5_resolve.py:264-271` resolution
-assertion above.)*
+Op-set floor assertions that **fail-by-design** until the maps above are updated:
+- `tests/unit/test_p5_prompts.py:22/:46` (`_REGISTERED_OPERATIONS` + `registered_operations() ==
+  frozenset(...)`) — add `pill_generation`.
+- `tests/unit/test_p5_cost.py:137` (`assert set(OP_TO_METHOD) == set(Operation)`) — fails the moment
+  `pill_generation` joins the enum until `cost.py:132` is updated. (auditor S1-1 r4.)
+- `tests/unit/test_p5_resolve.py:264-271` — per-op `resolve_model` block; add the `pill_generation`
+  assertion (counterpart of the map entry). `:54` `_ALL_OPS = list(Operation)` is **dynamic** (no
+  edit) but its `:371` isolation loop then exercises `pill_generation`, which the stub branch satisfies.
+
+*(No config-field-set floor exists — no test asserts the set/count of `anthropic_model_*` fields; the
+new field is covered by the `test_p5_resolve.py:264-271` resolution assertion.)*
 
 No SPEC/DECISIONS/CODE_SPEC edit is made **in A1 itself** — the spec-side surfaces above are the spec
 author's amendment PR; A1 execution carries only the code/registry mirrors + functional floors.
@@ -417,25 +449,28 @@ Slice 4); no `frontend/**` (Slice 5); no migration (A1 adds no table/column — 
 reuse is Slice 3); no signal-capture model (Stage B); no beat schedule (Slice 9). The `pill_proposal`
 refiner path is **untouched** (recommended-direction keeps it).
 
-### 1.7 Reviewer findings folded — Slice 1 (rounds 1–3 set-diff record; role files §6)
+### 1.7 Reviewer findings folded — Slice 1 (rounds 1–4 set-diff record; role files §6)
 
-Findings folded across three rounds; none dropped; none a halt-class condition. The completeness gap
-(S1-1 ≡ OV-S1.12, the content/governance twins) took three rounds because the first two folds
-*asserted* exhaustiveness instead of *proving* it — the round-3 fix replaces the assertion with the
-reproducible grep itself (§1.4).
+Findings folded across four rounds; none dropped; none a halt-class condition. The completeness gap
+(S1-1 ≡ OV-S1.12, the content/governance twins) took four rounds because the op-count invariant
+exists in **three phrasing classes** (word / numeral / functional) and each round grepped only the
+class it recalled — the round-4 fix replaces recall with **three structural greps that close the set
+by construction** (§1.4).
 
 | ID | Reviewer | Tag | Resolution |
 |---|---|---|---|
-| **S1-1 ≡ OV-S1.12** | auditor (content) + overseer (governance), twins | Missing→Refine, **r1→r3** | Same completeness gap, found three times by progressively deeper greps. **r1:** §1.4 became the "seven → eight" sweep (`SPEC.md:296/372/397/443/523`+§6+`CODE_SPEC.md:308`; `provider.py:122`+`README.md:3`); +`:397`/`:443` beyond the finding. **r2 (auditor grep):** +`DECISIONS.md:96`, +`prompts/__init__.py:3`. **r3 (overseer grep, auditor concurred):** +`provider.py:4` (twin of `:122`), + the **functional op-set floors** that carry no "seven" word — `test_p5_prompts._REGISTERED_OPERATIONS`+assertion, `__init__._REGISTRY`; **planner-found beyond both:** `test_p5_resolve.py:264-271` resolution block (+`_ALL_OPS` auto-includes). **Process fix:** §1.4 now carries the **two reproducible greps + their output** (textual across all doc/code/fe trees + functional), not the word "exhaustive". **Class fix:** §1.3 → **class-(i)+(ii)** (`DECISIONS.md:96` is class-(i) AC-D anchor body). Dissolves if G1 = EXTEND. |
+| **S1-1 ≡ OV-S1.12** | auditor (content) + overseer (governance), twins | Missing→Refine, **r1→r4** | Same completeness gap, found four times by progressively deeper greps — root cause: the invariant lives in **three phrasing classes** and each round grepped only the one it recalled. **r1:** "seven → eight" sweep (`SPEC.md:296/372/397/443/523`+§6+`CODE_SPEC.md:308`; `provider.py:122`+`README.md:3`); +`:397`/`:443`. **r2 (auditor):** +`DECISIONS.md:96`, +`__init__.py:3`. **r3 (overseer):** +`provider.py:4`, +functional floors `_REGISTERED_OPERATIONS`/`_REGISTRY`; planner +`test_p5_resolve:264-271`/`_ALL_OPS`. **r4:** overseer +`DECISIONS.md:63` (**numeral** "7-operation"); auditor +**`anthropic.py:61` `_MAX_OUTPUT_TOKENS` (runtime `KeyError`)**, `cost.py:132` `OP_TO_METHOD`, `test_p5_cost:137`; planner +`provider.py:427` strict-subscript, confirmed `openai.py:76` OUT. **Terminating fix:** §1.4 carries **three structural greps** — (A) word, (A2) numeral, (B) name-agnostic structural (`dict[Operation]` / `[operation]` subscript / op-set floor) — closing the set **by construction across all three classes**, not by recall. **Class fix:** §1.3 → **class-(i)+(ii)**. Dissolves if G1 = EXTEND. |
 | **OV-S1.7** | overseer | Refine (resolved r1, held r2/r3) | §0.1 + Loop-mechanics state **marker-binding granularity**: a per-slice seal binds to **its own slice-section content** (appending a later slice does not re-stale it; editing a sealed slice does + forces re-seal); per-slice seals are interim checkpoints that **never sum to merge authorization** — Gate 1 binds the **global** whole-doc content-SHA + green + window. Unchanged since r1 (§0.1 byte-identical) — overseer re-confirmed RESOLVED at r2. |
 | OV-S1.11 | overseer | Confirm (governance ruling) | Not a finding — the overseer ruled the `anthropic_model_pill_generation` config field an **absorbable AC-CD18 addition riding G1**, not a 4th ratification class. Reflected in §1.2(c) with the execution caveat. |
 
 All 12 auditor pre-registered positions (S1-P1…S1-P12) and overseer OV-S1.1–.6/.8–.10 were
-**Confirms** (no action). Round-trips: **S1-1 → 3/5**, **OV-S1.12 → 3/5** (the completeness twins),
-**OV-S1.7 → 1/5** (resolved). The round-3 §1.4 content change **re-stales both reviewers' withdrawn
-seals** (auditor `514d923`, overseer `021094b`/its later seal) — both re-verify at the new
-content-SHA and **re-run the grep themselves** before re-sealing. **No planner marker is posted while
-the twins are open.**
+**Confirms** (no action). Round-trips: **S1-1 → 4/5**, **OV-S1.12 → 4/5** (the completeness twins —
+**one round from the §7(d) 5/5 escalation bound**; both reviewers state the round-4 structural-grep
+consolidation is the *convergence* fold, not the escalation one), **OV-S1.7 → 1/5** (resolved). The
+round-4 §1.4 content change re-stales both reviewers' withdrawn seals — both re-verify and **re-run
+all three greps themselves** at the new content-SHA before re-sealing. **No planner marker while the
+twins are open.** If a *fifth* surface appears, the twins hit 5/5 and I escalate to the spec author
+(role files §7(d)) rather than push a sixth blind round.
 
 ---
 
