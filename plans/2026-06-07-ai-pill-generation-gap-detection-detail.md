@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1 (A1) + 2 (A2) SEALED (planner marker + both reviewer seals at one content-SHA each) · Slice 3 (A3) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1 (A1) + 2 (A2) SEALED · Slice 3 (A3) round-1 folded (S3-1 cost-share reuse) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -658,7 +658,7 @@ append). Round-trips: **S2-1 → 1/5**, **OV-S2.11 → 1/5**, **S2-2 → 1/5**.
 
 ## Slice 3 (A3) — N-draft fan-out + `processing_tasks` persistence + band decomposition
 
-**Status: Slice 3 (A3) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 3 (A3) — round-1 folded (S3-1: cost attribution now mirrors `record_provenance_share` even-share); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited A1 holds (G1 + G7) and A2 hold (G4a/G4b/G7(7b)
 — A3 persists the generated drafts incl. any `grounding_refs`), plus A3's own gate G3 (per-band
@@ -692,10 +692,13 @@ FE (Slice 5), **no** prompt change (A2 owns the v1.1.0 prompt).
   `supported_bands` column** — the supported set *is* the min/max range. So "per-band decomposition"
   richer than the min/max pair (e.g. per-band anchor-pool intent per AC-D20) would need a **new
   data-model column** (AC-CD4) → G3.
-- **Cost provenance is summed per operation.** `OP_TO_METHOD`/`cost.py` + the proposal's
-  `payload.provenance.cost_usd` are folded into the monthly per-op aggregate (AC-CD8 sum-to-call-
-  total). **One generation call → N rows** means naively stamping full provenance on each of N rows
-  would **N×-count** the single call's spend — a real invariant risk A3 must handle (3.2c).
+- **Cost provenance is summed per operation, and the 1:N share primitive already exists.**
+  `_pill_proposal_spend` folds each proposal's `payload.provenance.cost_usd` into the monthly per-op
+  aggregate (AC-CD8 sum-to-call-total). **One generation call → N rows** is the documented 1:N case:
+  **`record_provenance_share(entity, result, *, share_count)` (`cost.py:97-124`)** divides cost +
+  tokens evenly so the N rows sum back to the call total — A3 mirrors this (3.2c), it does **not**
+  reinvent attribution. *(Round-1 grounding cited the sum side but missed this per-row share
+  primitive — auditor S3-1.)*
 - **`ProcessingTask`** (`models.py:1174`): `task_name` (indexed), `status` (pending→done), `payload`
   (JSONB). Reusing it + a JSONB payload shape needs **no migration**.
 
@@ -715,13 +718,21 @@ ride the existing JSONB `payload` (no migration, no queue/FE change).
 path. *(`grounding_refs` from A2 rides `payload.proposal` for admin display; `create_pill` ignores it
 — pills carry no citations column, correct.)*
 
-**(c) Cost-attribution invariant — stamp once per call, not per row.** To preserve AC-CD8
-sum-to-call-total across the fan-out: the **full** `provenance` (tokens, `cost_usd`) is stamped on
-**one** row of the batch (or a batch-provenance record keyed by `generation_batch_id`); the other N−1
-rows carry `provenance: {generation_batch_id, cost_usd: 0.0}` (or a `"cost_attributed_to": <row_id>`
-ref). The per-op monthly sum then equals the single call's cost, **not** N×. *(Build-design detail,
-folded as a stated requirement — not ratification-class; if it forces a column it would surface, but
-JSONB covers it.)*
+**(c) Cost-attribution invariant — mirror the existing `record_provenance_share` even-share idiom
+(auditor S3-1).** The codebase already solves this exact 1:N case: `record_provenance_share(entity,
+result, *, share_count)` (`app/ai/cost.py:97-124`, cross-referenced from `record_provenance:67`)
+divides **cost and tokens evenly** — `cost_usd / N`, `prompt_tokens // N`, `completion_tokens // N`
+(floor division; the <N-token rounding remainder is operationally insignificant per its docstring) —
+and replicates `provider`/`model`/`prompt_version` (which describe the *call*, not the share) on every
+row. **A3 mirrors that division**, *not* a reinvented "full-cost-on-one-row, 0 on the rest" scheme
+(which would mis-handle tokens and lose the whole batch's spend if the one cost-bearing row is
+purged). **Seam:** `record_provenance_share` writes the `AIProvenanceMixin` **columns**, but a pill
+proposal stores provenance in `ProcessingTask.payload.provenance` (JSONB) — so A3 cannot call it
+literally; it applies the **same even-share division into each row's `payload.provenance`** —
+`{provider, model, prompt_version, prompt_tokens: total//N, completion_tokens: total//N, cost_usd:
+total/N, generation_batch_id}`. `_pill_proposal_spend` then sums the N rows back to the call total
+(AC-CD8 sum-to-call-total), per-draft cost is honest, and deleting a rejected draft drops only its
+1/N share. *(Build-design detail — not ratification-class.)*
 
 **(d) Band decomposition — min/max only at A3.** Each draft persists
 `available_difficulty_min/max`; on approval `create_pill` stores them and `_expand_supported_bands`
@@ -744,8 +755,10 @@ G3-independent. *(Inherits A1 G1/G7 + A2 G4/G7(7b) as upstream holds — A3 pers
 1. **Fan-out:** `enqueue_pill_generation` with a stub returning `{"drafts": [3 items]}` persists **3**
    `ProcessingTask` rows under `PROPOSAL_TASK_NAME`, each `payload.proposal` a draft + shared
    `generation_batch_id`; `list_pill_proposals` returns all 3 (queue reuse).
-2. **Cost-invariant:** the batch's summed `provenance.cost_usd` across the N rows == the single
-   generate call's `cost_usd` (not N×) — the core 3.2(c) assertion.
+2. **Cost-invariant (even-share, mirroring `record_provenance_share`):** each of the N rows carries
+   `provenance.cost_usd == total/N` and `prompt/completion_tokens == total//N`; the **sum** across the
+   N rows == the single generate call's `cost_usd`/tokens (not N×, not all-on-one) — the core 3.2(c)
+   assertion.
 3. **Approval reuse:** approving one generated row calls `create_pill` (materialises a pill with the
    draft's difficulty + safety self-classification); `reject_pill_proposal` marks the row done.
 4. **Band decomposition:** an approved draft's pill yields `_expand_supported_bands == range(min,
@@ -764,7 +777,15 @@ refiner enqueue path is untouched (recommended-direction keeps it).
 
 ### 3.6 Reviewer findings folded — Slice 3 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 3; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S3-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S3-1** | auditor | Refine | §3.2(c) reinvented 1:N cost attribution ("full-cost-on-one-row") when **`record_provenance_share`** (`cost.py:97-124`) already divides cost **and** tokens evenly for the documented generation-→-N-rows case. **Folded:** §3.2(c) rewritten to **mirror the even-share division** into each row's `payload.provenance` (`cost_usd: total/N`, `tokens: total//N`, full provider/model/version replicated) — citing the primitive + the seam (it writes `AIProvenanceMixin` columns; `ProcessingTask` uses JSONB, so A3 mirrors the shape, can't call it literally). §3.1 grounding + §3.4 test 2 updated to even-share. Honest per-draft + robust to row-purge; aggregate sum unchanged. |
+
+Auditor S3-P1…S3-P11 otherwise Confirms (notably S3-P1 task_name discriminator + S3-P2 cost-risk —
+both planner-surfaced unprompted; S3-P3/P10 G3-no-column-without-ratification confirmed). Round-trips:
+**S3-1 → 1/5**.
 
 ---
 
