@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: STAGE A COMPLETE — Slices 1–5 (A1–A5) SEALED (5/10). Slice 6 (B1, Stage B — signal capture) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Stage A complete (Slices 1–5 SEALED, 5/10) · Slice 6 (B1, Stage B — discovery-search-miss signal capture) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -997,10 +997,100 @@ Confirms; this §5 fold re-stales it → re-verify pending). Round-trips: **S5-1
 
 ---
 
-*(Slices 6–10 (B1, B2, C1, C2, D1 — Stages B/C/D) detail sections append below as each prior slice
-seals — slice-iterative, one PR throughout. Appending a later slice does **not** re-stale a sealed
-slice (§0.1, OV-S1.7). The global `Status: final — approved by planner (all slices)` marker lands at
-the bottom after Slice 10 seals.)*
+## Slice 6 (B1, Stage B) — discovery-search-miss signal capture
+
+**Status: Slice 6 (B1) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending B1's gate G5 (signal-capture data model — new table +
+SPEC §5 / AC-CD4 amendment + new AC-CD). Detail-planning is not gated.** **B1 is independent of the
+Stage-A generator holds** — it captures a §6.5 input *signal* and uses no generator code (only C1,
+Slice 8, ties signals to the generator). Written **against the recommended direction**: a dedicated
+`discovery_search_miss` table + a write where the discovery filter already runs.
+
+**Implements:** the first of the three §6.5 input signals (`SPEC.md:344` — *"recent Testee discovery
+searches that returned no good match"*). Stops there: **no** other signals (B2/Slice 7), **no**
+gap-detection (C1), **no** generator wiring.
+
+### 6.1 Grounding (verified against the tree at this SHA)
+
+- **The miss is detectable where the filter already runs.** `list_discoverable_pills` (`catalogue.py:
+  261`) applies the `search` filter (`:283-289`, needle-in-name/description) then `paginate`s; the
+  `discover_pills` endpoint (`catalogue.py:288`) is the sole caller. **Nothing persists a search that
+  returned no/poor match today** — the function filters and returns (workstream §2.3 finding). A
+  "miss" = `search` set **and** the filtered count is 0 (or below a poor-match threshold) *before*
+  pagination — exactly at `:289`.
+- **No signal store exists.** Grep of `app/models.py` for a discovery/search-signal table returns
+  nothing; the only Testee-feedback precedent is `RealismFlag` (`models.py:801`, `Base,
+  TimestampMixin`) — the shape to mirror.
+- **Table conventions (AC-CD4, `CODE_SPEC.md:590`).** `Base, TimestampMixin`; `id = _pk()` (UUID);
+  `tenant_id = _tenant_fk()` indexed; **"the first migration asserts table count (tested)"** — a new
+  table updates that asserted count + needs an Alembic up/down migration.
+- **§6.5 / SPEC §5.** §6.5 Inputs name this signal (`:344`); SPEC §5 is the entity catalogue a new
+  table amends → G5.
+
+### 6.2 Build choices — concrete (recommended direction)
+
+**(a) New table `discovery_search_miss` (`app/models.py`).** `Base, TimestampMixin`; `id = _pk()`;
+`tenant_id = _tenant_fk()` (indexed); `query: str` (the raw search needle, length-bounded);
+`result_count: int` (matches found — 0 or poor); `searcher_id` (FK to the Testee, nullable);
+optional filter context (`subject_id`, `difficulty`); `consumed_at: datetime | None` (for C1's
+consume/decay dedup — Slice 8). Mirrors `RealismFlag`'s shape. Indexed on `tenant_id` + `created_at`
+(recency queries by C1).
+
+**(b) Write point — in `list_discoverable_pills` (`catalogue.py:289`), pre-paginate.** When `search`
+is set **and** the filtered count ≤ the poor-match threshold (recommend **0** at v1; a "few" threshold
+is a G5 tuning knob), insert a `discovery_search_miss` row (query, result_count, searcher, filter
+context). Fail-soft: a signal-write error never breaks discovery (best-effort capture). The write is
+domain-layer (thin router unchanged, AC-CD2).
+
+**(c) Migration.** New Alembic migration (real up/down per the migration discipline); the
+first-migration table-count assertion test updates (AC-CD4). One table, no backfill.
+
+**(d) Retention.** Bounded — rows are consumed by C1 (marked `consumed_at`) or decay on a window; the
+exact retention/decay policy is a **G5** data-model question (the dedup/decay mechanism is C1's, but
+the *column* to support it lands here).
+
+### 6.3 Embedded ratification-class item — SURFACED (blocking B1 execution, Gate 2)
+
+**G5 — signal-capture data model.** Class (ii) (SPEC §5 / AC-CD4 data-model amendment) + a new
+AC-CD. Decisions: **(i)** the `discovery_search_miss` table shape (columns above) — and whether the
+**three** §6.5 signals (this + B2's question-tag + scope-clarification) are **separate tables** or
+**one polymorphic `gap_signal` table** with a `signal_type` discriminator (a structural call that
+spans B1+B2 — **recommended: decide once here** so B2 doesn't re-litigate); **(ii)** the poor-match
+threshold (0 vs "few"); **(iii)** retention/decay + the `consumed_at` consume marker (supports C1
+dedup); **(iv)** mint the **new AC-CD** for the signal-capture data model. **Blocks B1 execution**
+(the table + the SPEC §5 / AC-CD4 amendment). *(G5 also gates B2 and C1 — it is the Stage-B/C
+data-model spine; recommend ruling the table-shape question once, covering all three signals.)*
+
+### 6.4 Tests (AC-CD15 — `app/domain/*` coverage + migration, zero-network)
+
+1. **Miss captured:** a discovery call with `search` set + **0** matches inserts one
+   `discovery_search_miss` row (query, result_count=0, searcher, filter context).
+2. **Hit not captured:** a search **with** matches inserts **no** row; a search with `search=None`
+   inserts no row.
+3. **Fail-soft:** a forced signal-write error does not break the discovery response (best-effort).
+4. **Migration:** up/down clean; the table-count assertion test reflects the +1 table (AC-CD4).
+
+**Acceptance:** tests pass under the three-layer green gate; the `migration-chain` job + the
+table-count assertion pass; structure-gate passes.
+
+### 6.5 Scope fence
+
+The discovery-miss signal store + its write only. **No** B2 signals (question-tag / scope-clarification
+— Slice 7), **no** gap-detection job (C1), **no** cron (C2), **no** generator wiring, **no** FE. The
+discovery filter logic is otherwise unchanged (the write is additive + fail-soft). The SPEC §5 /
+AC-CD4 amendment + new AC-CD are the **spec author's** PR (rides G5), not this executor slice.
+
+### 6.6 Reviewer findings folded — Slice 6 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 6; `0 dropped / 0 added`. Per-round records append here.)*
+
+---
+
+*(Slices 7–10 (B2, C1, C2, D1) detail sections append below as each prior slice seals —
+slice-iterative, one PR throughout. Appending a later slice does **not** re-stale a sealed slice
+(§0.1, OV-S1.7). The global `Status: final — approved by planner (all slices)` marker lands at the
+bottom after Slice 10 seals.)*
 
 ---
 
