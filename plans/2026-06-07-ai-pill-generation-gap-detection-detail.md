@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1 (A1) + 2 (A2) + 3 (A3) SEALED · Slice 4 (A4) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–3 SEALED · Slice 4 (A4) round-1 folded (S4-1 codegen-artifact scope) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -791,7 +791,7 @@ both planner-surfaced unprompted; S3-P3/P10 G3-no-column-without-ratification co
 
 ## Slice 4 (A4) — generation endpoint (thin router) + envelope/authz
 
-**Status: Slice 4 (A4) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 4 (A4) — round-1 folded (S4-1: §4.5 now names the codegen-artifact regen as the one `frontend/` touch); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending the inherited holds (A1 G1/G7, A2 G4a/G4b/G7(7b), A3 G3 —
 A4 exposes that whole stack over HTTP) plus A4's own gate G6 (the new generation API contract + its
@@ -866,20 +866,33 @@ holds — A4 exposes their output over HTTP.)*
 4. **Thin-router guard:** the endpoint calls `enqueue_pill_generation` and commits — no business logic
    in the router (AC-CD2); the batch `generation_batch_id` round-trips into the task payloads.
 
-**Acceptance:** the tests pass under the three-layer green gate; **codegen-drift** check passes (the
-new endpoint + schemas regenerate the FE OpenAPI types cleanly); structure-gate passes.
+**Acceptance:** the tests pass under the three-layer green gate; the **`codegen-drift`** check passes
+**only after** A4 regenerates **and commits** `frontend/openapi/schema.json` + `frontend/src/types/
+api.d.ts` from the new endpoint/schemas (per §4.5 / S4-1); structure-gate passes.
 
 ### 4.5 Scope fence
 
 Thin router + two new schemas only. Reuses `enqueue_pill_generation` (A3), `_require_admin` (AC-CD5),
-the AC-CD6 envelope, and the existing `GET /v1/pill-proposals` queue — **unchanged**. **No** FE
-(Slice 5), **no** domain/prompt/persistence change, **no** Path-3 endpoints (Stage B/C), **no**
-migration. The refiner endpoint `POST /v1/pill-proposals` is untouched (recommended-direction keeps
-the refiner).
+the AC-CD6 envelope, and the existing `GET /v1/pill-proposals` queue — **unchanged**. **One
+`frontend/` codegen artifact is touched (auditor S4-1):** A4 **regenerates and commits** the committed
+OpenAPI snapshot `frontend/openapi/schema.json` + the generated FE types `frontend/src/types/api.d.ts`
+— a **mechanical codegen consequence** of the new endpoint, **required** by the `codegen:check`
+(`frontend/package.json:20`) / `codegen-drift` (`frontend.yml:31`) gate, which `diff -q`-fails on any
+drift; `api.d.ts` is auto-generated ("Do not make direct changes"), so this is a regen, not a hand
+edit. It adds **no FE component/feature** — that is Slice 5 (A5). Otherwise: **no** domain/prompt/
+persistence change, **no** Path-3 endpoints (Stage B/C), **no** migration. The refiner endpoint `POST
+/v1/pill-proposals` is untouched (recommended-direction keeps the refiner).
 
 ### 4.6 Reviewer findings folded — Slice 4 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 4; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [S4-1]`.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **S4-1** | auditor | Refine | §4.5 fence said "No FE," but a new endpoint changes the backend OpenAPI and the FE contract (`frontend/src/types/api.d.ts` + `frontend/openapi/schema.json`) is a **committed generated artifact** gated by `codegen:check` (`package.json:20`) / `codegen-drift` (`frontend.yml:31`) — `diff -q`-fails on drift. **Folded:** §4.5 now names the **regenerate-and-commit** of the two codegen artifacts as the one `frontend/` touch (mechanical codegen consequence, required by the gate), distinct from "no FE component/feature" (= A5); §4.4 acceptance made explicit the check passes only after committing the regen. Verified the scripts + artifacts live. Not gating — build was right, the fence just mis-stated the file boundary. |
+
+Auditor S4-P1…S4-P11 otherwise Confirms (G6 well-surfaced; every §4.1 cite verified). Round-trips:
+**S4-1 → 1/5**.
 
 ---
 
