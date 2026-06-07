@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: final for Slice 1 — approved by planner** (convergence SHA; auditor S1-1 RESOLVED + overseer governance SEAL [all 12 positions]; both re-seal here. Non-blocking A2-grep + conftest polishes folded. Slice 2 (A2) detail next once Slice 1 fully seals.)
+**Status: Slice 1 (A1) SEALED (all 3 markers @ `18a719a`) · Slice 2 (A2) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -512,9 +512,119 @@ out of the downstream G1 amendment PR.
 
 ---
 
-*(Slices 2–10 detail sections append below as each prior slice seals — slice-iterative, one PR
-throughout. The global `Status: final — approved by planner (all slices)` marker lands at the bottom
-after Slice 10 seals.)*
+## Slice 2 (A2) — grounding retrieval (RAG / web search) + per-draft citations
+
+**Status: Slice 2 (A2) detail posted — awaiting plan-auditor + plan-overseer review.**
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the A1 holds — authenticated ratification of G1 + G7 —
+since A2 builds on the A1 primitive; and (b) A2's own gate G4 (web-search-for-generation anchor
+scope). Detail-planning is not gated.** Written **against the recommended direction**: topic-keyed
+Drive-RAG grounding (reuses AC-D22 infra, no anchor change) as the default; web-search grounding as an
+**optional, G4-gated** add; per-draft `grounding_refs` materialised as the **G7(7b)** schema bump
+`pill_generation` v1.0.0 → **v1.1.0**.
+
+**Implements:** the A1 `pill_generation` primitive learns to **ground** — it retrieves reference
+context for the *topic* and emits **per-draft citations** so the admin can evaluate provenance
+(§6.5 quality bar, `SPEC.md:346,348`). Stops there: **no** N-row persistence (Slice 3), **no**
+endpoint (Slice 4), **no** FE (Slice 5).
+
+### 2.1 Grounding (verified against the tree at this SHA)
+
+- **Existing RAG retrieval is *pill*-keyed — the generator has no pill.** `retrieve_for_generation(db,
+  *, pill, target_difficulty, k=5)` (`app/domain/drive_rag.py:650`) builds its embed query via
+  `build_rag_query(pill_name, pill_description, target_difficulty)` (`drive_rag.py:~560`) and returns
+  `[{source_doc_ref, chunk_text}]`. **Path 2 generates pills — there is no pill to key on, only a
+  topic** — so A2 needs a **topic-keyed** retrieval, not a reuse of the pill-keyed signature
+  unchanged. `pill=None` already returns `[]` (`:~690`), so the existing helper cannot be coerced.
+- **Fail-soft contract to mirror exactly** (`drive_rag.py:650-690` docstring; SPEC §6.1 / §6 error
+  handling — *"Drive RAG fetch failures: generation continues without RAG context; logged"*): empty
+  query/index → `[]` (one embed, cost stamped); embed raises → `[]` at WARNING, no audit row.
+- **Query-side embed cost** is captured via an `AuditLog` row `action="rag.retrieve"` (no persisted
+  entity owns it), folded into the monthly aggregate by `app.ai.cost._rag_retrieve_spend` so the
+  AC-CD8 sum-to-call-total invariant holds. A topic-keyed retrieval **must stamp cost the same way**.
+- **`cosine_top_k`, `_DEFAULT_TOP_K = 5`** (`drive_rag.py:580`); `render_rag_context(rag_hits)` renders
+  chunks into the prompt's `{rag_context}` slot, `(none)` when empty (mirrors `generation.py:55-56`).
+- **Web search is AC-D21-scoped to safety links only.** `WebSearchSource` protocol +
+  `TavilyWebSearch` + `get_web_search_source()` (`app/domain/web_search.py:81-208`);
+  `search(query, *, max_results=5) → [WebSearchResult{url,title,snippet,source}]`. The module
+  docstring (`web_search.py:1-3`) scopes it to `app.domain.safety_links` curation. **Using it for
+  *generation* grounding is a new use of AC-D21** → G4.
+- **Prompt grounding pattern to mirror.** `generation.py` (`VERSION = "1.2.0"`) injects `{rag_context}`
+  + a "ground in the material, don't invent beyond it; if empty fall back to general knowledge"
+  instruction (`generation.py:55-68`). A1's `pill_generation` v1.0.0 has **no** grounding slot — A2
+  adds it.
+
+### 2.2 Build choices — concrete (recommended direction)
+
+**(a) Topic-keyed retrieval — `app/domain/drive_rag.py`.** Add `retrieve_for_topic(db, *, topic: str,
+target_difficulty: int | None = None, k: int = _DEFAULT_TOP_K) -> list[dict]` (sibling to
+`retrieve_for_generation`). Embed query = the topic text (+ the difficulty envelope line if given),
+built by a small `build_topic_rag_query(topic, target_difficulty)` mirroring `build_rag_query`'s
+line-aware shape. Same `cosine_top_k` against `DriveChunk`; **same fail-soft contract** (empty topic
+→ `[]` no embed; empty index → `[]` one embed + `rag.retrieve` cost audit; embed raises → `[]` WARN);
+returns `[{source_doc_ref, chunk_text}]`. Reuse `render_rag_context` unchanged.
+
+**(b) Optional web-search grounding — G4-gated.** When (and only when) G4 ratifies web-search-for-
+generation, call `get_web_search_source().search(topic)` and render the `WebSearchResult` rows into a
+second grounding block. **Held behind G4** — the recommended default until ruled is **RAG-only**
+grounding (which needs no anchor change: AC-D22 already covers generation-time RAG). A2 is authored so
+web-search grounding is an additive block the executor wires *iff* G4 = allow.
+
+**(c) Per-draft citations — prompt schema bump to v1.1.0 (G7 7b).** `pill_generation.py` `VERSION`
+→ **`1.1.0`**; add `{rag_context}` (+ `{web_context}` behind G4) slots + the "ground in the material;
+**each draft must cite the `source_doc_ref`s / URLs it used** in `grounding_refs`" instruction. Output
+schema gains `grounding_refs: [str]` per draft (the A1 §1.3 G7(7b) "bump per contract change"
+recommendation, now materialised). Empty grounding → `grounding_refs: []` + the prompt falls back to
+general domain knowledge (mirrors `generation.py:66-68`). The persisted prompt-version
+(`catalogue.py:533`) then records v1.1.0 on every A2-produced draft.
+
+**(d) Stub parity.** `_stub_pill_generation_content` (from A1) extends to echo any injected
+`rag_context` source-refs into each draft's `grounding_refs` (so the offline path exercises the
+citation contract deterministically); `[]` when no context.
+
+### 2.3 Embedded ratification-class item — SURFACED (blocking A2 execution, Gate 2)
+
+- **G4 — grounding sources for generation.** Class (ii) (AC-D21 / AC-D22 anchor scope).
+  **Recommendation:** **Drive-RAG grounding is in-scope under AC-D22 already** (it governs
+  generation-time RAG) — no anchor change for the topic-keyed RAG path. **Web search**, however, is
+  **AC-D21-scoped to safety-link curation**; using it as a *generation grounding source* is a **new
+  AC-D21 use** requiring ratification. Recommend ruling whether generation grounding is (i) **RAG-only**
+  (no anchor change — ship A2 on RAG, defer web), or (ii) **RAG + web** (amend AC-D21 to add the
+  generation-grounding use). **Blocks only the web-search path of A2 execution**; the RAG path can ship
+  without G4. *(Re-touches **G7(7b)** — the v1.0.0→v1.1.0 schema bump for `grounding_refs` — first
+  surfaced at A1 §1.3; A2 is where it lands.)*
+
+### 2.4 Tests (AC-CD15 — zero-network)
+
+1. **Topic-keyed retrieval fail-soft:** `retrieve_for_topic` returns `[]` on empty topic (no embed)
+   and on empty `DriveChunk` index (one embed; assert the `rag.retrieve` `AuditLog` cost row);
+   embed-raises path returns `[]` (monkeypatched to raise) and logs WARNING — mirrors the
+   `retrieve_for_generation` test battery.
+2. **Citation contract:** the v1.1.0 stub, given an injected `rag_context`, emits drafts whose
+   `grounding_refs` echo the injected `source_doc_ref`s; empty context → `grounding_refs: []`.
+3. **Prompt well-formedness:** `render_rag_context([])` → `(none)`; the v1.1.0 template renders with
+   no `KeyError` (the `render_prompt` payload-key guard, `prompts/__init__.py:99`).
+4. **Version bump persisted:** a generated draft's provenance carries `prompt_version == "1.1.0"`.
+5. **Web path (only if G4 = RAG+web):** a stub `WebSearchSource` (no network) yields rows rendered
+   into `web_context`; absent G4, assert the web path is **not** wired (RAG-only).
+
+### 2.5 Scope fence + mirror sweeps
+
+Reuses `drive_rag` (`cosine_top_k`/`render_rag_context`/`DriveChunk`) + `web_search` infra **unchanged**
+— no rebuild. The v1.1.0 bump updates the `pill_generation` registry entry (`_REGISTRY`) + its
+`app/ai/prompts/README.md` line. **No** N-row persistence (A3), endpoint (A4), FE (A5), or signal
+capture (Stage B). No SPEC/anchor edit in A2 itself — the AC-D21 generation-grounding scope change (if
+G4 = RAG+web) rides the **spec author's G4 amendment PR**, not this executor slice.
+
+### 2.6 Reviewer findings folded — Slice 2 (set-diff record; role files §6)
+
+*(baseline — no reviewer findings yet for Slice 2; `0 dropped / 0 added`. Per-round records append here as the loop runs.)*
+
+---
+
+*(Slices 3–10 detail sections append below as each prior slice seals — slice-iterative, one PR
+throughout. Appending a later slice does **not** re-stale a sealed slice (§0.1, OV-S1.7). The global
+`Status: final — approved by planner (all slices)` marker lands at the bottom after Slice 10 seals.)*
 
 ---
 
