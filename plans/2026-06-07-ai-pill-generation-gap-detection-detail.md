@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Stage A complete (5/10) · Slice 6 (B1) round-1 folded (S6-1 dedup-constraint); overseer sealed @`3b89fc8`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–6 SEALED (6/10; Stage A + B1) · Slice 7 (B2, Stage B — question-tag + scope-clarification signal capture) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -999,7 +999,7 @@ Confirms; this §5 fold re-stales it → re-verify pending). Round-trips: **S5-1
 
 ## Slice 6 (B1, Stage B) — discovery-search-miss signal capture
 
-**Status: Slice 6 (B1) — round-1 folded (S6-1: dedup `UniqueConstraint` + upsert, mirroring `RealismFlag`); awaiting reviewer re-verify.**
+**Status: final for Slice 6 — approved by planner** (content-bound §6 @ `71bee47`; auditor S6-1 RESOLVED + overseer governance re-seal; bind §6@`71bee47`. Content-invariant marker — §6.1–§6.6 byte-identical.)
 
 **Execution-gate (Gate 2): BLOCKED pending B1's gate G5 (signal-capture data model — new table +
 SPEC §5 / AC-CD4 amendment + new AC-CD). Detail-planning is not gated.** **B1 is independent of the
