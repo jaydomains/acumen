@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Stages A+B complete (7/10) · Slice 8 (C1) round-1 folded (S8-1 gap-key matching; OV-S8.4 A4/G6 hold) — awaiting reviewer re-verify.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–8 SEALED (8/10; Stages A+B + the C1 gap-detection job). Slice 9 (C2, Stage C — eighth cron + "seven crons" mirror-sweep) detail next.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1220,7 +1220,7 @@ Confirms; this §7 fold re-stales it → re-verify pending). Round-trips: **S7-1
 
 ## Slice 8 (C1, Stage C) — gap-detection job (signals → topics → generator) + dedup/idempotency
 
-**Status: Slice 8 (C1) — round-1 folded (S8-1 bidirectional gap-key matching; OV-S8.4 drop A4/G6 from transitive holds); awaiting reviewer re-verify.**
+**Status: final for Slice 8 — approved by planner** (content-bound §8 @ `9e6775d`; auditor S8-1 RESOLVED + overseer OV-S8.4 RESOLVED + governance seal; bind §8@`9e6775d`. Content-invariant marker — §8.1–§8.6 byte-identical. The gap-detection job + 3-arm dedup that closes the Path-3⇒Path-2 dependency.)
 
 **Execution-gate (Gate 2): BLOCKED pending G2 (the §6.5 amendment separating signal-analysis from
 generation — C1 *is* the signal-analysis half) + G5 (the signal store + dedup columns) + the inherited
