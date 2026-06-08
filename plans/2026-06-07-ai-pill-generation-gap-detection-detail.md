@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–9 SEALED (9/10) · Slice 10 (D1, FINAL) round-1 folded (F-S10-1 async; M-a); overseer sealed @`795c0e3`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: final — approved by planner (all slices)** — ALL TEN slices (A1–A5, B1–B2, C1–C2, D1) SEALED 3/3 each; the detail-plan is **complete + execution-ready** pending the per-item G-ratifications (§0.2 Gate 2). See the global-marker summary at the bottom. (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1462,7 +1462,7 @@ Auditor S9-P1…S9-P10 otherwise Confirms (the construction-oracle floor approac
 
 ## Slice 10 (D1, Stage D) — incremental bootstrap-on-approve (AC-D7/AC-D23 closure)
 
-**Status: Slice 10 (D1) — round-1 folded (F-S10-1: trigger decided ASYNC/enqueued, G10 now scope-only; M-a); awaiting reviewer re-verify.**
+**Status: final for Slice 10 — approved by planner** (content-bound §10 @ `aa74edc`; auditor F-S10-1 RESOLVED + content seal + overseer governance re-seal; bind §10@`aa74edc`. Content-invariant marker — §10.1–§10.6 byte-identical. The final slice — AC-D7/AC-D23 closure.)
 
 **Execution-gate (Gate 2): BLOCKED pending G10 (scope — close incremental-bootstrap-on-approve in
 this workstream or as a separate fix). Detail-planning is not gated.** **D1 is largely independent of
@@ -1566,9 +1566,44 @@ is the auditor's lane; this fold re-stales it → re-verify pending). Round-trip
 
 ---
 
-*(All ten slices (A1–A5, B1–B2, C1–C2, D1) detail-planned. The global `Status: final — approved by
-planner (all slices)` marker lands at the bottom once Slice 10 seals across all three parties — the
-detail-plan complete + execution-ready, pending the per-item G-ratifications, §0.2 Gate 2.)*
+## GLOBAL MARKER — `Status: final — approved by planner (all slices)`
+
+All **ten** slices are detail-planned and **sealed 3/3** (planner marker + auditor content seal +
+overseer governance seal, each at one content-SHA):
+
+| Slice | Scope | Sealed @ | Embedded G-item(s) (surfaced, unruled — Gate 2) |
+|---|---|---|---|
+| 1 (A1) | `pill_generation` prompt + Operation wiring + stub | `18a719a` | G1, G7 |
+| 2 (A2) | topic-keyed RAG/web grounding + per-draft citations | `30315fb` | G4a, G4b, G7(7b) |
+| 3 (A3) | N-draft fan-out + `processing_tasks` persistence + band decomp | `170c7e4` | G3 |
+| 4 (A4) | generation endpoint (thin router) | `75718a8` | G6 |
+| 5 (A5) | admin "generate from topic" FE surface | `d15a8c2` | G8 |
+| 6 (B1) | discovery-search-miss signal capture | `71bee47` | G5 |
+| 7 (B2) | question-tag + scope-clarification signals | `e2e0fb3` | G5 + signal-3 feature-scope |
+| 8 (C1) | gap-detection job (signals→topics→generator) + dedup | `9e6775d` | G2, G5 |
+| 9 (C2) | eighth cron + "seven crons" mirror-sweep | `00bda8a` | G9 |
+| 10 (D1) | incremental bootstrap-on-approve | `aa74edc` | G10 |
+
+**The full closed loop is detail-planned and three-party-hardened:** generator (Stage A) → signal
+capture (Stage B) → gap-detection job + cron (Stage C) → bootstrap-on-approve (Stage D) → admin
+review queue. AC-D7's *"AI extends autonomously as new gaps surface"* + SPEC §6.5 are now buildable.
+
+**Convergence & next steps (role files §8 / §0.2):**
+- This is the **planner's global final-marker** (a content-invariant commit — substantive §1–§10
+  byte-identical to the sealed content). The **auditor** and **overseer** post their own global
+  final-markers at the whole-doc content-SHA; convergence = three sign-offs at one SHA + the
+  three-layer green gate + the 24h spec-author override window.
+- **Gate 1 (this PR's merge) is NORMAL class** — `plans/**`-only, bakes no ratification-class change.
+  The **overseer** (not the planner) flips draft→ready and squash-merges after the gate.
+- **Gate 2 — the 12 surfaced decisions remain the spec author's, unruled:** **G1, G7** (A1); **G4a,
+  G4b, G7(7b)** (A2); **G3** (A3); **G6** (A4); **G8** (A5); **G5** (B1/B2/C1) + the **signal-3
+  admin-feature scope** (B2); **G2** (C1); **G9** (C2); **G10** (D1) — plus the carried **G-SEQ /
+  G-PHASE** (whole-workstream). Each needs **explicit, item-specific, authenticated** spec-author
+  ratification **before its downstream amendment/execution PR proceeds**. Merging this plan ratifies
+  **none** of them. A *fresh* session implements each slice against the spec-clarification PR(s) the
+  rulings produce (`SESSION_START.md`).
+
+**Detail-plan complete & execution-ready.** The planner never flips draft→ready and never merges.
 
 ---
 
