@@ -1,8 +1,11 @@
 # Fully-autonomous AI content generation + retroactive oversight — workstream plan
 
-**Status: DRAFT — under multi-party plan-review** (planner authoring; not yet sealed). Auditor
-(content) + overseer (governance) engage per `.claude/roles/*.md`, bound to Acumen by
-`plans/REQUIRED_READING.md`.
+**Status: final — approved by planner** — converged 3/3 at content-SHA `76aa0f2` (plan-auditor +
+plan-overseer FINAL-markers both content-bound to `76aa0f2`). This planner marker is
+**content-invariant** — only this Status line changed; the §0–§9 body is byte-identical to `76aa0f2`,
+so it does not re-stale the reviewers' markers (role files §8). Hardened through the plan-auditor
+(content: A-1…A-14, A-1r — all confirmed/resolved) + plan-overseer (governance: OV-1/OV-2/OV-3 +
+namespace — all resolved) loop per `.claude/roles/*.md`, bound to Acumen by `plans/REQUIRED_READING.md`.
 
 **Date:** 2026-06-08
 **Branch:** `claude/modest-heisenberg-yofi1z` (this workstream-plan PR).
