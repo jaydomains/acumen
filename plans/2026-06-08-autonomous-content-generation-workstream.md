@@ -43,7 +43,7 @@ triggered autonomously by gaps + scheduled catalogue-health checks. Because the 
 spine rather than tweaking a slice, it is a **new workstream**, not an amendment to the merged plan
 (ratified 0b, §1). §9 is the explicit carry/supersede ledger so no #106 decision silently rots.
 
-### 0.2 Two gates — do not conflate (carried from #105/#106; overseer OV-1)
+### 0.2 Two gates — do not conflate (carried from #105/#106; the prior-loop overseer two-gates finding)
 
 - **Gate 1 — this workstream-plan PR's own merge is NORMAL class.** The diff is `plans/**`-only and
   **bakes no ratification-class change** — it *records* rulings and *plans* work; it amends no spec,
@@ -57,6 +57,12 @@ spine rather than tweaking a slice, it is a **new workstream**, not an amendment
   D23 body change is **authored by the spec author** (`SESSION_START.md` — the implementer does not
   author the clarification) and a **fresh** session implements against it. A §1 ruling means the
   decision the amendment encodes is **pre-settled**, not that the amendment text exists.
+  **The merged §1 record is a *design record, not a substitute authenticated channel* (overseer
+  OV-2):** once this PR merges, to any downstream session under the shared role-session byline the §1
+  ledger reads as a **relay**, and a relayed ruling is *pending, not actionable* (role files §8.3).
+  Each downstream amendment/execution PR **re-confirms its governing ratification through its own
+  executor's authenticated channel** (the in-session human channel) — it must **not** treat *"PR #107
+  §1 says ratified"* as the ratification.
 
 ---
 
@@ -178,14 +184,28 @@ each claim, with the chunk's authority tier). New AC-D (provenance chain). Gener
 
 ### 4.3 (C) Auto-publish gate — *replaces `approve_pill_proposal`*
 **Multi-pass + cross-model self-review (ruling 4):** a generation pass, then independent review passes
-— **grounding/factual** (claims supported by cited corpus chunks), **safety** (the AC-D21 safety
-floor), **provenance** (every claim resolves to a source) — with **cross-model verification**
-(Anthropic-generate / OpenAI-review where a second provider is configured), extending the existing
-`_REVIEW_DEFAULT_OPS` / AC-D23 cross-provider pattern (`provider.py:162`, `DECISIONS.md:572`). A
-**single global confidence threshold** (ruling 1): **≥ threshold → publish live**; **< threshold →
+— **grounding/factual** (claims supported by cited corpus chunks), **safety**, **provenance** (every
+claim resolves to a source) — with **cross-model verification** (Anthropic-generate / OpenAI-review),
+extending the existing `_REVIEW_DEFAULT_OPS` / AC-D23 cross-provider pattern (`provider.py:162`,
+`DECISIONS.md:572`).
+
+**The safety pass owns re-adjudicating the `safety_relevant` classification itself (auditor A-13)** —
+not merely reviewing already-tagged content. With the human approve gate gone, this pass is the
+**autonomous replacement** for AC-D21's pre-publish admin catch on a **false-negative mis-tag** (a
+safety topic mistagged non-safety would otherwise receive AI teaching content via §6.4, violating the
+"Acumen never generates safety teaching content" floor — `DECISIONS.md:529-535`). AC-D21's *"admin
+override the tag in either direction at any time"* relocates to the **retroactive dashboard +
+rollback** (Stage E, §4.5) — it is no longer a pre-publish step.
+
+**Cross-model is the ratified non-negotiable safety floor (ruling 4); its single-provider degradation
+rule is surfaced as NS-7 (§7.2)** — a bare *"where a second provider is configured"* would let the
+floor silently no-op, which NS-7 resolves rather than baking (auditor A-11).
+
+A **single global confidence threshold** (ruling 1): **≥ threshold → publish live**; **< threshold →
 publish-with-warning** (live + dashboard flag, ruling 2) — **nothing held pre-publish, including
-safety-relevant.** Replaces the `approve_pill_proposal` human gate (`catalogue.py:567`). New AC-D
-(auto-publish gate: threshold + self-review protocol).
+safety-relevant** (subject to the NS-7 single-provider safety rule). Replaces the
+`approve_pill_proposal` human gate (`catalogue.py:567`). New AC-D (auto-publish gate: threshold +
+self-review protocol).
 
 ### 4.4 (D) Gap detection + scheduled catalogue-health checks
 Carries #106 Path-3: signal capture (the three §6.5 signals — discovery-miss, question-tag,
@@ -200,7 +220,9 @@ Retroactive surface: recent publishes, **per-item provenance** display, **confid
 **per pill · per question · per generation batch · per source** (per-source = retract everything
 grounded on a discredited/withdrawn corpus source). New AC-CD (dashboard API + rollback contract).
 Replaces the #106 admin generate-from-topic FE as the primary admin surface (the generate button
-survives only as an optional manual-override entry).
+survives only as an optional manual-override entry). It is also the home of the **relocated AC-D21
+safety-tag override** (auditor A-13): admin retoggles `safety_relevant` here retroactively — the
+autonomous-era replacement for the removed pre-publish override.
 
 ### 4.6 (F) Bootstrap-on-publish — *reframed AC-D7/AC-D23*
 The incremental bootstrap (anchor pool + AC-D23 self-review + safety-link curation) — currently
@@ -277,12 +299,22 @@ grep, or it is a §7 silent partial-fold.
 - **AC-D7 body change** — `DECISIONS.md:205` *"When a new pill is approved, an incremental bootstrap
   auto-runs"* → **on auto-publish**; remove the "queue for admin review / approve" governance language
   (`SPEC.md:174`). Class (i)/(ii).
-- **AC-D21 body change** — web search extended from safety-link curation to corpus acquisition
-  (`DECISIONS.md:535`). Class (i)/(ii). *(Ruling 0a: G4b allowed.)*
+- **AC-D21 body change** — (1) web search extended from safety-link curation to corpus acquisition
+  (`DECISIONS.md:535`; ruling 0a, G4b); (2) the **safety self-review pass owns re-adjudicating
+  `safety_relevant`** — the autonomous replacement for the removed pre-publish admin catch on a
+  false-negative mis-tag (auditor A-13); (3) the *"admin override the tag at any time"* capability
+  relocates to the **retroactive dashboard/rollback** (§4.5). Class (i)/(ii).
 - **AC-D22 body change** — Drive-folder ingestion retired in favour of the AI-built corpus; the
   pgvector store + `text-embedding-3-small` + "queried at every generation call" extends to §6.5
   generation (`DECISIONS.md:543-557`). Class (i)/(ii). *(Ruling 0a: Drive folder removed; G4a allowed
   for any residual curated material.)*
+- **Drive→corpus reference mirror-sweep (auditor A-8)** — retiring the Drive dependency carries the
+  same kind of mirror-surface set the §7.1 completeness bar demands of the count invariants; enumerate
+  and fold it to the **same three-class structural-grep rigor**, or the retired dependency rots in the
+  prose mirrors. Known surfaces (re-run the grep at execution HEAD): *"retrieved Drive RAG chunks per
+  AC-D22"* at **`SPEC.md:302`** (§6.1) and **`SPEC.md:334`** (§6.4), the **§7.3 Google Drive API
+  integration** (`SPEC.md:403-405`), **AC-D23 bootstrap step 4** Drive embed (`DECISIONS.md:574`), and
+  the §8.x storage/rollback prose. Class (ii).
 - **AC-D23 body change** — bootstrap-on-approve → bootstrap-on-publish; the existing cross-provider
   self-review pattern (`DECISIONS.md:572`) is cited as the precedent the auto-publish gate extends.
   Class (i)/(ii).
@@ -323,6 +355,15 @@ principle, but **surfaced, not decided** (role files §7):
   **numeric default** + how the dashboard captures the per-type failure data that would later justify
   re-evaluating to per-type (ruling 1's "iff data warrants") is unruled. **Lean: a conservative
   default + per-type confidence telemetry from day one** so the re-evaluation has data. Class (ii).
+- **NS-7 — single-provider cross-model degradation rule (auditor A-11).** Ruling 4 makes cross-model
+  verification a *non-negotiable safety floor*, but a single-provider deployment cannot run it —
+  leaving a tension with ruling 2 (*nothing held pre-publish, including safety-relevant*). A floor
+  that silently no-ops when no second provider is configured is not a floor. **Lean** (per *"rein in
+  if it breaks"* + the safety floor's primacy): make a second provider a **deployment prerequisite for
+  safety-relevant auto-publish**; absent it, safety-relevant content **publishes-with-warning, always
+  dashboard-flagged** (honours ruling 2's "nothing held" + retroactive oversight) rather than
+  auto-publishing on same-model review as though cross-model had run. **This is a genuine cross-ruling
+  edge (ruling 2 ↔ ruling 4) — surfaced for the spec author, not baked.** Class (ii).
 
 ### 7.3 Carried from #106 — still open where this workstream depends on them
 
@@ -343,6 +384,38 @@ governing API contract is the **dashboard/rollback** surface (new AC-CD, §7.1).
 - Any code under `app/` or `frontend/`, or any spec/anchor edit — this PR is **`plans/**` only**
   (the plan doc + the planner wake-log).
 - The per-slice concrete build choices — the future **detail-plan's** job.
+
+---
+
+## 9. #105/#106 carry/supersede ledger (auditor A-14 ≡ overseer OV-1)
+
+The consolidated disposition the doc references at §0.1 / §4.2 / §6 — every #105 workstream + #106
+detail-plan G-item → **{ruled-by-§1 · transformed · carried-still-open · out-of-scope}** with its
+in-doc home, so no #106 decision silently rots (the §7.1 completeness bar, applied to this plan's own
+carry-over). #106 is the **merged-superseded** record (§0.1); this ledger is authoritative for the
+disposition. *(References to **#106's own §9** — the crons slice — at the #106-citing lines are
+external and distinct from this section.)*
+
+| #106 / #105 item | Disposition | In-doc home |
+|---|---|---|
+| **G1** — mint `Operation.pill_generation` | **Carried** (ratified for #106 Slice 1 via the prior chat; the op mint carries to the autonomous generator) — drives the ops-count sweep | §4.2 · §6 (B1) · §7.1 |
+| **G2** — §6.5 amend (separate capture / detection / generation / approval) | **Transformed** — the "approval" phase becomes the **auto-publish gate** (no human approve) | §4.3 · §7.1 (§6.5 rewrite) |
+| **G3** — per-band difficulty decomposition | **Carried, still open** (lean: min/max range only) | §6 (B3) · §7.3 |
+| **G4a / G4b** — Drive-RAG / web-search grounding | **Ruled by §1 (0a): both allowed**, in service of the corpus builder (G4b primary) | §1 · §4.1 |
+| **G5** — signal-capture data model | **Carried, still open** — the Stage-D signal spine | §4.4 · §6 (D1–D2) · §7.3 |
+| **G6** — generation API contract | **Transformed** — the admin generate endpoint is now optional; the governing contract is the **dashboard/rollback** surface (new AC-CD) | §4.5 · §7.3 |
+| **G7a** — keep the `pill_proposal` refiner | **Ruled (prior chat) + reframed** — survives only as the **optional manual-override** path | §0.1 · §4.5 |
+| **G7b** — prompt-registry version trajectory | **Carried** — prompt versioning still applies to the generation op | §6 (B1) |
+| **G8** — admin generate-from-topic FE | **Transformed / superseded** — removed as the primary surface (→ optional manual override); replaced by the **oversight dashboard** (new FE-scope) | §0.1 · §4.5 |
+| **G9** — eighth cron / "seven crons" sweep | **Transformed / expanded** — "seven → N" (corpus-refresh + gap-detection + catalogue-health crons); the cron mirror-sweep applies | §6 (A3/D4) · §7.1 |
+| **G10** — incremental bootstrap-on-approve | **Transformed** — bootstrap-on-approve → **bootstrap-on-publish** | §4.6 · §6 (F1) · §7.1 (AC-D7/D23) |
+| **G-SEQ** — one workstream vs split | **Ruled single** by the new-workstream vehicle (ruling 0b) | §5 |
+| **G-PHASE** — post-P11 ROADMAP placement | **Carried, still open → NS-5** | §7.2 (NS-5) |
+| **signal-3 feature-scope** — assignment scope-clarification admin feature | **Carried, still open** (parallel-to-G8 scope call) | §6 (D1–D2) · §7.3 |
+
+Every #105/#106 G-item is accounted for; the carried-still-open items (G3, G5, G7b, G-PHASE→NS-5,
+signal-3) are re-surfaced by the detail-plan. The PR-body mapping ("G1/G3/G5/signal-3 carry;
+G2/G6/G9/G10/G-SEQ/G-PHASE transform") now has this in-doc home.
 
 ---
 
