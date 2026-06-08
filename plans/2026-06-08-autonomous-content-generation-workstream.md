@@ -219,8 +219,9 @@ Retroactive surface: recent publishes, **per-item provenance** display, **confid
 **source-authority breakdown**, **spot-check sampling**, and the **full rollback matrix** (ruling 5):
 **per pill · per question · per generation batch · per source** (per-source = retract everything
 grounded on a discredited/withdrawn corpus source). New AC-CD (dashboard API + rollback contract).
-Replaces the #106 admin generate-from-topic FE as the primary admin surface (the generate button
-survives only as an optional manual-override entry). It is also the home of the **relocated AC-D21
+Replaces the #106 admin generate-from-topic FE as the primary admin surface — the generate button
+(**G8**) **and** the `pill_proposal` refiner (**G7a**) survive only as **optional manual paths**,
+distinct surfaces, neither part of the autonomous spine. It is also the home of the **relocated AC-D21
 safety-tag override** (auditor A-13): admin retoggles `safety_relevant` here retroactively — the
 autonomous-era replacement for the removed pre-publish override.
 
@@ -404,7 +405,7 @@ external and distinct from this section.)*
 | **G4a / G4b** — Drive-RAG / web-search grounding | **Ruled by §1 (0a): both allowed**, in service of the corpus builder (G4b primary) | §1 · §4.1 |
 | **G5** — signal-capture data model | **Carried, still open** — the Stage-D signal spine | §4.4 · §6 (D1–D2) · §7.3 |
 | **G6** — generation API contract | **Transformed** — the admin generate endpoint is now optional; the governing contract is the **dashboard/rollback** surface (new AC-CD) | §4.5 · §7.3 |
-| **G7a** — keep the `pill_proposal` refiner | **Ruled (prior chat) + reframed** — survives only as the **optional manual-override** path | §0.1 · §4.5 |
+| **G7a** — the `pill_proposal` refiner | **Carried, still open** — lean: survives as an **optional manual path**, distinct from the generate-from-topic *button* (G8). **Not** a §1 ruling: the #106 "keep" was a prior-loop call on a now-superseded plan, so it is carried-lean here, not cited as ratified (cf. OV-2 — a superseded ruling is not actionable) | §4.5 (optional-manual surfaces) |
 | **G7b** — prompt-registry version trajectory | **Carried** — prompt versioning still applies to the generation op | §6 (B1) |
 | **G8** — admin generate-from-topic FE | **Transformed / superseded** — removed as the primary surface (→ optional manual override); replaced by the **oversight dashboard** (new FE-scope) | §0.1 · §4.5 |
 | **G9** — eighth cron / "seven crons" sweep | **Transformed / expanded** — "seven → N" (corpus-refresh + gap-detection + catalogue-health crons); the cron mirror-sweep applies | §6 (A3/D4) · §7.1 |
