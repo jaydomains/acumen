@@ -1,6 +1,6 @@
 # AI pill generation + autonomous gap-detection — granular detail-plan (slice-iterative)
 
-**Status: Slices 1–9 SEALED (9/10) · Slice 10 (D1, Stage D — incremental bootstrap-on-approve, the FINAL slice) detail posted — awaiting plan-auditor + plan-overseer review.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
+**Status: Slices 1–9 SEALED (9/10) · Slice 10 (D1, FINAL) round-1 folded (F-S10-1 async; M-a); overseer sealed @`795c0e3`, auditor re-verify pending.** (Per-slice seals accumulate; the global `Status: final — approved by planner (all slices)` lands after Slice 10. Slice 1's in-slice marker + the reviewers' Slice-1 seals are content-bound to §1's section and are **not** re-staled by appending Slice 2 — §0.1/OV-S1.7.)
 
 **Date:** 2026-06-07
 **Branch:** `claude/dreamy-mccarthy-dAr4h` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1462,7 +1462,7 @@ Auditor S9-P1…S9-P10 otherwise Confirms (the construction-oracle floor approac
 
 ## Slice 10 (D1, Stage D) — incremental bootstrap-on-approve (AC-D7/AC-D23 closure)
 
-**Status: Slice 10 (D1) detail posted — awaiting plan-auditor + plan-overseer review.**
+**Status: Slice 10 (D1) — round-1 folded (F-S10-1: trigger decided ASYNC/enqueued, G10 now scope-only; M-a); awaiting reviewer re-verify.**
 
 **Execution-gate (Gate 2): BLOCKED pending G10 (scope — close incremental-bootstrap-on-approve in
 this workstream or as a separate fix). Detail-planning is not gated.** **D1 is largely independent of
@@ -1494,18 +1494,25 @@ unwired** (workstream §2.3: `run_bootstrap` is called only from the manual admi
 
 ### 10.2 Build choices — concrete (recommended direction)
 
-**(a) Wire `approve_pill_proposal` → per-pill incremental bootstrap.** After `create_pill`
-(`catalogue.py:586`), trigger the incremental bootstrap **scoped to the new pill**:
-`generate_anchor_pool_for_pill(db, pill.id, top_up=True)` + (if `pill.safety_relevant`)
-`curate_links_for_pill(db, pill.id)` — the exact per-pill steps `run_bootstrap` runs, not a full
-catalogue walk. Idempotent (re-approve / re-run skips populated). Applies to **every** approved pill
-(Path-1 refiner + Path-2 generated) — AC-D7 says "when a new pill is approved," not "generated."
+**(a) Wire `approve_pill_proposal` → per-pill incremental bootstrap (enqueued, §10.2b).** After
+`create_pill` (`catalogue.py:586`), enqueue a task scoped to the new pill that runs the **exact
+per-pill steps** `run_bootstrap` runs (not a full catalogue walk): `generate_anchor_pool_for_pill(db,
+pill.id, top_up=True)` (`calibration.py:483`) + `curate_links_for_pill(db, pill.id,
+http_client=…)` (`safety_links.py:170`). **Minor M-a:** pass `http_client` through (the AC-CD15
+zero-network test seam, `safety_links.py:174`); and `curate_links_for_pill` **self-guards**
+`safety_relevant` (`safety_links.py:200`), so call it **unconditionally** — no redundant
+`if pill.safety_relevant` guard. Idempotent (re-approve / re-run skips populated). Applies to **every**
+approved pill (Path-1 refiner + Path-2 generated) — AC-D7 says "when a new pill is approved."
 
-**(b) Sync vs async.** At v1 scale a synchronous per-pill bootstrap on approve is acceptable
-(`bootstrap.py` note: synchronous admin path acceptable at v1; Celery wrapper is the production path
-for large sets) — but anchor generation is N AI calls per band, so a **Celery-task** trigger (enqueue
-the per-pill bootstrap, return the approval immediately) is the safer shape so the admin's approve
-click doesn't block on generation. Sync-vs-async is a G10 build-design sub-point.
+**(b) Trigger is ASYNC / enqueued — decided, not surfaced (auditor F-S10-1).** Per-pill anchor
+generation is **N AI calls per band** (+ inline AC-D19 self-review), so running it **inline in the
+approve request would block / time out the approve HTTP path — a correctness problem, not a latency
+nicety.** The `bootstrap.py:30-33` "synchronous acceptable at v1 scale" note is scoped to the
+**manual** `POST /v1/admin/bootstrap/run` orchestrator, **not** the approve path's fast-response
+contract — so it does not license inline-sync here. **Decision: the approve handler *enqueues* a
+per-pill bootstrap task and returns the approval immediately** (the Celery-wrapper precedent,
+`bootstrap.py:32-33`, + the `processing_tasks` async contract the proposal queue already uses). This
+is a *build* decision the planner makes now, **not** a G10 sub-point.
 
 **(c) Web-search note.** `curate_links_for_pill` (safety pills) uses web search — already AC-D21-scoped
 to safety links (its existing use), so **no G4-style new-use issue** here (unlike A2's generation
@@ -1516,8 +1523,9 @@ grounding). Reuses the existing safety-link path unchanged.
 **G10 — scope: close incremental-bootstrap-on-approve here or as a separate fix?** Class (iii)
 (workstream-scope decision). It's a pre-existing AC-D7/AC-D23 gap (not generator-specific), so it
 *could* be a standalone fix; but it's **small and completes the "approved generated pill gets its
-anchor pool" loop** this workstream builds — recommend **closing it here as D1**. Sub-point: the
-sync-vs-async trigger shape (§10.2b). **Blocks D1 execution.** *(D1 is approve-path-general — it does
+anchor pool" loop** this workstream builds — recommend **closing it here as D1**. G10 is a **scope-only** decision; the
+trigger *shape* (async/enqueued) is a planner build decision already made (§10.2b — not a G10
+sub-point, auditor F-S10-1). **Blocks D1 execution.** *(D1 is approve-path-general — it does
 **not** inherit the Stage-A generator holds; it benefits any approved pill. The one coupling: a
 *generated* pill only reaches approval after Stage A ships, but the wiring itself is independent.)*
 
@@ -1527,9 +1535,10 @@ sync-vs-async trigger shape (§10.2b). **Blocks D1 execution.** *(D1 is approve-
    new pill gets an anchor pool (assert `generate_anchor_pool_for_pill` invoked for the new pill id);
    a safety pill also gets `curate_links_for_pill`. Stub provider, no network.
 2. **Idempotent:** a second bootstrap pass on the same pill is a counter-zero no-op (quota gate).
-3. **Approve still succeeds if bootstrap defers:** if async (§10.2b), the approval returns before
-   generation completes; if a bootstrap step fails, the approval/pill is not rolled back (fail-soft —
-   the pill exists; bootstrap retried on the next pass), mirroring `run_bootstrap`'s recoverable modes.
+3. **Approve returns before bootstrap completes (async, §10.2b):** the approval responds immediately
+   after enqueuing the per-pill bootstrap task (assert the approve handler does **not** block on
+   anchor generation); a bootstrap-task failure does **not** roll back the approval/pill (fail-soft —
+   the pill exists; the task is retried on the next pass), mirroring `run_bootstrap`'s recoverable modes.
 4. **Applies to both origins:** a refiner-approved and a generator-approved pill both trigger it.
 
 **Acceptance:** tests pass under the three-layer green gate; structure-gate passes; no migration (reuses
@@ -1544,7 +1553,16 @@ untouched. **Closes Stage D — and the workstream's detail-plan.**
 
 ### 10.6 Reviewer findings folded — Slice 10 (set-diff record; role files §6)
 
-*(baseline — no reviewer findings yet for Slice 10; `0 dropped / 0 added`. Per-round records append here.)*
+Round 1 folded; none dropped; none a halt-class condition. Set-diff `0 dropped / 1 added [F-S10-1]` (+ minor M-a).
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **F-S10-1** | auditor | Refine | §10.2(b) hedged "sync acceptable at v1" — but that `bootstrap.py:30-33` note is scoped to the **manual orchestrator**, not the approve HTTP path; per-pill anchor-gen is N AI calls/band → inline-sync would **block/time out the approve request (correctness)**, and the trigger shape was wrongly left open under G10. **Folded:** §10.2(b) now **decides ASYNC/enqueued** (Celery-wrapper + `processing_tasks` precedent), drops the sync carry-over; §10.3 G10 reduced to a **scope-only** decision; §10.4 test 3 asserts the approve handler doesn't block. |
+| M-a | auditor | minor | §10.2(a): pass `http_client` (the AC-CD15 test seam, `safety_links.py:174`); `curate_links_for_pill` self-guards `safety_relevant` (`:200`) → call unconditionally, dropped the redundant guard. |
+
+Auditor S10-P1…S10-P10 otherwise Confirms (+ commend S10-P3: the per-pill primitives sidestep the
+no-`pill_id` orchestrator correctly). Overseer **SEALED Slice 10 governance @ `795c0e3`** (build-design
+is the auditor's lane; this fold re-stales it → re-verify pending). Round-trips: **F-S10-1 → 1/5**.
 
 ---
 
