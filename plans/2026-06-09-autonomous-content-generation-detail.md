@@ -1,10 +1,10 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–6 (A1–A3, B1–B3) SEALED 3/3 — Stages A+B complete; Slice 7 (C1) posted**
-(per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–7 (A1–A3, B1–B3, C1) SEALED 3/3; Slice 8 (C2) next** (per-slice
+`Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
-B3 `07080d1`.*
+B3 `07080d1` · C1 `e46e9f5`.* *(NS-7 stands pending-authentication — a C1/C2 execution Gate-2 item, not a seal blocker.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1415,8 +1415,14 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 
 ## Slice 7 (C1) — multi-pass + cross-model self-review protocol (the safety floor)
 
-**Status: posted for Slice 7 review** (not yet sealed — awaiting auditor + overseer Slice-7 review.
-Appending this section does **not** re-stale Slices 1–6's seals — §0.1.)
+**Status: final for Slice 7 — approved by planner** (content-bound to the Slice-7 substance at
+`e46e9f5` — auditor content SEAL (`2cbb5c0`, refreshed after the OV-33 fold; A-34…A-39 hold) + overseer
+governance SEAL (`46c4bcb`, OV-33 resolved) both at `e46e9f5`. **Content-invariant**: only this Status
+line changed; §7.1–§7.7 byte-identical to `e46e9f5`, so it does **not** re-stale the reviewers' seals
+(§0.1/§8). All Slice-7 findings resolved — A-34…A-39 + OV-29…OV-32 Confirms; OV-33 resolved-by-fold;
+§7.7. **NS-7 stands PENDING AUTHENTICATION** — the safety-floor degradation rule is recorded un-baked and
+escalated to the spec author; it does not block the Slice-7 *seal* but is a standing Gate-2 item for
+C1/C2 *execution*.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — C1 reviews the generated drafts, so
 it needs B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 — and (b) C1's own ratification surfaces:** a
