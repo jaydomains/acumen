@@ -1,11 +1,12 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 10
-(D3) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
-`Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
-seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
-B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8`.* *(NS-7 **RULED** degrade-not-gate,
-triple-authenticated — §1. Tracked pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
+**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete + the autonomous trigger
+(D3); Slice 11 (D4) next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
+slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
+`39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73`.* *(NS-7 **RULED**
+degrade-not-gate, triple-authenticated — §1. Tracked pre-global-marker item: C1 §7.3 NS-7-line
+reconciliation — A-45/OV-39.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1929,8 +1930,11 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 
 ## Slice 10 (D3) — gap-detection sweep + catalogue-health checks → generation trigger
 
-**Status: posted for Slice 10 review** (not yet sealed — awaiting auditor + overseer Slice-10 review.
-Appending this section does **not** re-stale Slices 1–9's seals — §0.1.)
+**Status: final for Slice 10 — approved by planner** (content-bound to the Slice-10 §10 substance at
+`ac84af3`/`e8e1a73` — auditor content SEAL (`2951917`, §10 @ `ac84af3`; 5 Confirms / 0 findings, A-18
+coherence resolved) + overseer governance SEAL (`bce823e`, @ `e8e1a73`; OV-50 resolved). **Content-
+invariant**: only this Status line changed; §10.1–§10.7 byte-identical, so it does **not** re-stale the
+reviewers' seals (§0.1/§8). Clean §10 seal — OV-50 was a §1 amend-once-list completeness fix.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — D3 reads `GapSignal` (D1–D2) AND
 *drives generation* (B3/B2), so it needs D1–D2 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 —
