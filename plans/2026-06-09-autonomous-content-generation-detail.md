@@ -1,8 +1,9 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slice 1 (A1) posted for review** (per-slice `Status: final for Slice N`
-markers accumulate as each converges; the global `Status: final — approved by planner (all slices)`
-lands at the bottom only after the last slice seals — §0.1).
+**Status: in progress — Slice 1 (A1) SEALED 3/3 @ `22f3d67`; Slice 2 (A2) posted for review**
+(per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+`Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
+seals — §0.1).
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -425,6 +426,215 @@ Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `5f0a2da`; overseer `cla
 Confirms — no round-trip owed). **Set-diff (this revision):** 11 added [A-1…A-6, OV-1…OV-5] / 0 dropped.
 No push-back; no design change; no halt-class condition. Awaiting both reviewers' re-verification +
 Slice-1 seals at the folded content-SHA, then the planner posts `Status: final for Slice 1`.
+
+---
+
+## Slice 2 (A2) — corpus acquisition pipeline (allowlist web-search → fetch → extract → embed → pgvector)
+
+**Status: posted for Slice 2 review** (not yet sealed — awaiting auditor + overseer Slice-2 review.
+Appending this section does **not** re-stale Slice 1's seal — §0.1: a later-slice append is a content
+change *elsewhere* in the doc.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried A1 holds** — the source-authority AC-D mint
++ NS-5 phase-home (A2 consumes A1's `source_authority` registry, so A1's gates flow through) — **and
+(b) A2's own ratification surfaces:** a **new AC-CD (reference-corpus-builder architecture)**, an
+**AC-D21 body change** (web search extended from safety-link curation to corpus acquisition), an
+**AC-D22 body change** (Drive-folder ingestion retired in favour of the AI-built corpus), a
+**build-dependency decision** for text extraction (AC-CD1), and the carried **NS-1** (retire the Drive
+ingest *code* entirely vs. keep it as a dormant fallback). This detail is written **against the
+recommended direction**; detail-planning is **not** gated, only execution.
+
+**Implements:** the **(A) reference corpus builder** of the workstream pipeline (workstream §3/§4.1) —
+identify authoritative sources per topic from the **A1 allowlist**, **fetch → extract → chunk → embed**
+into the existing pgvector store, stamping the **authority tier + score** (A1) on each stored chunk,
+with **content-hash dedup** for idempotency. It deliberately stops at *acquisition*: **no** corpus
+**retrieval helper** and **no** refresh cron (both Slice 3 / A3), **no** generation grounding (Slice 5 /
+B2), **no** per-draft provenance chain (B2), **no** Drive-code deletion (NS-1 pending — A2 builds the
+replacement; it does not remove the legacy path).
+
+### 2.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The Drive ingest pipeline is the exact reusable precedent.** `app/domain/drive_rag.py` already
+  ships the **pure functions** A2 reuses: `chunk_document(text, *, target_tokens=_TARGET_CHUNK_TOKENS)`
+  (`drive_rag.py:104`, deterministic ~500-token chunking, "same input → same chunks → same hashes"),
+  `content_hash(text) -> 64-char sha256` (`drive_rag.py:164`), the diff-ingest scaffold
+  (`diff_files`, `DiffSets` `drive_rag.py:294-323`), and `cosine_top_k` (`:196`). A2's pipeline is a
+  **sibling acquisition path** feeding an equivalent chunk store — it reuses these, it does **not**
+  re-implement chunking/hashing.
+- **`DriveChunk` is the chunk-store shape to mirror.** `app/models.py:776-799`
+  `class DriveChunk(Base, TimestampMixin, AIProvenanceMixin)` — `embedding: Mapped[list[float]] =
+  mapped_column(Vector(1536))`, `content_hash` (indexed), `source_doc_ref`, `chunk_index`,
+  `chunk_text`, `indexed_at`, IVFFlat index `ix_drive_chunk_embedding`. The **6 `AIProvenanceMixin`
+  columns** (`models.py:213-227`: `ai_provider`/`ai_model`/`ai_cost_usd`/…) carry the embedding call's
+  per-call cost. A2's corpus chunk **mirrors this shape** + adds the authority columns (§2.2a).
+- **The embed-cost path is `record_provenance`.** `app/ai/cost.py:67 record_provenance(entity, result)`
+  stamps the `AIProvenanceMixin` columns from an `AIResult`/`EmbedResult`; `current_month_spend`
+  (`cost.py:169`) sums `ai_cost_usd` per provenance-bearing table. A2's embed **reuses this exactly**
+  (like `DriveChunk`) so the AC-CD8 spend-aggregation invariant holds for corpus embeds, stamped to
+  **OpenAI** (`text-embedding-3-small`, `SystemSettings.embedding_model` `models.py:895-898`).
+- **The fetch + content-hash precedent is `safety_links._fetch_body_hash`.** `safety_links.py:114-145`
+  GETs a URL via an injectable `httpx.AsyncClient` (the AC-CD15 test seam — fake transport in tests,
+  `None`→real in prod, `safety_links.py:174/192`), returns `(status_code, content_hash | None)`,
+  fail-soft on `httpx.HTTPError`/`OSError` (WARN, no row). A2's fetch **reuses this pattern** (factor a
+  shared helper or a sibling) and adds **body retention** (safety-links keeps only the hash; the corpus
+  needs the **body text** to extract+chunk).
+- **`httpx==0.27.2` is the only HTTP/parse dep — there is NO HTML/PDF extraction library.**
+  (`requirements.txt:17`; a grep for `beautifulsoup|bs4|lxml|readability|pypdf|pdfminer|html2text|
+  trafilatura` returns nothing.) So the **"extract"** step is a genuine **build-dependency surface**
+  (§2.3): a new pinned dep (AC-CD1) for HTML→text (and PDF), or a stdlib-only HTML strip with PDFs
+  out-of-scope at A2.
+- **The allowlist-restricted web search is A1 + the existing seam.** `get_web_search_source().search(
+  topic)` (`web_search.py:208`) returns `WebSearchResult{url,title,snippet,source}`; A1's
+  `source_authority.filter_to_allowlist(results)` (Slice 1 §1.2a) restricts to allowlisted hosts +
+  tags each with its `Tier`. A2 **wires** A1's filter around the search call (the application A1's
+  §1.2a deferred to A2). **This is the new AC-D21 use** (web search for *corpus acquisition*, not
+  safety-link curation) → §2.3.
+- **AC-D22 today scopes RAG to Drive + §6.1/§6.4 only.** `DECISIONS.md:555+` AC-D22 — *"a single
+  designated Drive folder … queried at every generation call (test generation per §6.1, learning
+  material per §6.4)"*; `SPEC.md:403-405` §7.3 is the Drive API integration. Retiring the Drive-folder
+  dependency in favour of the AI-built corpus, **and** extending "queried at every generation call" to
+  §6.5 generation, is the **AC-D22 body change** (§2.3) — and carries the **Drive→corpus reference
+  mirror-sweep** the workstream plan named (A-8: `SPEC.md:302/334/403-405`, `DECISIONS.md:574`).
+- **No corpus / provenance table exists** (auditor GT-7, re-verified): no `corpus_*` / `provenance` /
+  `source_*` table in `models.py`. The corpus store is **greenfield** — A2 adds the first table + the
+  workstream's first migration.
+
+### 2.2 Build choices — concrete (recommended direction)
+
+**(a) New `CorpusChunk` model + migration — `app/models.py` + `alembic` revision.** A **new table**
+(not a reuse of `DriveChunk`), mirroring `DriveChunk`'s column shape (`Base, TimestampMixin,
+AIProvenanceMixin`; `Vector(1536)`; `content_hash` indexed; `source_doc_ref`/`chunk_index`/`chunk_text`/
+`indexed_at`; IVFFlat index) **plus** corpus-specific columns: `source_host: str` (the allowlisted host),
+`authority_tier: int` (the A1 `Tier` ordinal), `authority_score: float` (the A1 score). **Rationale for a
+new table, not reuse (DS2-a, §2.3):** (i) **per-source rollback** (ruling 5) needs corpus sources as
+distinct trackable/retractable entities keyed by `source_host` — cleaner separate from Drive chunks; (ii)
+**NS-1** (Drive retirement) is clean if the corpus is its own table — retiring Drive doesn't entangle the
+corpus; (iii) the authority columns are corpus-only. The new IVFFlat index mirrors
+`ix_drive_chunk_embedding`. **Migration up/down clean** (`SESSION_START.md` P1 discipline; the migration
+is an A2 execution deliverable). One `tenant_id` FK from day one (AC-CD3).
+
+**(b) Acquisition pipeline — new `app/domain/corpus_builder.py`.** A domain module composing the reused
+primitives, fail-soft throughout (mirrors the Drive-ingest contract):
+1. **Source discovery (allowlist-restricted).** `get_web_search_source().search(topic, max_results=K)` →
+   `source_authority.filter_to_allowlist(results)` (A1) → the allowlisted, tier-tagged URL set. Empty
+   after filtering → `[]`, no fetch (logged). **This is the ruling-3 "web search restricted to the
+   allowlist" application.**
+2. **Fetch.** For each allowlisted URL, GET via the injectable `httpx.AsyncClient` seam (reuse the
+   `safety_links._fetch_body_hash` pattern, extended to **retain the body**); fail-soft per-URL (WARN,
+   skip) so one dead source never fails the run.
+3. **Extract.** Body → plain text via the §2.3 extraction decision (HTML→text; PDF iff the dep is
+   ratified).
+4. **Chunk.** `chunk_document(text)` (reuse `drive_rag.py:104`) → deterministic ~500-token chunks.
+5. **Cross-reference / dedup (DS2-b, §2.3 — lean).** `content_hash(chunk)` (reuse `drive_rag.py:164`);
+   **skip any chunk whose `content_hash` already exists** for that `source_host` (idempotency — a re-run
+   over an unchanged source adds nothing). Deeper "cross-reference" (claim-level linking across sources)
+   is **surfaced, not built at A2** (§2.3, DS2-b).
+6. **Embed.** Embed each new chunk via the `AIProvider` embed op (`text-embedding-3-small`), `record_
+   provenance` stamping the cost to OpenAI (reuse `cost.py:67`).
+7. **Persist + stamp authority.** Write a `CorpusChunk` row per new chunk with `source_host`/
+   `authority_tier`/`authority_score` from A1 (`source_authority.authority_tier(host)` +
+   `authority_score(tier)`), `embedding`, `content_hash`, provenance columns. Idempotent by
+   `(source_host, content_hash)`.
+
+**(c) No retrieval / no cron / no generation in A2.** The corpus **retrieval helper**
+(`retrieve_corpus_for_topic`, the `cosine_top_k`-over-`CorpusChunk` sibling) and the **hybrid refresh
+cron** are **Slice 3 (A3)**. Generation grounding against the corpus is **Slice 5 (B2)**. A2's callable
+surface is `corpus_builder.acquire_for_topic(db, *, topic, http_client=None)` exercised by §2.5 tests.
+
+### 2.3 Embedded ratification-class items — SURFACED (blocking A2 execution, Gate 2)
+
+- **New AC-CD — reference-corpus-builder architecture.** Class (ii). The acquisition pipeline +
+  `CorpusChunk` table + authority stamping + the pgvector/`AIProvenanceMixin` reuse. Spec-author-authored
+  AC-CD body; the table/index shape rides it. (Next sequential ~**AC-CD25** at the `AC-CD1…AC-CD24`
+  count; the spec author assigns.) Blocks A2 execution.
+- **AC-D21 body change — web search extended to corpus acquisition.** Class (i)/(ii). Web search is
+  AC-D21-scoped to safety-link curation (`web_search.py:1-3`); using it for corpus acquisition is a new
+  AC-D21 use (the workstream's G4b-analog). **Directly consumes DS1-c** (Slice 1): the spec author's
+  DS1-c ruling — whether the allowlist governs *only* corpus acquisition or *also* the AC-D21 curation
+  search — is the **scope of this body change**. Blocks A2 execution.
+- **AC-D22 body change — Drive-folder ingestion retired → AI-built corpus.** Class (i)/(ii). Retire the
+  Drive-folder dependency (ruling 0a); extend "queried at every generation call" to §6.5; carry the
+  **Drive→corpus reference mirror-sweep** (workstream §7.1 / A-8: enumerate + fold `SPEC.md:302/334/
+  403-405`, `DECISIONS.md:574`, §8.x storage/rollback prose to the three-class structural-grep rigor at
+  execution HEAD). **Couples to NS-1** below. Blocks A2 execution.
+- **Build-dependency: text-extraction library (AC-CD1).** Class (ii) (a pinned-dep add is an AC-CD
+  decision, `SESSION_START.md`). Acumen has **no** HTML/PDF extraction lib (§2.1). **Recommendation:**
+  start **HTML-only** with a single small pinned dep (or a stdlib-only strip if it suffices for the
+  allowlisted sources), and **surface whether PDF sources are in A2 scope** (T1 regulators/standards
+  often publish PDFs — `sabs.co.za`/`iso.org` — so PDF support may be load-bearing for the corpus's
+  value; a PDF dep is a heavier add). **Surfaced** — the dep + the HTML-vs-HTML+PDF scope are the
+  spec-author/AC-CD1 call; *"rein in if it breaks"* argues start-minimal, widen deliberately.
+- **NS-1 (carried, workstream §7.2) — retire the Drive ingest *code* entirely vs. keep as dormant
+  fallback.** Class (iii). Ruling 0a removed the Drive *folder dependency*; whether
+  `drive_source.py`/`drive_rag.py` **ingest code** is deleted or kept dormant is unruled. **A2 is where
+  this bites** — the corpus is the Drive replacement. **Lean: remove entirely** (carrying dead
+  scaffolding contradicts "the system builds its own knowledge base"), **but A2 is authored to NOT
+  delete Drive code** (it builds the replacement beside it); the deletion is a *separate* execution step
+  gated on the NS-1 ruling. **Surfaced; held.** *(Note the reuse tension: A2 reuses `drive_rag.py`'s
+  `chunk_document`/`content_hash`/`cosine_top_k` pure functions — if NS-1 = remove, those shared
+  primitives must be **relocated** (e.g. to a shared `app/domain/text_chunking.py`), not deleted with the
+  Drive path. Flag for the NS-1 ruling + A3 retrieval.)*
+
+> **Detail-plan calls (not surfaced) — recorded for the reviewers:**
+> - **DS2-a — new `CorpusChunk` table vs. reuse `DriveChunk`.** Build-design choice; **lean new table**
+>   (§2.2a rationale: per-source rollback + NS-1 cleanliness + corpus-only authority columns). Rides the
+>   corpus-builder AC-CD. If a reviewer judges the table choice anchor-class, it escalates to that AC-CD.
+> - **DS2-b — "cross-reference" step semantics.** Workstream §4.1 lists "cross-reference" between extract
+>   and embed. **Lean: at A2 it means content-hash dedup + per-chunk source provenance** (the minimal,
+>   buildable reading); deeper claim-level cross-source linking is **deferred** (it overlaps the B2
+>   provenance chain) and **surfaced** if a reviewer reads §4.1 as requiring more at A2.
+
+### 2.4 Docs / mirror sweeps
+
+**Spec surfaces — in the spec-author's amendment PR(s)** (spec-author-authored):
+- the new AC-CD body (corpus-builder architecture) in `CODE_SPEC.md` §18 + the AC-CD count/index header;
+- the **AC-D21 body change** (`DECISIONS.md:527+`) + `SPEC.md:407-409` §7.4 web-search prose (corpus-
+  acquisition use; DS1-c scope);
+- the **AC-D22 body change** (`DECISIONS.md:555+`) + `SPEC.md:403-405` §7.3 + the **Drive→corpus
+  mirror-sweep** set (`SPEC.md:302/334`, `DECISIONS.md:574`, §8.x) — run the three-class structural grep
+  at execution HEAD, fold completely (no silent partial-fold);
+- **no "seven crons" / "seven operations" count is touched by A2** — the corpus-refresh **cron** is
+  Slice 3 (A3), not A2.
+
+**Code — in A2's execution** (follows the authored anchors; the migration + model + module + tests +
+any pinned dep):
+- `app/models.py` `CorpusChunk` + the alembic up/down migration + IVFFlat index;
+- `app/domain/corpus_builder.py`;
+- `requirements.txt` / `requirements-worker.txt` pinned extraction dep **iff** ratified (AC-CD1; the
+  unpinned-deps structure-gate must stay green);
+- `app/ai/cost.py` — add `CorpusChunk` to the per-table provenance-spend aggregation set (so corpus
+  embed spend joins `current_month_spend`; mirror the `DriveChunk` registration — verify the exact
+  aggregation list at execution HEAD).
+
+### 2.5 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+New `tests/unit/test_corpus_builder.py` (+ a model/migration test):
+1. **Allowlist-restricted discovery.** A fake `WebSearchSource` returns a mix of allowlisted +
+   non-allowlisted hosts; `acquire_for_topic` **fetches only the allowlisted** URLs (assert the fake
+   httpx transport saw only allowlisted hosts) — the ruling-3 restriction, end-to-end, offline.
+2. **Fetch → extract → chunk → embed → persist.** With a fake httpx transport (HTML body) + the stub
+   embed provider, one source yields N `CorpusChunk` rows carrying `source_host`, the correct
+   `authority_tier`/`authority_score` (A1), `content_hash`, `embedding`, and provenance columns stamped
+   (`ai_provider="stub"`, zero cost — AC-CD15).
+3. **Dedup idempotency.** Re-running `acquire_for_topic` over the **same** source adds **no** new
+   `CorpusChunk` rows (content-hash dedup); a changed body adds only the changed chunks.
+4. **Fail-soft.** A dead URL (fake transport 500 / `httpx.HTTPError`) is skipped (WARN, no row), the run
+   continues for the other sources; an empty post-filter set → no fetch, `[]`.
+5. **Extraction.** HTML→text strips markup deterministically; (PDF iff in scope per §2.3).
+6. **Migration up/down clean** + the structure-gate (AC-CD2/AC-CD17) passes with the new table.
+
+### 2.6 What A2 does NOT touch (scope fence)
+
+No corpus **retrieval helper** + no **refresh cron** (Slice 3 / A3); no **generation** grounding
+(Slice 5 / B2); no **per-draft provenance chain** (B2); no **Drive-code deletion** (NS-1 pending — A2
+builds beside the legacy path, does not remove it); no `Operation` enum change (B1); no router / FE /
+dashboard. The `pill_proposal` refiner + the safety-link curation path are untouched (DS1-c may later
+tighten the latter's sourcing, but that is the AC-D21 body-change ruling, not A2 code).
+
+### 2.7 Reviewer findings folded — Slice 2
+
+*(none yet — Slice 2 posted for review; accumulates the auditor's + overseer's Slice-2 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
 
