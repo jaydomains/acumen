@@ -1471,16 +1471,17 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 governance SEAL (`46c4bcb`, OV-33 resolved) both at `e46e9f5`. **Content-invariant**: only this Status
 line changed; §7.1–§7.7 byte-identical to `e46e9f5`, so it does **not** re-stale the reviewers' seals
 (§0.1/§8). All Slice-7 findings resolved — A-34…A-39 + OV-29…OV-32 Confirms; OV-33 resolved-by-fold;
-§7.7. **NS-7 stands PENDING AUTHENTICATION** — the safety-floor degradation rule is recorded un-baked and
-escalated to the spec author; it does not block the Slice-7 *seal* but is a standing Gate-2 item for
-C1/C2 *execution*.)
+§7.7. **NS-7 — RULED degrade-not-gate (§1; reconciled at the global final-marker pass).** It did not
+block the Slice-7 seal; the C1/C2 NS-7 *execution* Gate-2 item is now un-blocked (re-confirmed per
+execution PR — OV-2).)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — C1 reviews the generated drafts, so
 it needs B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 — and (b) C1's own ratification surfaces:** a
 **new AC-D (self-review protocol, ruling 4)**, the carried **NS-2** (new `Operation`(s) vs reuse
 `anchor_self_review` + the op-count magnitude), an **AC-D21 body change** (the safety pass re-adjudicates
-`safety_relevant`), and the carried **NS-7** (single-provider cross-model degradation — **PENDING
-AUTHENTICATION**, §7.3). Written **against the recommended direction**; detail-planning is **not** gated.
+`safety_relevant`), and **NS-7** (single-provider cross-model degradation — **RULED degrade-not-gate**, §7.3/§1; the C1/C2
+NS-7 *execution* item is un-blocked, re-confirmed per execution PR). Written **against the recommended
+direction**; detail-planning is **not** gated.
 
 **Implements:** the **non-negotiable safety floor** (ruling 4) — the multi-pass + cross-model self-review
 the auto-publish gate (C2) runs on every generated draft: independent **grounding/factual**, **safety**,
@@ -1537,8 +1538,8 @@ the draft was Anthropic-generated). Returns the three verdicts + the re-adjudica
 entry (OpenAI-side: `OP_TO_METHOD: "review"`); the ops-count sweep (§7.4).
 **(c) Cross-model verification (ruling 4 floor).** The passes route to a **different provider from the
 generator** (`provider.py` review routing). When a second provider **is** configured, the floor runs as
-specified. When it is **not**, see NS-7 (§7.3) — **the degradation rule is pending-authentication, not
-baked.**
+specified. When it is **not**, the **RULED** NS-7 degradation applies (§7.3/§1): **single-provider safety-relevant
+publishes-with-warning (always dashboard-flagged) + a "single-provider verified" flag — degrade, no gate.**
 **(d) Determinism / offline.** The stub `content_self_review` returns deterministic per-variant verdicts
 (seeded by the draft) so the protocol is exercisable offline (AC-CD15); a cue-bearing unsafe draft trips
 the safety pass deterministically.
@@ -1605,8 +1606,8 @@ completeness.
    `set(OP_TO_METHOD)==set(Operation)` + `registered_operations()` floors pass with the new member.
 5. **NS-7 degradation is a single switch.** With no second provider configured, the protocol takes the
    **policy-configured** degradation path (a single point C2 reads) — the test asserts the switch exists
-   and defaults conservatively **pending the NS-7 ruling** (it does not bake either posture as the
-   behaviour). Zero-network (AC-CD15).
+   and defaults to **degrade** (the **RULED** NS-7 behavior, §1: single-provider safety-relevant
+   publishes-with-warning + flag, no gate). Zero-network (AC-CD15).
 
 ### 7.6 What C1 does NOT touch (scope fence)
 
@@ -1634,9 +1635,9 @@ auditor's early seal @ `51cf183` is re-staled by this OV-33 fold (§0.1) and re-
 
 **Round-trips:** OV-33 1/5 (A-34…A-39, OV-29…OV-32 = positive-coverage Confirms — no round-trip owed).
 **Set-diff (this revision):** 11 added [A-34…A-39, OV-29…OV-33] / 0 dropped. No push-back; no design
-change (OV-33 *adds* a coordination discipline); no halt-class. **NS-7 remains PENDING AUTHENTICATION**
-(no ruling has arrived through either reviewer's authenticated channel; both reviewers + the planner hold
-it un-baked, and the auditor is escalating it to the spec author). Awaiting both reviewers' (re-)seal at
+change (OV-33 *adds* a coordination discipline); no halt-class. **NS-7 remained PENDING AUTHENTICATION *at this Slice-7 round*** (no ruling had yet arrived through any
+authenticated channel; all parties held it un-baked, the auditor escalating). **It was subsequently RULED
+degrade-not-gate, triple-authenticated — §1 (reconciled into §7.2c/§7.3 at the global pass).** Awaiting both reviewers' (re-)seal at
 the folded content-SHA, then the planner posts `Status: final for Slice 7`.
 
 ---
@@ -1656,9 +1657,9 @@ reconciliation (A-45/OV-39, §1 NS-7 bullet).)
 own ratification surfaces:** a **new AC-D (auto-publish gate: single global threshold + publish-with-
 warning; rulings 1+2)**, an **AC-D7 body change** (remove the human approve/queue gate — generated pills
 auto-publish; **multi-slice with F1**, §1 amend-once), the carried **NS-6** (threshold value + per-type
-telemetry), the **§6.5 rewrite + audit-log governance prose**, and the carried **NS-7** (the safety-
-relevant single-provider degradation switch — **still PENDING AUTHENTICATION**, §8.3). Written **against
-the recommended direction**; detail-planning is **not** gated.
+telemetry), the **§6.5 rewrite + audit-log governance prose**, and **NS-7** (the safety-relevant
+single-provider degradation switch — **RULED degrade-not-gate**, §8.3/§1; the switch default is degrade;
+execution re-confirms per PR). Written **against the recommended direction**; detail-planning is **not** gated.
 
 **Implements:** the **(C) auto-publish gate** — for each B3-produced `pending` draft it runs C1's
 multi-pass self-review, computes a **confidence score**, and **publishes** with **no human step**:
