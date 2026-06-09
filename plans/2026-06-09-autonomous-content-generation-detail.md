@@ -444,6 +444,14 @@ change *elsewhere* in the doc.)
 ingest *code* entirely vs. keep it as a dormant fallback). This detail is written **against the
 recommended direction**; detail-planning is **not** gated, only execution.
 
+**A2's complete execution-precondition set (overseer OV-11 — gate-completeness, parallel to OV-5).**
+`corpus_builder` **imports A1's `source_authority` module**, so A2 execution requires **A1
+executed-and-merged** (the `source_authority` module live on `main`), **not merely A1-*ratified*** — the
+parent §5 A→B serialization implies it; stated here at the gate. The full set:
+**A2 execution-close = { A1 merged (the `source_authority` module live) } + { A2's own ratifications:
+corpus-builder AC-CD · AC-D21 body change · AC-D22 body change · AC-CD1 extraction-dep · NS-1 } +
+{ NS-5 phase-home }.** A2 **detail** is gated by none of these.
+
 **Implements:** the **(A) reference corpus builder** of the workstream pipeline (workstream §3/§4.1) —
 identify authoritative sources per topic from the **A1 allowlist**, **fetch → extract → chunk → embed**
 into the existing pgvector store, stamping the **authority tier + score** (A1) on each stored chunk,
@@ -469,7 +477,7 @@ replacement; it does not remove the legacy path).
   per-call cost. A2's corpus chunk **mirrors this shape** + adds the authority columns (§2.2a).
 - **The embed-cost path is `record_provenance`.** `app/ai/cost.py:67 record_provenance(entity, result)`
   stamps the `AIProvenanceMixin` columns from an `AIResult`/`EmbedResult`; `current_month_spend`
-  (`cost.py:169`) sums `ai_cost_usd` per provenance-bearing table. A2's embed **reuses this exactly**
+  (`cost.py:274`) sums `ai_cost_usd` per provenance-bearing table. A2's embed **reuses this exactly**
   (like `DriveChunk`) so the AC-CD8 spend-aggregation invariant holds for corpus embeds, stamped to
   **OpenAI** (`text-embedding-3-small`, `SystemSettings.embedding_model` `models.py:895-898`).
 - **The fetch + content-hash precedent is `safety_links._fetch_body_hash`.** `safety_links.py:114-145`
@@ -574,15 +582,27 @@ surface is `corpus_builder.acquire_for_topic(db, *, topic, http_client=None)` ex
   `chunk_document`/`content_hash`/`cosine_top_k` pure functions — if NS-1 = remove, those shared
   primitives must be **relocated** (e.g. to a shared `app/domain/text_chunking.py`), not deleted with the
   Drive path. Flag for the NS-1 ruling + A3 retrieval.)*
+- **DS2-b — "cross-reference" step semantics (elevated from a detail-plan call to a SURFACE per auditor
+  A-7).** Workstream §4.1 names **"cross-reference"** as a *distinct* Stage-A pipeline step between
+  *extract* and *embed* (`fetch → extract → cross-reference → embed`). Reducing it to content-hash dedup
+  (the earlier lean) **under-reads a named architecture step with safety-grounding implications**, so it
+  is **surfaced, not decided by lean** (role files §7 — a substantive scope ambiguity in the ratified
+  architecture). The spec author's call among: **(i) dedup-only** — content-hash dedup + per-chunk source
+  provenance (the minimal, buildable reading; planner's original lean); **(ii) cross-*source*
+  corroboration** — track when the *same* claim/fact appears across **≥N authoritative sources** and
+  stamp a corroboration signal on the chunk (materially stronger grounding for safety content, and a
+  natural feed into the Stage-C confidence score + the B2 provenance chain + the ruling-3 authority
+  weighting); **(iii) deeper** claim-level cross-linking. Class (ii) (corpus-builder AC-CD / §6.5 scope).
+  **Lean (per the safety-floor primacy + "rein in if it breaks"): at least (ii) for safety-relevant
+  topics** — cross-source corroboration is cheap insurance against a single weak source grounding safety
+  content — **but surfaced, not baked**; it couples to the corpus-builder AC-CD, NS-6 (confidence
+  telemetry), and the B2 provenance granularity (NS-3). *(Note: this revises the earlier DS2-b lean;
+  §2.2b step 5's content-hash dedup remains the floor, with corroboration layered on iff ruled (ii)+.)*
 
-> **Detail-plan calls (not surfaced) — recorded for the reviewers:**
+> **Detail-plan call (not surfaced) — recorded for the reviewers:**
 > - **DS2-a — new `CorpusChunk` table vs. reuse `DriveChunk`.** Build-design choice; **lean new table**
 >   (§2.2a rationale: per-source rollback + NS-1 cleanliness + corpus-only authority columns). Rides the
 >   corpus-builder AC-CD. If a reviewer judges the table choice anchor-class, it escalates to that AC-CD.
-> - **DS2-b — "cross-reference" step semantics.** Workstream §4.1 lists "cross-reference" between extract
->   and embed. **Lean: at A2 it means content-hash dedup + per-chunk source provenance** (the minimal,
->   buildable reading); deeper claim-level cross-source linking is **deferred** (it overlaps the B2
->   provenance chain) and **surfaced** if a reviewer reads §4.1 as requiring more at A2.
 
 ### 2.4 Docs / mirror sweeps
 
@@ -633,8 +653,29 @@ tighten the latter's sourcing, but that is the AC-D21 body-change ruling, not A2
 
 ### 2.7 Reviewer findings folded — Slice 2
 
-*(none yet — Slice 2 posted for review; accumulates the auditor's + overseer's Slice-2 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `ea9d576` review `4462100323`; overseer
+`claude/sharp-cray-gueezy` @ `217e1e0` comment `4663630337`) — **no blocking finding; 4 + 4 Confirms,
+3 Refines all folded; none dropped.** Slice 1's seal is **not** re-staled (this fold edits only §2.*).
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-9** | auditor | Confirm | Reuse-not-reinvent verified (`chunk_document`/`content_hash`/`cosine_top_k`/`DriveChunk`/`AIProvenanceMixin`/`record_provenance`/`embed` op); no pgvector reinvention, no new `Operation`. No action. |
+| **A-10** | auditor | Confirm | A1 filter wired (§2.2b step 1) + authority stamping (step 7); DS1-c correctly carried, not re-decided. No action. |
+| **A-11** | auditor | Confirm | Ratification surfaces correct & not baked; AC-CD1=stack-lock verified; the relocate-shared-primitives NS-1 catch endorsed. No action. |
+| **A-12** | auditor | Confirm | Scope fence + zero-network tests + the `CorpusChunk`→`current_month_spend` spend-aggregation invariant correctly named; first-migration noted. No action. |
+| **A-7** | auditor | Refine (elevate) | **Folded:** **DS2-b ("cross-reference") elevated from a detail-plan call to a SURFACED item** (§2.3) — the spec author's call among (i) dedup-only / (ii) cross-source corroboration / (iii) deeper; lean ≥(ii) for safety-relevant topics, **surfaced not baked**. Content-hash dedup stays the built floor (§2.2b step 5). |
+| **A-8** | auditor | Refine (low) | **Folded:** §2.1 cite `current_month_spend` `cost.py:169`→**`:274`** (verified `async def current_month_spend` at `:274`). |
+| **OV-7** | overseer | Confirm | Surface-not-bake exact for all five A2 ratification surfaces; DS1-c kept pending; §2.6 leaves AC-D21 curation untouched. No action. |
+| **OV-8** | overseer | Confirm | Count-invariant / Drive→corpus A-8 mirror-sweep completeness named; ops/cron fence correct; AC-CD count-header + `cost.py` registration folded into downstream amendment scope. No action. |
+| **OV-9** | overseer | Confirm | A1→A2 scope-fence handoff + the DS1-d code/DB boundary honored (code registry resolves tier; `CorpusChunk` stores it; E2 keys off `source_host`). No action. |
+| **OV-10** | overseer | Confirm | Merge-class `plans/**`-only / topology / Slice-1-not-re-staled verified. No action. |
+| **OV-11** | overseer | Refine (low) | **Folded:** §2 execution-gate now states A2's **complete precondition set** = { A1 **merged** (the `source_authority` module live) } + { A2's own ratifications } + { NS-5 phase-home } — `corpus_builder` imports A1's module, so A2 needs A1 *merged*, not merely *ratified*. |
+
+**Round-trips:** A-7 1/5 · A-8 1/5 · OV-11 1/5 (A-9…A-12, OV-7…OV-10 are positive-coverage Confirms —
+no round-trip owed). **Set-diff (this revision):** 11 added [A-7…A-12, OV-7…OV-11] / 0 dropped. No
+push-back; no design change beyond the A-7 surface elevation (which *adds* a surface, bakes nothing); no
+halt-class. Awaiting both reviewers' re-verification + Slice-2 seals at the folded content-SHA, then the
+planner posts `Status: final for Slice 2`.
 
 ---
 
