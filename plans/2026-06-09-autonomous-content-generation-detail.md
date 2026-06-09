@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D + E1 complete; Slice 13
-(E2) next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+(E2) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
 `39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a` ·
@@ -211,6 +211,9 @@ that assumes them but blocking no single slice's detail):
     +2) — author the §8.9/AC-CD7 amendment **complete at the final count (nine if NS-1 = retire Drive; ten
     if keep), once, before the first of A3/D4 executes** (the §1 count-invariant-sweeps bullet names the
     co-ownership; this is its amend-once corollary; the *number* is held on NS-1).
+  - **Shared *AC-CD* — the oversight-dashboard AC-CD** (parent §4.5 "dashboard API + rollback contract")
+    is touched by **E1** (the read surface/contract) **and E2** (the rollback contract) — author the
+    **one** oversight AC-CD **complete across E1 (read) + E2 (rollback), once**, not as two partial mints.
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
@@ -2251,6 +2254,125 @@ FE-scope, §12.3); no **gap-detection** (D). The `pill_proposal` refiner admin q
 ### 12.7 Reviewer findings folded — Slice 12
 
 *(none yet — Slice 12 posted for review; accumulates the auditor's + overseer's Slice-12 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 13 (E2) — rollback matrix (pill / question / batch / source) + AC-D21 override relocation
+
+**Status: posted for Slice 13 review** (not yet sealed — awaiting auditor + overseer Slice-13 review.
+Appending this section does **not** re-stale Slices 1–12's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — E2 retracts published content keyed
+by the C2 `PublishRecord`, the B3 `batch_id`, and the B2 `GenerationProvenance.source_host`, so it needs
+C2 + B3 + B2 merged** (transitively the whole spine) **+ NS-5 — and (b) E2's own surfaces:** the
+**rollback AC-CD** (ruling 5 — the same oversight AC-CD as E1, **multi-slice E1+E2**, §1 amend-once) and
+the **AC-D21 body change** (the admin safety-tag override relocates here — **multi-slice A2+C1+E2**, §1
+amend-once). Written **against the recommended direction**; detail-planning is **not** gated.
+
+**Implements:** the **retract** half of retroactive oversight — ruling 5's **full rollback matrix**:
+**per pill**, **per question**, **per generation batch**, **per source** (the killer feature: retract
+everything grounded on a discredited/withdrawn corpus source) — plus the **relocated AC-D21 safety-tag
+override** (admin retoggles `safety_relevant` retroactively). It is the **rein-in** the autonomy
+principle depends on. It stops there: the **read surface** is E1; **bootstrap-on-publish** is F1; **no**
+generation/gate.
+
+### 13.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The four rollback keys all exist by E2 execution.** **per pill** → the published `Pill`
+  (`catalogue.py` retire/`is_retired` per AC-D14); **per question** → the generated `Question`; **per
+  batch** → the B3 `batch_id` stamped on `PublishRecord` + `GenerationProvenance` (Slice 6 §6.2b); **per
+  source** → `GenerationProvenance.source_host` (Slice 5 §5.2b — the **relational, source-queryable**
+  store the §5.1 constraint mandated *for exactly this*).
+- **Retire is the existing retract primitive.** AC-D14 pill retirement (`catalogue.py`) hides a pill from
+  active flows while retaining it — the natural per-pill/per-question rollback action (retract, not hard
+  delete; audit-logged).
+- **The AC-D21 override is the relocated admin catch.** AC-D21's *"admin override the [safety] tag in
+  either direction at any time"* (`DECISIONS.md`) — removed as a *pre-publish* step (C1 §7.1), it
+  **relocates here** as a **retroactive** admin retoggle of `safety_relevant` (the A-13 / AC-D21 change,
+  multi-slice A2+C1+E2).
+- **The oversight AC-CD spans read + rollback.** Parent §4.5 — *"new AC-CD (dashboard API + rollback
+  contract)"*: **one** oversight AC-CD covers E1's read + E2's rollback (multi-slice; §1 amend-once).
+- **Audit-log governance.** `SPEC.md:290` — published/flagged (C2) + **rolled-back** (E2) events; §4.11
+  admin-oversight prose (the E1+E2 §1 amend-once section).
+
+### 13.2 Build choices — concrete (recommended direction)
+
+**(a) Rollback domain fns — `app/domain/oversight.py` (extends E1's module) + `app/routers/oversight.py`
+(admin-gated writes).** Four retract entry points, all **retract-not-delete** (retire + audit, AC-D14):
+- **`rollback_pill(db, pill_id, *, reason)`** — retire the pill + audit `pill_generation.rollback_pill`.
+- **`rollback_question(db, question_id, *, reason)`** — retract the question + audit.
+- **`rollback_batch(db, batch_id, *, reason)`** — retract **all** pills/questions of the batch (join
+  `PublishRecord`/`GenerationProvenance` by `batch_id`) + audit `…rollback_batch`.
+- **`rollback_source(db, source_host, *, reason)`** — the **killer feature**: query
+  `GenerationProvenance` by `source_host` → the set of pills/claims grounded on it → retract them all +
+  optionally **demote the source** in the A1 allowlist (or flag it) so future corpus acquisition skips
+  it + audit `…rollback_source`. *(NS-3 granularity matters here: per-assertion provenance lets per-source
+  rollback retract the **claims** a bad source grounded, not whole drafts wholesale — the precision the
+  §5.1 relational store + the NS-3 lean were for.)*
+**(b) Relocated AC-D21 safety-tag override.** `override_safety_relevant(db, pill_id, *, value, actor_id)`
+— retroactively retoggles `safety_relevant` (reusing the existing `set_safety_relevant` path,
+`catalogue.py:232`, with `safety_relevant_overridden_at`) + audit. The autonomous-era replacement for the
+removed pre-publish admin catch (A-13).
+**(c) Rollback contract = part of the oversight AC-CD.** The retract endpoints + semantics + the
+batch/source join contract ride the **same oversight AC-CD as E1** (read + rollback), authored complete
+across E1+E2 (§1 amend-once).
+**(d) Retract semantics.** Retire (AC-D14), not hard-delete — retains for audit (AC-D14 + the audit-log
+rolled-back events); reversible where sensible (a rolled-back pill can be un-retired). Idempotent
+(re-rolling an already-retired pill is a no-op + audit).
+
+### 13.3 Embedded ratification-class items — SURFACED (blocking E2 execution, Gate 2)
+
+- **Rollback AC-CD (ruling 5) — the same oversight AC-CD as E1, multi-slice E1+E2.** Class (ii). Ruling 5
+  ratified the *matrix* (pill/question/batch/source); E2 details the retract contract. The oversight
+  AC-CD is authored **complete across E1 (read) + E2 (rollback)**, once (§1 amend-once — added, §13.4).
+  Blocks E2 execution.
+- **AC-D21 body change — the safety-tag override relocates to the retroactive rollback (A-13).** Class
+  (i)/(ii). **Multi-slice A2 (web→corpus) + C1 (safety re-adjudication) + E2 (override relocation)** —
+  already on the §1 amend-once AC-D21 entry; E2 is where the override-relocation contribution lands.
+  Blocks E2 execution.
+- **Per-source rollback → A1 allowlist demotion (DS13-a, flagged).** When `rollback_source` retracts a
+  discredited source, should it also **demote/remove that host from the A1 allowlist** (so the corpus
+  builder stops re-acquiring it)? **Lean: yes — flag/demote the source in the registry** (closes the
+  loop: a discredited source is both retracted *and* prevented from re-grounding). This touches the A1
+  source-authority AC-D (a write to the allowlist) — **surfaced** as a small cross-ref to the A1 anchor
+  (does per-source rollback write the allowlist, or only retract content?). Lean: demote. Class (ii).
+- **Carried holds:** E2 needs **C2 + B3 + B2 merged** (the rollback keys) **+ NS-5**.
+
+### 13.4 Docs / mirror sweeps
+
+**§1 amend-once (added):** the **oversight AC-CD** is multi-slice [E1 read + E2 rollback] — author it
+complete across E1+E2, once (the §1 amend-once corollary, added as a shared-AC-CD entry, §13.4). **Spec
+surfaces — spec-author's AC-CD/AC-D21 PR:** the oversight AC-CD (read+rollback contract); the **AC-D21**
+body change (override relocation — the complete A2+C1+E2 scope, §1 amend-once); `SPEC.md:290` audit-log
+rolled-back events; **SPEC §4.11** admin-oversight prose (E1+E2, §1 amend-once); the DS13-a allowlist-
+demotion note (touches the A1 source-authority AC-D). **Code (E2 execution):** the four `rollback_*` fns
++ `override_safety_relevant` + the admin-gated write router + audit actions; **no new model** (reuses
+`Pill` retire + `PublishRecord`/`GenerationProvenance` joins); tests. Absorbable router/module addition.
+
+### 13.5 Tests (AC-CD15 — `app/domain/*` coverage; routers integration-tested, zero-network)
+
+1. **per pill / per question** — `rollback_pill`/`rollback_question` retire the entity + audit; idempotent
+   re-roll is a no-op.
+2. **per batch** — `rollback_batch(batch_id)` retracts **all** entities of the batch (seeded multi-pill
+   batch); entities of other batches untouched.
+3. **per source (killer feature)** — `rollback_source(source_host)` retracts exactly the pills/claims
+   whose `GenerationProvenance` cites that host (seeded provenance across two sources; assert only the
+   targeted source's content is retracted); the source is demoted/flagged in the A1 allowlist (DS13-a).
+4. **AC-D21 override** — `override_safety_relevant` retoggles the tag retroactively + sets
+   `safety_relevant_overridden_at` + audit.
+5. **admin authz** (AC-CD5) + **retract-not-delete** (the entity is retired, still retained) +
+   **zero-network** (AC-CD15).
+
+### 13.6 What E2 does NOT touch (scope fence)
+
+No **read surface** (Slice 12 / E1 — E2 is the write/retract half); no **generation/gate** (B/C); no
+**bootstrap** (Slice 14 / F1); no **hard delete** (retract = retire, AC-D14); no **signal/gap** (D). E2
+*writes* to the A1 allowlist only via the DS13-a source-demotion (surfaced).
+
+### 13.7 Reviewer findings folded — Slice 13
+
+*(none yet — Slice 13 posted for review; accumulates the auditor's + overseer's Slice-13 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
