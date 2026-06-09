@@ -7,6 +7,14 @@ so it does not re-stale the reviewers' markers (role files §8). Hardened throug
 (content: A-1…A-14, A-1r — all confirmed/resolved) + plan-overseer (governance: OV-1/OV-2/OV-3 +
 namespace — all resolved) loop per `.claude/roles/*.md`, bound to Acumen by `plans/REQUIRED_READING.md`.
 
+> **Post-merge ratification addendum (2026-06-09).** PR #107 merged at convergence-SHA `76aa0f2`; the
+> three-sign-off body above is that frozen record. This file has since received **one** post-merge
+> edit: the spec author **ruled NS-7** (§7.2 — single-provider cross-model degradation) through the
+> direct authenticated in-session channel, recorded here per the explicit instruction to land it on
+> this plan's §7.2. The edit touches **only** the NS-7 entry (§7.2) + its two §4.3 cross-references;
+> all other §0–§9 prose remains byte-identical to `76aa0f2`. This addendum is a spec-author ratification
+> record, not a re-opening of the planner-convergence loop.
+
 **Date:** 2026-06-08
 **Branch:** `claude/modest-heisenberg-yofi1z` (this workstream-plan PR).
 **Supersedes:** the human-in-loop assumptions of the **merged** detail-plan PR #106
@@ -200,13 +208,16 @@ safety topic mistagged non-safety would otherwise receive AI teaching content vi
 override the tag in either direction at any time"* relocates to the **retroactive dashboard +
 rollback** (Stage E, §4.5) — it is no longer a pre-publish step.
 
-**Cross-model is the ratified non-negotiable safety floor (ruling 4); its single-provider degradation
-rule is surfaced as NS-7 (§7.2)** — a bare *"where a second provider is configured"* would let the
-floor silently no-op, which NS-7 resolves rather than baking (auditor A-11).
+**Cross-model is the ratified safety floor (ruling 4) *where a second provider is configured*; its
+single-provider degradation rule is ruled by NS-7 (§7.2 — RULED 2026-06-09: publish-with-warning
+fallback; single-provider multi-pass with distinct prompts, flagged "single-provider verified", no
+gate on dual-provider availability)** — a bare *"where a second provider is configured"* would have
+let the floor silently no-op, which NS-7 resolves (auditor A-11).
 
 A **single global confidence threshold** (ruling 1): **≥ threshold → publish live**; **< threshold →
 publish-with-warning** (live + dashboard flag, ruling 2) — **nothing held pre-publish, including
-safety-relevant** (subject to the NS-7 single-provider safety rule). Replaces the
+safety-relevant** (per NS-7 ruling: a single-provider deployment degrades to same-model multi-pass +
+"single-provider verified" dashboard flag, still publish-with-warning — never gated). Replaces the
 `approve_pill_proposal` human gate (`catalogue.py:567`). New AC-D (auto-publish gate: threshold +
 self-review protocol).
 
@@ -359,15 +370,32 @@ principle, but **surfaced, not decided** (role files §7):
   **numeric default** + how the dashboard captures the per-type failure data that would later justify
   re-evaluating to per-type (ruling 1's "iff data warrants") is unruled. **Lean: a conservative
   default + per-type confidence telemetry from day one** so the re-evaluation has data. Class (ii).
-- **NS-7 — single-provider cross-model degradation rule (auditor A-11).** Ruling 4 makes cross-model
-  verification a *non-negotiable safety floor*, but a single-provider deployment cannot run it —
-  leaving a tension with ruling 2 (*nothing held pre-publish, including safety-relevant*). A floor
-  that silently no-ops when no second provider is configured is not a floor. **Lean** (per *"rein in
-  if it breaks"* + the safety floor's primacy): make a second provider a **deployment prerequisite for
-  safety-relevant auto-publish**; absent it, safety-relevant content **publishes-with-warning, always
-  dashboard-flagged** (honours ruling 2's "nothing held" + retroactive oversight) rather than
-  auto-publishing on same-model review as though cross-model had run. **This is a genuine cross-ruling
-  edge (ruling 2 ↔ ruling 4) — surfaced for the spec author, not baked.** Class (ii).
+- **NS-7 — single-provider cross-model degradation rule (auditor A-11). — RULED 2026-06-09**
+  (spec author, **direct authenticated in-session channel**; origin: *this conversation*, per the §1
+  channel — `REQUIRED_READING.md` §7 / role files §8.3). Ruling 4 makes cross-model verification a
+  *non-negotiable safety floor*, but a single-provider deployment cannot run it — leaving a tension
+  with ruling 2 (*nothing held pre-publish, including safety-relevant*). A floor that silently no-ops
+  when no second provider is configured is not a floor. **The planner's surfaced lean** was to make a
+  second provider a **deployment prerequisite for safety-relevant auto-publish** (gate absent it).
+  **The spec author ruled *against* that lean — "publish-with-warning fallback", no gate.** When only
+  one AI provider is configured:
+  - cross-model verification (ruling 4) **downgrades to single-provider multi-pass** — multiple review
+    passes with **distinct prompts**, same model;
+  - generated content is flagged **"single-provider verified"** in the provenance chain;
+  - **auto-publish proceeds per ruling 2** (publish-with-warning), surfacing the lower-confidence state
+    on the oversight dashboard;
+  - **no gate on dual-provider availability** — *autonomy means run with what's configured* (standing
+    principle §0/§1);
+  - the dashboard **surfaces single-provider-verified items distinctly** so admin can spot-check at a
+    higher rate if desired.
+
+  **This ruling qualifies ruling 4's "non-negotiable" framing:** the floor is *cross-model where a
+  second provider is configured*; single-provider **degrades to same-model multi-pass rather than
+  gating** — it does **not** hold safety-relevant content pre-publish (honouring ruling 2). The
+  cross-ruling edge (ruling 2 ↔ ruling 4) is **resolved in favour of ruling 2 + the autonomy
+  principle**, superseding the prerequisite-gate lean above. Class (ii). **Downstream (Gate 2):**
+  folds into the **new AC-D auto-publish gate** (§4.3 / §7.1) — the anchor body is spec-author-authored
+  in its own ratified PR; this entry records the **design ruling**, not the anchor text.
 
 ### 7.3 Carried from #106 — still open where this workstream depends on them
 
