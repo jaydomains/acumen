@@ -1,12 +1,12 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D + E1 complete; Slice 13
-(E2) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D+E complete; Slice 14 (F1) — the FINAL slice —
+next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
 `39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a` ·
-E1 `20df54e`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1. Tracked pre-global-marker
-item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
+E1 `20df54e` · E2 `6079e06`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1. Tracked
+pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -2260,8 +2260,11 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 
 ## Slice 13 (E2) — rollback matrix (pill / question / batch / source) + AC-D21 override relocation
 
-**Status: posted for Slice 13 review** (not yet sealed — awaiting auditor + overseer Slice-13 review.
-Appending this section does **not** re-stale Slices 1–12's seals — §0.1.)
+**Status: final for Slice 13 — approved by planner** (content-bound to the Slice-13 §13 substance at
+`6079e06` — auditor content SEAL (`626a9ef`, refreshed after the OV-64 fold; A-64…A-67 hold) + overseer
+governance SEAL (`65e5d8a`, OV-64 resolved) both at `6079e06`. **Content-invariant**: only this Status
+line changed; §13.1–§13.7 byte-identical to `6079e06`, so it does **not** re-stale the reviewers' seals
+(§0.1/§8). **Stage E complete.**)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — E2 retracts published content keyed
 by the C2 `PublishRecord`, the B3 `batch_id`, and the B2 `GenerationProvenance.source_host`, so it needs
