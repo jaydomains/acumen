@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D+E complete; Slice 14 (F1) — the FINAL slice —
-next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
 `39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a` ·
@@ -2408,6 +2408,136 @@ SHA.*
 owed). **Set-diff (this revision):** 5 added [OV-60…OV-64] / 0 dropped. No push-back; no halt-class —
 OV-64 *sharpens* a surfaced item (DS13-a) into its true DS1-d-coupled form, bakes nothing. Awaiting both
 reviewers' (re-)seal at the folded content-SHA, then the planner posts `Status: final for Slice 13`.
+
+---
+
+## Slice 14 (F1) — bootstrap-on-publish (reframed AC-D7/AC-D23) — the FINAL slice
+
+**Status: posted for Slice 14 review** (not yet sealed — awaiting auditor + overseer Slice-14 review.
+Appending this section does **not** re-stale Slices 1–13's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — F1 rides the C2 auto-publish event,
+so it needs C2 merged** (transitively the spine) **+ NS-5 — and (b) F1's own surfaces:** an **AC-D7 body
+change** (the incremental bootstrap fires on **auto-publish** instead of **approve** — multi-slice
+[C2+F1], §1 amend-once) and an **AC-D23 body change** (bootstrap-on-approve → bootstrap-on-publish —
+multi-slice [B2/C1+F1], §1 amend-once). Written **against the recommended direction**; detail-planning is
+**not** gated. **This is the last slice; after its seal, the global final-marker pass runs (§ below).**
+
+**Implements:** the loop-closer — the incremental bootstrap (anchor pool + AC-D23 cross-provider
+self-review + safety-link curation) that currently *assumes* it fires **on approve** now fires **on
+auto-publish**, so a newly auto-published pill immediately gets its anchor pool + safety links. Small,
+reuse-only. It stops there: the **publish gate** is C2; **generation** is B; **no** new model.
+
+### 14.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The bootstrap is currently unwired (auditor GT-8).** `run_bootstrap` (`bootstrap.py:64-152`)
+  orchestrates anchor-pool top-up + self-review + safety-link curation + Drive ingest; it is **not**
+  invoked from `approve_pill_proposal`. The per-pill primitives are **`generate_anchor_pool_for_pill`**
+  (`calibration.py:483`) + **`curate_links_for_pill`** (`safety_links.py:170`) — idempotent,
+  re-runnable, skip-already-populated.
+- **The anchor-on-approve assumption is in the anchors.** `DECISIONS.md:205` (AC-D7 *Implications*) —
+  *"When a new pill is approved, an incremental bootstrap auto-runs per AC-D23"*; `DECISIONS.md:580`
+  (AC-D23). With the approve gate removed (C2), the trigger **moves approve → auto-publish**.
+- **The publish event is C2's `auto_publish_draft`** (Slice 8 §8.2b) — F1 fires the per-pill bootstrap
+  **on that publish step**, **enqueued/async** so publish stays fast (the #106 D1 decision: the per-pill
+  anchor-gen is N AI calls/band → inline-sync would block the publish path; enqueue via a Celery wrapper /
+  `processing_tasks`).
+- **AC-D23 is the cross-provider precedent C1 already extended** (Slice 7 §7.1) — F1's AC-D23 change is
+  the trigger reframe (on-approve → on-publish), and AC-D23 cites the cross-provider pattern the
+  auto-publish self-review (C1) extends (the multi-slice [B2/C1+F1] AC-D23 amend-once).
+
+### 14.2 Build choices — concrete (recommended direction)
+
+**(a) Wire bootstrap-on-publish — at C2's `auto_publish_draft` (or a publish-event hook).** On a
+successful publish (≥threshold **and** publish-with-warning — every published pill bootstraps), **enqueue**
+a per-pill bootstrap task that runs `generate_anchor_pool_for_pill(pill)` + (if `safety_relevant`)
+`curate_links_for_pill(pill)` — reusing the idempotent primitives. **Async** (Celery task /
+`processing_tasks`), so publish returns fast (the #106 D1 async decision). Audit `pill_generation.
+bootstrap`.
+**(b) Reuse-only — no new logic.** The anchor-pool gen, self-review (AC-D23), and safety-link curation
+already exist (P8/P11); F1 only **moves the trigger** approve → publish and wires the per-pill primitives
+to the publish event. `run_bootstrap` (the manual orchestrator) is untouched; F1 is the per-pill,
+per-publish incremental path.
+**(c) Safety-relevant handling.** A published safety-relevant pill curates safety links (no AI teaching
+content — AC-D21 floor); the safety-link curation already self-guards on `safety_relevant`
+(`safety_links.py:200`), so the call is unconditional-and-self-guarded (the #106 minor finding M-a).
+
+### 14.3 Embedded ratification-class items — SURFACED (blocking F1 execution, Gate 2)
+
+- **AC-D7 body change — incremental bootstrap fires on auto-publish, not approve; remove the "queue for
+  admin review / approve" language.** Class (i)/(ii). **Multi-slice [C2 remove approve gate + F1
+  bootstrap-on-publish]** — already on the §1 amend-once AC-D7 entry; F1 is where the bootstrap-trigger
+  contribution lands. Blocks F1 execution.
+- **AC-D23 body change — bootstrap-on-approve → bootstrap-on-publish.** Class (i)/(ii). **Multi-slice
+  [B2/C1 (the cross-provider self-review precedent extended) + F1 (the trigger reframe)]** — already on
+  the §1 amend-once AC-D23 entry. Blocks F1 execution.
+- **Carried holds:** F1 needs **C2 merged** (the publish event it rides) **+ NS-5**.
+
+> **Detail-plan call (not surfaced):** **DS14-a — async-enqueued bootstrap** (the #106 D1 decision: the
+> per-pill anchor-gen is N AI calls → enqueue so publish stays fast). Build choice; lean async via the
+> existing `processing_tasks`/Celery-wrapper pattern.
+
+### 14.4 Docs / mirror sweeps
+
+**Spec surfaces — spec-author's AC-D7/AC-D23 PR(s):** the **AC-D7** body (bootstrap on auto-publish;
+remove approve/queue language — the complete [C2+F1] scope, §1 amend-once); the **AC-D23** body
+(on-publish trigger — the complete [B2/C1+F1] scope, §1 amend-once); `SPEC.md:174` (the approve/queue
+prose); the §6.5 / §8.x bootstrap-trigger prose. **Code (F1 execution):** the publish-event bootstrap
+enqueue at `auto_publish_draft` + the per-pill task wrapper + audit; **reuse** the existing primitives;
+tests. **No new model/migration.**
+
+### 14.5 Tests (AC-CD15 — zero-network)
+
+1. **Publish triggers bootstrap (async).** A successful `auto_publish_draft` enqueues a per-pill bootstrap
+   task (assert the task is enqueued, not run inline — publish returns fast); the task calls
+   `generate_anchor_pool_for_pill` (+ `curate_links_for_pill` for safety-relevant).
+2. **Idempotent.** Re-running the bootstrap for an already-populated pill is a no-op (the primitives
+   skip-already-populated).
+3. **Safety-relevant.** A safety pill bootstraps safety links (self-guarded); a non-safety pill skips
+   link curation.
+4. **Approve path unchanged for the refiner.** `approve_pill_proposal` (the `pill_proposal` refiner,
+   G7a) is untouched. **Zero-network** (primitives stubbed; AC-CD15).
+
+### 14.6 What F1 does NOT touch (scope fence)
+
+No **publish gate / threshold** (Slice 8 / C2 — F1 rides its event); no **generation** (B); no **new
+anchor/safety-link logic** (reuse P8/P11 primitives); no **`run_bootstrap` manual orchestrator** (F1 is
+the per-pill incremental path); no **dashboard / rollback** (E); no **new model**. The `pill_proposal`
+refiner approve path is untouched (G7a).
+
+### 14.7 Reviewer findings folded — Slice 14
+
+*(none yet — Slice 14 posted for review; accumulates the auditor's + overseer's Slice-14 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Global final-marker pass (after Slice 14 seals)
+
+When Slice 14 (F1) seals 3/3, the detail-plan is **complete** (all 14 slices sealed). The planner then
+runs the **global final-marker pass** — a single reconciliation + global marker, in this order:
+
+1. **Reconcile the tracked pre-global-marker item (A-45 / OV-39):** edit **C1 §7.3**'s now-stale
+   "pending-authentication" NS-7 line to the **RULED degrade-not-gate** status (pointing at the §1
+   status-of-record). This **re-stales C1's seal** — the global pass is where that single C1 re-stale is
+   absorbed (the auditor + overseer re-verify C1 + the whole doc at the global SHA). *(The overseer
+   carries this as a standing merge-exec checklist item — it must show no §7.3↔§1 contradiction before
+   the merge.)*
+2. **Post the global planner marker:** flip the **top** `Status:` line to
+   **`Status: final — approved by planner (all slices)`** — a content-invariant marker w.r.t. the
+   whole-doc substance at that SHA (only the top Status token changes beyond step 1's §7.3 reconciliation).
+3. **Convergence (§0.1 / OV-4):** all **three** parties post their **global** final-markers at the
+   **final whole-doc content-SHA** (the planner's on the canonical branch; the auditor's + overseer's on
+   their review branches, content-bound). Gate 1 merge = three global sign-offs at one whole-doc SHA +
+   the **three-layer green gate** + the **24h override window** (collapsed to zero by a present spec
+   author) → **the overseer flips draft→ready and squash-merges.** The planner **never** flips draft→ready
+   and **never** merges; stands down only on merge verified via `git ls-remote`.
+
+**Gate 2 (unchanged):** merging this `plans/**`-only detail-plan **ratifies none** of the surfaced
+items. Each downstream amendment/execution PR re-confirms its governing ratification through its own
+authenticated channel (OV-2) — including **NS-7** (now RULED + recorded with its trail, but re-confirmed
+per execution PR) and the **multi-slice amend-once** anchors/sections/model/AC-CD/count-invariants (§1),
+each authored complete before its first touching slice executes.
 
 ---
 
