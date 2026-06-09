@@ -1,9 +1,9 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–3 (A1–A3) SEALED 3/3 (@ `22f3d67` / `5d26906` / `5a6f84e`); Slice 4
-(B1) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–4 (A1–A3, B1) SEALED 3/3; Slice 5 (B2) next** (per-slice
+`Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
-seals — §0.1).
+seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c`.*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -877,8 +877,11 @@ reviewers' re-verification + Slice-3 seals at the folded content-SHA, then the p
 
 ## Slice 4 (B1) — `Operation.pill_generation` mint + provider/stub wiring
 
-**Status: posted for Slice 4 review** (not yet sealed — awaiting auditor + overseer Slice-4 review.
-Appending this section does **not** re-stale Slices 1–3's seals — §0.1.)
+**Status: final for Slice 4 — approved by planner** (content-bound to the Slice-4 substance at
+`442247c` — auditor content SEAL (`964e31b`, refreshed after the OV-20 fold) + overseer governance SEAL
+(`2524241`) both at `442247c`. **Content-invariant**: only this Status line changed; §4.1–§4.7
+byte-identical to `442247c`, so it does **not** re-stale the reviewers' seals (§0.1/§8). All Slice-4
+findings resolved — A-19…A-23 + OV-16…OV-19 Confirms; OV-20 resolved-by-fold; §4.7.)
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated ratification of the `Operation.pill_generation`
 mint (carried G1) + the prompt-registry version trajectory (carried G7b).** This detail is written
