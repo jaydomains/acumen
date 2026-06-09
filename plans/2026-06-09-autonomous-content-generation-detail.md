@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D complete; Slice 12
-(E1) next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+(E1) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
 `39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a`.*
@@ -2142,6 +2142,110 @@ only co-owns the *count* amendment with it); no **model/migration**; no **dashbo
 ### 11.7 Reviewer findings folded — Slice 11
 
 *(none yet — Slice 11 posted for review; accumulates the auditor's + overseer's Slice-11 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 12 (E1) — oversight dashboard read surface
+
+**Status: posted for Slice 12 review** (not yet sealed — awaiting auditor + overseer Slice-12 review.
+Appending this section does **not** re-stale Slices 1–11's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — E1 reads the C2 `PublishRecord` + the
+B2 `GenerationProvenance`, so it needs C2 + B2 merged** (transitively the whole spine) **+ NS-5 — and
+(b) E1's own surfaces:** a **new AC-CD (oversight-dashboard API + read contract)** and the **dashboard
+admin FE scope** (an FE-phase deliverable — surfaced, parallel-to-G8). Written **against the recommended
+direction**; detail-planning is **not** gated.
+
+**Implements:** the **(E) retroactive oversight** read surface — the autonomy principle's other half
+(*"balls to the wall, rein in if it breaks"* needs the *seeing* that enables the rein-in). It exposes:
+**recent publishes**, **per-item provenance** (claim → corpus source + authority tier), **confidence
+scores**, **source-authority breakdown**, and **spot-check sampling**. It stops at the **read** surface:
+the **rollback matrix** (write/retract) is Slice 13 / E2; **no** generation/gate (B/C); the **FE** is a
+surfaced FE-scope deliverable, not built in this backend detail-plan.
+
+### 12.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The read sources exist by the time E1 executes.** C2's **`PublishRecord`** (DS8-a — pill_id,
+  batch_id, confidence, per-pass verdicts, low_confidence, per-type telemetry, Slice 8 §8.2d) is the
+  recent-publishes + confidence + flag surface; B2's **`GenerationProvenance`** (claim → corpus_chunk →
+  source_host → authority_tier, Slice 5 §5.2b) is the per-item provenance + authority-breakdown surface;
+  A1's **authority tiers/scores** (Slice 1) label the breakdown.
+- **The layering is thin-router → domain (AC-CD2).** `app/routers/*` (validation + authz + envelope) →
+  `app/domain/*` (the read/aggregation). E1 adds read endpoints + domain read fns; **admin-role-gated**
+  (AC-CD5 `permissions.py`). No business logic in the router.
+- **Spot-check sampling is greenfield.** A retroactive review sampler (random + low-confidence-weighted)
+  over recent publishes — a new domain read fn.
+- **The dashboard replaces the #106 admin generate-from-topic FE as the primary admin surface** (parent
+  §4.5) — so the **FE is a real deliverable**, but an **FE-phase** one (the backend detail-plan surfaces
+  it; it is not built here, parallel-to-G8).
+
+### 12.2 Build choices — concrete (recommended direction)
+
+**(a) Dashboard read API — `app/routers/oversight.py` (new) + `app/domain/oversight.py` (new).**
+Admin-role-gated read endpoints (thin routers → domain reads):
+- **recent publishes** — paginated over `PublishRecord` (newest first; filterable by `low_confidence`,
+  date, subject), each row joining the pill + confidence + per-type telemetry;
+- **per-item provenance** — for a pill/publish, the `GenerationProvenance` claim→source rows with
+  authority tier (the provenance chain display);
+- **confidence** — the per-publish confidence + the per-pass verdicts (from `PublishRecord`);
+- **source-authority breakdown** — aggregate publishes/claims by `authority_tier`/`source_host` (which
+  tiers/sources ground the live content — the rein-in radar);
+- **spot-check sampling** — `sample_for_spotcheck(db, *, n, bias="low_confidence")` returning a
+  random/low-confidence-weighted sample of recent publishes for retroactive human review.
+**(b) New AC-CD — oversight-dashboard API + read contract.** The endpoint set + response schemas + the
+admin authz. Spec-author-authored AC-CD body; the routers/domain ride it.
+**(c) Read-only — no writes.** E1 is strictly read/aggregate; the **rollback** (retract/write) is E2.
+The `PublishRecord` is the read-surface DS8-a already designated (no new persistence in E1).
+**(d) FE deferred (surfaced).** The admin dashboard FE (the primary admin surface, parent §4.5) is an
+**FE-phase deliverable** — E1 ships the backend read API; the FE is surfaced (§12.3), not built here.
+
+### 12.3 Embedded ratification-class items — SURFACED (blocking E1 execution, Gate 2)
+
+- **New AC-CD — oversight-dashboard API + read contract.** Class (ii). The read endpoint set + response
+  schemas + admin authz; consumes `PublishRecord` + `GenerationProvenance` + authority. Blocks E1
+  execution.
+- **Dashboard admin FE scope (parallel-to-G8).** Class (iii). The dashboard's **admin FE** is the
+  primary admin oversight surface (parent §4.5) — a real deliverable, but an **FE-phase** one (a new
+  `fe-specs/FE-N` + FE slice), not built in this backend detail-plan. **Lean: E1 = the backend read API
+  now; the FE is a separate FE-scope deliverable** (surfaced, parallel-to-G8/signal-3). **Surfaced;
+  held** — the spec author rules the FE scope/placement (couples to NS-5 ROADMAP placement: the
+  oversight FE is an FE-phase home question).
+- **Carried holds:** E1 needs **C2 + B2 merged** (the read sources) **+ NS-5**.
+
+> **Detail-plan call (not surfaced):** **DS12-a** — `PublishRecord` (DS8-a) is the recent-publishes read
+> surface (no new E1 persistence); spot-check sampling is a domain read fn. Build choices riding the
+> dashboard AC-CD.
+
+### 12.4 Docs / mirror sweeps
+
+**Spec surfaces — spec-author's AC-CD PR:** the new dashboard AC-CD (`CODE_SPEC.md` §18 + count/index
+header); a SPEC §4.11 (admin oversight) / §6.5 note that oversight is **retroactive** (read + the E2
+rollback); the FE-scope decision (if ruled in scope, an `fe-specs/FE-N`). **Code (E1 execution):**
+`app/routers/oversight.py` + `app/domain/oversight.py` + the read fns + admin authz + tests. **No new
+model/migration** (reads `PublishRecord`/`GenerationProvenance`). New router/module = an absorbable
+structural addition (AC-CD2 structure-gate stays green) folded into the slice handover.
+
+### 12.5 Tests (AC-CD15 — `app/domain/*` coverage; routers integration-tested, zero-network)
+
+1. **recent publishes** — seeded `PublishRecord`s return newest-first, paginated, filterable by
+   `low_confidence`.
+2. **per-item provenance** — a publish's `GenerationProvenance` rows return the claim→source→tier chain.
+3. **source-authority breakdown** — aggregate-by-tier returns correct counts over seeded provenance.
+4. **spot-check sampling** — `sample_for_spotcheck(bias="low_confidence")` over-samples low-confidence
+   publishes; deterministic under a seed.
+5. **admin authz** — non-admin role is rejected (AC-CD5); admin passes.
+6. **Zero-network** (no AI call — pure reads; AC-CD15).
+
+### 12.6 What E1 does NOT touch (scope fence)
+
+No **rollback / retract / write** (Slice 13 / E2 — E1 is read-only); no **generation/gate** (B/C); no
+**new persistence** (reads `PublishRecord`/`GenerationProvenance`); no **dashboard FE** (surfaced
+FE-scope, §12.3); no **gap-detection** (D). The `pill_proposal` refiner admin queue is untouched.
+
+### 12.7 Reviewer findings folded — Slice 12
+
+*(none yet — Slice 12 posted for review; accumulates the auditor's + overseer's Slice-12 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
