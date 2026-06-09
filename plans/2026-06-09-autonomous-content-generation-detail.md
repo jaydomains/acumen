@@ -152,16 +152,23 @@ that assumes them but blocking no single slice's detail):
   **spec-prose** count that **excludes `embed`**, so the Slice-4/7 ops sweep is *spec-prose "seven" →
   "seven+K"* mapped onto an enum **already at 8** — **not** a naive "enum seven → eight." The Slice-4/7
   detail must encode it that way.
-- **NS-7 — reported spec-author ruling, pending authentication (auditor A-6).** The auditor reports a
-  spec-author NS-7 ruling — *degrade-not-gate*: single-provider safety-relevant content
-  **publishes-with-warning** (always dashboard-flagged) rather than being **gated** behind a
-  second-provider prerequisite, **overriding the planner's PR #107 §7.2 prereq-gate lean** — on an
-  **unmerged** addendum branch. Per role files §8.3 a ruling seen second-hand / on an unmerged branch is
-  **pending, not actionable** until authenticated through the direct channel; its **authentication
-  status is the overseer's lane**. **Slice 7 (C1) / Slice 8 (C2) detail will reflect the ruled outcome
-  once authenticated** — it is **not baked now**, and NS-7 does **not** touch Slice 1. Recorded here so
-  the ruling is not silently lost between PR #107's merged §7.2 text (which predates the addendum) and
-  the Slice-7/8 detail that consumes it.
+- **NS-7 — RULED: degrade-not-gate (authenticated via the planner channel, this conversation,
+  2026-06-09).** **Single-provider deployments: safety-relevant content PUBLISHES-WITH-WARNING (always
+  dashboard-flagged) on same-model multi-pass review; NO second-provider prerequisite gate** (honours
+  ruling 2's "nothing held pre-publish"). This is the **NS-7 status-of-record** for the whole plan. It
+  supersedes the planner's original PR #107 §7.2 prereq-gate lean and the earlier "pending-authentication"
+  framing. **Authentication trail (role files §8.3):** the reported degrade-not-gate ruling first appeared
+  on the **unmerged** `vibrant-euler@92886fe` addendum — a **relay** (pending, not actionable) per
+  OV-6/A-6; the plan-auditor recorded it authenticated to **its** session; the **plan-overseer's lane
+  reported it still pending** ("no ruling via my channel"); the **planner then confirmed it through the
+  planner's own authenticated channel** (the in-session spec-author, this conversation) — *that* is the
+  authentication this ruling rests on, not the relay. **Effect:** C1's safety-pass degradation path
+  (already authored as the recommended direction) **is the ruled behavior**; C1 §7.3 / C2 §8.3 set the
+  degradation switch to **degrade**, and the C1/C2 *execution* NS-7 Gate-2 item is **un-blocked** (each
+  execution PR still re-confirms NS-7 through its own authenticated channel, per OV-2 relay discipline —
+  the merged detail-plan reads as a relay downstream). *(C1 §7.3's "pending-authentication" wording is
+  superseded by this bullet; its substance — the degradation switch — is unchanged, so C1's seal is not
+  re-staled. C2 §8.3 reflects the ruling directly, C2 being mid-review.)*
 - **Multi-slice anchor amend-once (overseer OV-33) — author each shared anchor's amendment COMPLETE
   up-front.** Three canonical anchors are touched by **more than one slice**, and the earlier slice was
   **sealed with the narrower scope** — a partial-amend / double-amend risk (the §7 silent-partial-fold
@@ -176,6 +183,11 @@ that assumes them but blocking no single slice's detail):
     incremental bootstrap trigger moves approve → publish);
   - **AC-D23** — B2/C1 (the cross-provider self-review precedent extended) **+** F1 (bootstrap's anchor
     self-review step) — verify the touching set at execution HEAD.
+  - **Shared SPEC *sections* (overseer OV-38) — the discipline extends beyond anchors to multi-slice
+    spec-section rewrites:** **SPEC §6.5** [C2 auto-publish + D3 §6.5 gap-detection/generation rewrite]
+    and the **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] are each
+    rewritten by more than one slice — author each section's rewrite **complete across all touching
+    slices, once**, same as the anchors.
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
@@ -1689,10 +1701,14 @@ C2 bakes neither; it wires the switch the C1 protocol exposes.
 - **§6.5 rewrite + audit-log governance prose.** Class (ii). `SPEC.md:340-348` §6.5 → autonomous
   generation + auto-publish (coordinate with D3, the §6.5-rewrite owner — amend §6.5 once); `SPEC.md:290`
   audit-log prose *"pill proposals approved or rejected"* → published / publish-with-warning / rolled-back.
-- **NS-7 (carried) — single-provider safety degradation — STILL PENDING AUTHENTICATION** (§7.3 / §8.3).
-  C2 is the slice that *acts* on the NS-7 switch (publish vs hold for single-provider safety-relevant),
-  so the ruling most directly gates C2 execution. Recorded un-baked; the C2 gate reads whichever posture
-  the spec author authenticates. **@spec-author: NS-7 authentication is load-bearing for C2.**
+- **NS-7 — RULED: degrade-not-gate (authenticated via the planner channel, this conversation,
+  2026-06-09; §1 NS-7 status-of-record).** C2 is the slice that *acts* on the NS-7 switch — and the
+  ruling sets it to **degrade**: single-provider **safety-relevant** content **publishes-with-warning**
+  (always dashboard-flagged) on same-model multi-pass review, **not** held behind a second-provider gate
+  (honours ruling 2). The `auto_publish_draft` degradation path (§8.2f) is now the **ruled** behavior,
+  not a pending switch. **C2's NS-7 *execution* Gate-2 item is un-blocked** (the downstream C2 execution
+  PR still re-confirms NS-7 through its own authenticated channel — OV-2 relay discipline). The authoritative
+  authentication trail is in the §1 NS-7 bullet.
 - **Carried holds:** C2 needs **C1 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5**.
 
 > **Detail-plan calls (not surfaced) — recorded for the reviewers:**
@@ -1739,8 +1755,25 @@ refiner path, G7a) — C2 bypasses it for generated drafts, does not delete it.
 
 ### 8.7 Reviewer findings folded — Slice 8
 
-*(none yet — Slice 8 posted for review; accumulates the auditor's + overseer's Slice-8 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 (overseer + the NS-7 ruling). Overseer `claude/sharp-cray-gueezy` @ `e15ad35` comment
+`4664311157` — OV-34…OV-37 Confirm, OV-38 Refine folded. **Plus the NS-7 ruling**, authenticated this
+round via the planner channel.
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **OV-34** | overseer | Confirm | NS-7 continuity — C2 acts on the switch, neither posture baked, conservative default, @spec-author ask. *(Now resolved by the NS-7 ruling below.)* |
+| **OV-35** | overseer | Confirm | Rulings 1+2 encoded-not-re-surfaced + gate AC-D + NS-6 surfaced-not-baked (NS-6 couples DS1-a). No action. |
+| **OV-36** | overseer | Confirm | Approve-gate bypassed-for-generated / kept-for-refiner + nothing-held-pre-publish-incl-safety (no ruling-2 regression). No action. |
+| **OV-37** | overseer | Confirm | Full gate { C1+B2+B3 merged } + ratifications + NS-7-auth + NS-5; `PublishRecord` forward-coherent for E1/E2; **AC-D7 multi-slice C2+F1 proactively in §1 amend-once** (OV-33 paying off). No action. |
+| **OV-38** | overseer | Refine (low) | **Folded** (§1 amend-once): the discipline now extends to shared **SPEC sections** — §6.5 [C2+D3] + §290 audit-log [C2+E2] — authored complete across touching slices, not only anchors. |
+| **NS-7** | spec-author ruling | RULED | **Degrade-not-gate, authenticated via the planner channel** (this conversation, 2026-06-09). The auditor relayed an in-session authentication; the overseer's lane had it pending; the planner confirmed through its own channel (§8.3). Recorded at the §1 NS-7 status-of-record + §8.3; the C2 degradation switch is set to **degrade**; C1/C2 NS-7 execution Gate-2 item **un-blocked** (execution PRs re-confirm via their own channel). C1 §7.3 substance unchanged (its seal not re-staled); C2 §8.3 reflects it directly. |
+
+**Round-trips:** OV-38 1/5 (OV-34…OV-37 Confirms — no round-trip owed). **Set-diff (this revision):** 5
+added [OV-34…OV-38] / 0 dropped (the NS-7 ruling is a spec-author ratification recorded this round, not a
+reviewer-finding ID). No push-back; no halt-class. **The plan-auditor's Slice-8 *content* review is
+pending** — it recorded the NS-7 authentication + pre-registered PS-C2 and is **awaiting this planner
+NS-7 fold** before reviewing the §8 substance; its findings (if any) fold next. Awaiting the auditor's
+Slice-8 content review + both reviewers' Slice-8 seals, then the planner posts `Status: final for Slice 8`.
 
 ---
 
