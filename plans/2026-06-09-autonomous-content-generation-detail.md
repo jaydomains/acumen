@@ -2331,12 +2331,26 @@ rolled-back events); reversible where sensible (a rolled-back pill can be un-ret
   (i)/(ii). **Multi-slice A2 (web→corpus) + C1 (safety re-adjudication) + E2 (override relocation)** —
   already on the §1 amend-once AC-D21 entry; E2 is where the override-relocation contribution lands.
   Blocks E2 execution.
-- **Per-source rollback → A1 allowlist demotion (DS13-a, flagged).** When `rollback_source` retracts a
-  discredited source, should it also **demote/remove that host from the A1 allowlist** (so the corpus
-  builder stops re-acquiring it)? **Lean: yes — flag/demote the source in the registry** (closes the
-  loop: a discredited source is both retracted *and* prevented from re-grounding). This touches the A1
-  source-authority AC-D (a write to the allowlist) — **surfaced** as a small cross-ref to the A1 anchor
-  (does per-source rollback write the allowlist, or only retract content?). Lean: demote. Class (ii).
+- **DS13-a — per-source rollback's source-demotion: this IS the A1 DS1-d code→DB design point (overseer
+  OV-64), not a small cross-ref.** When `rollback_source` retracts a discredited source, should it also
+  **demote that host so the corpus builder stops re-acquiring it**? It should — but A1's allowlist is a
+  **code VCS registry** (DS1-d), and **runtime demotion cannot write code.** A1 §1.3 (DS1-d) *explicitly
+  forward-referenced this:* *"if a later slice shows the operator needs runtime allowlist editing, that
+  promotion to a DB table is itself a fresh design point surfaced then."* **E2 is that later slice.** The
+  decision (class (ii); a real model choice, surfaced — not baked):
+  - **(i) DB source-override layer (recommended).** A small **`demoted_sources` / source-override table**
+    (host + `denied`/tier-override + reason + actor) that A1's `is_allowlisted`/`authority_tier` checks
+    **consult on top of the code seed** (seed = code; runtime demotions/overrides = DB). `rollback_source`
+    writes a DB demotion → the corpus builder skips the host. This is the DS1-d "code seed + DB overrides"
+    promotion, realized exactly where the need first appears. Touches the A1 source-authority AC-D (the
+    override layer) — a new small table + the A1 check-path extension.
+  - **(ii) content-only-retract.** E2 retracts the grounded **content** but does **not** demote the
+    source; the allowlist stays **code-only**, and removing a discredited source from the seed is a
+    deliberate code edit. Simpler, but a discredited source can be **re-acquired** until the seed is
+    edited (a weaker rein-in).
+  **Lean (i)** — the autonomy principle's "rein in if it breaks" wants the demotion to *stick* at runtime,
+  not wait on a code edit. **Surfaced; held** — the spec author rules (i) vs (ii); it binds the A1
+  source-authority AC-D's shape (code-only vs code+DB-override).
 - **Carried holds:** E2 needs **C2 + B3 + B2 merged** (the rollback keys) **+ NS-5**.
 
 ### 13.4 Docs / mirror sweeps
@@ -2372,8 +2386,25 @@ No **read surface** (Slice 12 / E1 — E2 is the write/retract half); no **gener
 
 ### 13.7 Reviewer findings folded — Slice 13
 
-*(none yet — Slice 13 posted for review; accumulates the auditor's + overseer's Slice-13 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `3bd33d2` — **4 Confirms, 0 findings, sealed @
+`ab0851b`**, "B2/B3/NS-3 vindicated"; overseer `claude/sharp-cray-gueezy` @ `8a73c1d` comment
+`4664723411`) — **no blocking finding; 4 + 4 Confirms, 1 medium Refine folded; none dropped.** *The
+auditor's seal @ `ab0851b` is re-staled by this OV-64 fold (§13.3 edit) and re-verifies at the folded
+SHA.*
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **(auditor ×4)** | auditor | Confirm | The rollback matrix (ruling 5) correct; **B2 `source_host` + B3 `batch_id` + NS-3 per-assertion forward-keys vindicated** (per-source/per-batch precision); relocated AC-D21 override correct; retract-not-delete (AC-D14). No action. |
+| **OV-60** | overseer | Confirm | Rollback AC-CD (ruling 5) surfaced + the [E1+E2] amend-once self-applied. No action. |
+| **OV-61** | overseer | Confirm | **B2/B3 forward-keys pay off** — per-source via `source_host` (the §5.1 relational store "for exactly this"), per-batch via `batch_id`, NS-3 per-assertion precision; full gate C2+B3+B2 merged + NS-5. No action. |
+| **OV-62** | overseer | Confirm | Relocated AC-D21 override retroactive + the A2+C1+E2 amend-once. No action. |
+| **OV-63** | overseer | Confirm | §4.11/§290 amend-once + retroactive-only + NORMAL + no re-stale. No action. |
+| **OV-64** | overseer | Refine (medium) | **Folded:** DS13-a elevated from a "small cross-ref" to **the A1 DS1-d code→DB design point A1 forward-referenced** (§13.3) — runtime source-demotion can't write the A1 *code* registry, so the choice is **(i) a DB source-override layer** (code seed + DB overrides; recommended — realizes DS1-d's "promotion to a DB table … surfaced then") **vs. (ii) content-only-retract** (allowlist stays code-only). Surfaced, leaned (i), not baked; it binds the A1 source-authority AC-D's shape. *(If ruled (i), the A1 source-authority AC-D becomes multi-slice [A1 mint + E2 override-layer] → §1 amend-once.)* |
+
+**Round-trips:** OV-64 1/5 (the auditor's 4 + OV-60…OV-63 are positive-coverage Confirms — no round-trip
+owed). **Set-diff (this revision):** 5 added [OV-60…OV-64] / 0 dropped. No push-back; no halt-class —
+OV-64 *sharpens* a surfaced item (DS13-a) into its true DS1-d-coupled form, bakes nothing. Awaiting both
+reviewers' (re-)seal at the folded content-SHA, then the planner posts `Status: final for Slice 13`.
 
 ---
 
