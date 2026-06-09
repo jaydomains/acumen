@@ -162,6 +162,25 @@ that assumes them but blocking no single slice's detail):
   once authenticated** — it is **not baked now**, and NS-7 does **not** touch Slice 1. Recorded here so
   the ruling is not silently lost between PR #107's merged §7.2 text (which predates the addendum) and
   the Slice-7/8 detail that consumes it.
+- **Multi-slice anchor amend-once (overseer OV-33) — author each shared anchor's amendment COMPLETE
+  up-front.** Three canonical anchors are touched by **more than one slice**, and the earlier slice was
+  **sealed with the narrower scope** — a partial-amend / double-amend risk (the §7 silent-partial-fold
+  failure in anchor form):
+  - **AC-D21** — A2 (web search → corpus acquisition) **+** C1 (the safety pass re-adjudicates
+    `safety_relevant`) **+** the override relocation to E2;
+  - **AC-D22** — A2 (Drive-folder ingestion retired → AI-built corpus) **+** B2 (the corpus is queried
+    at §6.5 generation);
+  - **SPEC §6 ops-count** — B1 (`pill_generation`, Anthropic +1) **+** C1 (`content_self_review`,
+    cross-family +1) → the named count lands at its **final** value (seven → nine) only when both are in.
+
+  **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
+  slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
+  slice's detail surfacing "an AC-D21 body change" is therefore surfacing **its contribution to the one
+  complete AC-D21 amendment**, not a standalone partial edit. The downstream amendment PR folds the full
+  multi-slice scope (the overseer, as merge-executor, will require it complete); a narrower amendment that
+  lands first then a second that "tops it up" is the drift this forecloses. *(A2 is sealed with its
+  narrower AC-D21/AC-D22 surface text — correct for A2's detail; the **complete** amendment scope is
+  assembled here at the cross-cutting level and re-stated by each later touching slice.)*
 
 ---
 
@@ -1548,8 +1567,27 @@ verdicts); no **`Pill` creation / publish** (the C2 gate's step); no **dashboard
 
 ### 7.7 Reviewer findings folded — Slice 7
 
-*(none yet — Slice 7 posted for review; accumulates the auditor's + overseer's Slice-7 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `1eae1f0` — **6 Confirms, 0 findings, sealed @
+`51cf183`**, NS-7 escalation to the spec author; overseer `claude/sharp-cray-gueezy` @ `8bf321b` comment
+`4664076779`) — **no blocking finding; 6 + 4 Confirms, 1 medium Refine folded; none dropped.** *The
+auditor's early seal @ `51cf183` is re-staled by this OV-33 fold (§0.1) and re-verifies at the folded SHA
+— OV-33 lands in §1 cross-cutting + this §7.7 record and changes no C1 substance (§7.1–§7.6).*
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-34…A-39** | auditor | Confirm ×6 | The cross-model self-review protocol (ruling-4 floor) correct; **NS-7 recorded pending-authentication, neither posture baked** (the auditor concurs + is escalating the NS-7 authentication to the spec author); NS-2 one-op-three-variants sound; the safety-pass `safety_relevant` re-adjudication + AC-D21 fold-with-A2 correct; the 2nd ops-count expansion (named 8→9 / enum 9→10) accurate; scope fence clean. No action. |
+| **OV-29** | overseer | Confirm (dominant) | **NS-7 handled as a §8.3 relay — neither option baked**; the overseer likewise does not accept the relay; NS-7 stays blocking C1/C2 exec, pending authentication. No action. |
+| **OV-30** | overseer | Confirm | Self-review AC-D (ruling 4) + NS-2 + AC-D21-safety-readjudication surfaced-not-baked; the safety floor is preserved, not silently no-op'd. No action. |
+| **OV-31** | overseer | Confirm | Ops 2nd-half per GT-1 (named 8→9 / enum 9→10; net B1+C1 seven→nine), coordinated. No action. |
+| **OV-32** | overseer | Confirm | Full gate { B2+B3 merged } + ratifications + NS-7-auth + NS-5; NORMAL; no re-stale. No action. |
+| **OV-33** | overseer | Refine (medium) | **Folded** (§1 cross-cutting "Multi-slice anchor amend-once"): AC-D21 [A2+C1], AC-D22 [A2+B2], §6 ops-count [B1+C1] — A2 sealed with the narrower scope → partial-amend/double-amend risk; the spec author authors each shared anchor **complete up-front before the first touching slice executes**, each slice surfacing **its contribution** to the one complete amendment, not a standalone partial edit. |
+
+**Round-trips:** OV-33 1/5 (A-34…A-39, OV-29…OV-32 = positive-coverage Confirms — no round-trip owed).
+**Set-diff (this revision):** 11 added [A-34…A-39, OV-29…OV-33] / 0 dropped. No push-back; no design
+change (OV-33 *adds* a coordination discipline); no halt-class. **NS-7 remains PENDING AUTHENTICATION**
+(no ruling has arrived through either reviewer's authenticated channel; both reviewers + the planner hold
+it un-baked, and the auditor is escalating it to the spec author). Awaiting both reviewers' (re-)seal at
+the folded content-SHA, then the planner posts `Status: final for Slice 7`.
 
 ---
 
