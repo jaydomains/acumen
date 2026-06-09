@@ -681,6 +681,171 @@ planner posts `Status: final for Slice 2`.
 
 ---
 
+## Slice 3 (A3) — hybrid refresh cron (per-topic / on-demand / weekly) + corpus retrieval helper
+
+**Status: posted for Slice 3 review** (not yet sealed — awaiting auditor + overseer Slice-3 review.
+Appending this section does **not** re-stale Slices 1–2's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried A1+A2 holds** (A3 reads the A2 `CorpusChunk`
+store and calls A2's `acquire_for_topic`, so it needs **A1 + A2 merged**) **and (b) A3's own ratification
+surfaces:** a **SPEC §8.9 "seven crons" count amendment** (the corpus-refresh cron) + an **AC-CD7 body
+change** (the beat-schedule anchor registers the new cron), whose **net cron-count delta is coupled to
+the NS-1 ruling** (§3.3). This detail is written **against the recommended direction**; detail-planning
+is **not** gated, only execution.
+
+**Implements:** the **retrieval half** of Stage A that A2 deferred — a corpus retrieval helper
+(`cosine_top_k`-over-`CorpusChunk`, returning chunks *with* their authority tier/score for B2 to ground
++ weight) — and the **hybrid refresh** of ruling 6: **per-topic on-demand** (the trigger D3 calls) +
+**admin on-demand** (a manual-override domain fn) + a **weekly periodic backstop cron**. It stops there:
+**no** generation (Slice 5 / B2), **no** gap-detection / catalogue-health crons (Slice 11 / D4), **no**
+admin endpoint or FE (the admin-override *endpoint* is Stage E; A3 ships the domain fn only), **no**
+dashboard.
+
+### 3.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The beat schedule is a flat `dict` of task→cadence (AC-CD7).** `app/beat_schedule.py:38-79`
+  `beat_schedule: dict[str, dict[str, Any]]` registers the **seven** SPEC §8.9 crons via
+  `celery.schedules.crontab` (e.g. `drive_rag.ingest` daily 03:00, `safety_links.check` monthly day-1
+  05:00 — the closest cadence precedents for a periodic corpus refresh). Adding a cron = **one new dict
+  entry** + the matching task registration. The docstring (`beat_schedule.py:1-2`) + its **ASCII table**
+  hard-code *"the seven … crons"* — a **count-invariant mirror surface** (§3.4).
+- **AC-CD7 is the cron/bootstrap anchor.** `CODE_SPEC.md:632` AC-CD7 — *"seven crons; idempotent
+  bootstrap job"*; `CODE_SPEC.md:337` *"registers the seven crons (SPEC §8.9)"*; `CODE_SPEC.md:110` tree
+  comment *"the seven crons + bootstrap enqueue"*. **The admin-triggered bootstrap is deliberately NOT a
+  cron** (`beat_schedule.py:25-33`, AC-CD7 *"idempotent enqueued job; admin-triggered"*) — the precedent
+  that A3's **admin on-demand** refresh is a **domain fn / enqueued task, not a beat entry**.
+- **`cosine_top_k` is the reusable ranker.** `drive_rag.py:196 cosine_top_k(candidates, query_vec, k)`
+  ranks `(chunk_id, embedding)` pairs by cosine, tie-broken by id, skips zero-norm; `_DEFAULT_TOP_K=5`
+  (`:580`); `render_rag_context` (`:587`). A3's `retrieve_corpus_for_topic` is the **`CorpusChunk`
+  sibling** of `retrieve_for_generation` — same ranker, different table, **plus** it returns each hit's
+  `authority_tier`/`authority_score` (the A2 columns) so B2 can authority-weight grounding (ruling 3).
+- **Ruling 6 (ratified) fixes the *shape*.** Workstream §1 ruling 6: **hybrid** = per-topic on-demand
+  (gap-detection trigger) + admin on-demand (manual override) + **weekly** periodic backstop. So the
+  **weekly cadence is ratified**; only the operational day/hour is a default (like the other crons'
+  02:00–07:00 offsets, `beat_schedule.py:17-19`).
+- **The "seven crons" count invariant lives in six+ surfaces** (re-verified): `beat_schedule.py:1-2` +
+  the ASCII table, `CODE_SPEC.md:110/337/632`, `ROADMAP.md:193/196`, `SPEC.md` §8.9 (the 7-bullet list),
+  and the `CHECKLIST.md` P11 row evidence. This is the **direct parallel of the #106 G9 "seven crons"
+  mirror-sweep** — run the three-class grep at execution HEAD.
+- **A2 records no per-acquisition `topic`** (verified — §2.2a `CorpusChunk` carries `source_host`, not
+  the triggering topic). So a **refresh-target set** ("which topics does the weekly backstop
+  re-acquire?") is **not yet derivable** from the A2 store — a design point A3 must resolve (§3.2d /
+  §3.3).
+
+### 3.2 Build choices — concrete (recommended direction)
+
+**(a) Corpus retrieval helper — `app/domain/corpus_builder.py` (or a sibling `corpus_retrieval.py`).**
+`retrieve_corpus_for_topic(db, *, topic: str, k: int = _DEFAULT_TOP_K, min_tier: Tier | None = None) ->
+list[dict]` — embed the topic (reuse the A2 embed path), `cosine_top_k` over `CorpusChunk.embedding`,
+return `[{source_doc_ref, source_host, chunk_text, authority_tier, authority_score}]` ranked, optionally
+filtered to `>= min_tier`. **Same fail-soft contract** as `retrieve_for_generation` (empty topic → `[]`
+no embed; empty corpus → `[]` one embed + cost-audit; embed raises → `[]` WARN). Reuse `cosine_top_k`
+unchanged; a corpus `render_*` context helper for B2 (or reuse `render_rag_context`). **This is the
+retrieval primitive B2 grounds against** — A3 builds it, B2 consumes it.
+
+**(b) Refresh domain functions — `corpus_builder.py`.** Three triggers, one shared core (all reuse A2's
+idempotent `acquire_for_topic`, so re-acquisition dedups by `(source_host, content_hash)` — no dup
+chunks):
+- **per-topic on-demand** `refresh_corpus_for_topic(db, *, topic)` — thin wrapper over
+  `acquire_for_topic`; **the trigger D3's gap-detection sweep calls** (A3 exposes it; D3 wires it).
+- **admin on-demand** — the same fn, callable from an admin path; **A3 ships the domain fn only**, the
+  endpoint/FE is Stage E (AC-CD7 admin-triggered-job precedent — not a beat entry).
+- **weekly backstop** `refresh_corpus_all(db)` — iterates the **refresh-target set** (§3.2d) and calls
+  `acquire_for_topic` for each; invoked by the cron (§3.2c).
+
+**(c) The weekly backstop cron — `app/beat_schedule.py` + task registration.** A new entry
+`corpus.refresh` → `refresh_corpus_all`, **weekly** (ruling 6; e.g. `crontab(minute=0, hour=8,
+day_of_week=1)` — Monday 08:00 UTC, extending the sequential daily-offset convention past the existing
+07:00 `engagement.sweep`). This is the slice's **cron-count delta** (§3.3).
+
+**(d) Refresh-target set — the weekly backstop's input (DS3-a, §3.3).** The weekly backstop needs to
+know *which topics* to re-acquire. **Lean: derive from the active catalogue** — the distinct
+**subjects/pills** Acumen actually assesses (`app/models.py` `Subject`/`Pill`) are the natural "what the
+corpus should cover" source, and it **also catches newly-added catalogue topics** the corpus has never
+seen. **Recorded as a detail-plan call** *unless* a reviewer reads it as overlapping the
+catalogue-health check (D3/NS-4) — in which case it elevates (§3.3). *(Rejected alternative: a
+per-`CorpusChunk` `topic` column — A2 is sealed; a backstop keyed on already-acquired topics cannot
+discover new gaps, which is exactly what a backstop should also do; the catalogue source is strictly
+better and needs no A2 change.)*
+
+**(e) Cron-count mirror sweep (§3.4).** Adding `corpus.refresh` makes the registered set **eight** (or
+**seven** net, if NS-1 retires `drive_rag.ingest` — §3.3); every "seven crons" surface is swept.
+
+### 3.3 Embedded ratification-class items — SURFACED (blocking A3 execution, Gate 2)
+
+- **SPEC §8.9 "seven crons" count amendment + AC-CD7 body change.** Class (ii). Registering
+  `corpus.refresh` adds a cron; the spec author amends SPEC §8.9 (the bullet list + count) and the AC-CD7
+  body (`CODE_SPEC.md:632`), and A3 execution sweeps the code/doc mirrors (§3.4). **The net cron-count
+  delta is coupled to NS-1 (sharp point):** the corpus-refresh cron is the **functional successor** of
+  `drive_rag.ingest` (both periodic knowledge-base refreshers). **If NS-1 = retire Drive**, `drive_rag.
+  ingest` is removed (−1) and `corpus.refresh` added (+1) → **net still seven** (a *replacement*, count
+  unchanged — the cleanest mirror-sweep: "Drive ingest → corpus refresh"); **if NS-1 = keep Drive
+  dormant**, both exist → **eight**. So the §8.9 amendment's *number* is **not knowable until NS-1
+  rules** — the spec author should rule NS-1 and the cron amendment **together**. **Surfaced; the
+  amendment is held on NS-1.**
+- **Carried A1 + A2 holds** flow through (A3 reads `CorpusChunk` + calls `acquire_for_topic`): A3
+  execution-close additionally requires **A1 + A2 merged** (parallel to OV-11), plus **NS-5 phase-home**.
+- **Corpus-refresh cadence.** Ruling 6 ratified **weekly** — so the cadence *shape* is **not** re-surfaced;
+  only the operational day/hour is a default (§3.2c), like the other crons. (Recorded so the reviewers
+  see it is deliberately *not* a surfaced item.)
+
+> **Detail-plan call (not surfaced) — recorded for the reviewers:**
+> - **DS3-a — refresh-target set = active catalogue subjects/pills** (§3.2d). Build-design choice; lean
+>   catalogue-derived (strictly better than a per-chunk topic column; catches new gaps; no A2 change).
+>   **Elevates to a SURFACE only if** a reviewer reads it as overlapping the **catalogue-health check**
+>   (D3 / NS-4) — the two are kept distinct here (the **backstop** re-validates/refreshes the corpus for
+>   *existing* catalogue topics on a clock; the **health check** is D3's *proactive gap/thin-coverage
+>   trigger for generation*), but the boundary is genuinely adjacent, so it is flagged for the reviewers'
+>   judgement rather than buried.
+
+### 3.4 Docs / mirror sweeps — the "seven crons" count invariant (three-class grep at execution HEAD)
+
+**Spec surfaces — in the spec-author's SPEC §8.9 + AC-CD7 amendment PR** (held on NS-1 for the *number*):
+- `SPEC.md` §8.9 — the cron bullet list + the "several scheduled background processes" framing (add the
+  corpus-refresh bullet; adjust the count per the NS-1-coupled net delta);
+- `CODE_SPEC.md:632` AC-CD7 body (*"seven crons"*), `CODE_SPEC.md:337` (*"registers the seven crons"*),
+  `CODE_SPEC.md:110` tree comment (*"the seven crons + bootstrap enqueue"*);
+- `ROADMAP.md:193/196` (*"seven crons scheduled"*) + the `CHECKLIST.md` P11 evidence row.
+
+**Code — in A3's execution** (follows the authored anchors):
+- `app/beat_schedule.py` — the new `corpus.refresh` entry **and** the docstring + ASCII-table count
+  (the in-body-override sweep: authored prose is truth, the table mirror follows);
+- the `refresh_corpus_all` / `refresh_corpus_for_topic` / `retrieve_corpus_for_topic` domain fns + the
+  Celery task registration for `corpus.refresh`;
+- **re-run the three-class structural grep** (word `seven cron` / numeral / the `beat_schedule` dict
+  membership + any cron-count test floor) at execution HEAD; fold completely — **no silent partial-fold**.
+
+### 3.5 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+1. **Retrieval helper.** `retrieve_corpus_for_topic` over a seeded `CorpusChunk` set ranks by cosine
+   (reuse the `cosine_top_k` test pattern), returns each hit's `authority_tier`/`authority_score`,
+   honors `min_tier`, and is **fail-soft** (empty topic → `[]` no embed; empty corpus → `[]`; embed
+   raises → `[]` WARN) — all offline (stub embed).
+2. **Refresh idempotency.** `refresh_corpus_for_topic` / `refresh_corpus_all` reuse A2's dedup → a
+   re-run adds no dup `CorpusChunk` rows (assert row-count stable); a changed source adds only the delta.
+3. **Backstop target set.** `refresh_corpus_all` iterates the active catalogue subjects/pills (seed a
+   couple; assert each triggers an `acquire_for_topic`, fake web/embed).
+4. **Cron registered.** `beat_schedule["corpus.refresh"]` exists with a **weekly** `crontab` + the
+   correct task name; the registered-cron **count** matches the swept number (a test floor parallel to
+   the existing cron set — verify/extend at execution HEAD).
+5. **Zero-network** throughout (fake httpx + stub embed; AC-CD15).
+
+### 3.6 What A3 does NOT touch (scope fence)
+
+No **generation** (Slice 5 / B2 consumes `retrieve_corpus_for_topic`); no **gap-detection /
+catalogue-health crons** (Slice 11 / D4 — distinct from this weekly *backstop*); no **admin
+endpoint/FE** for the manual-override refresh (Stage E; A3 ships the domain fn only, AC-CD7
+admin-triggered-job precedent); no **generation grounding wiring**; no **`Operation`/model change**; no
+dashboard. The Drive `drive_rag.ingest` cron is **untouched at A3** (its possible removal is the NS-1
+ruling + the coupled §8.9 count, not A3 code).
+
+### 3.7 Reviewer findings folded — Slice 3
+
+*(none yet — Slice 3 posted for review; accumulates the auditor's + overseer's Slice-3 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
 ## Loop mechanics (role files §4–§8)
 
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = **exact**
