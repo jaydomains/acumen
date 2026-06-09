@@ -165,7 +165,12 @@ that assumes them but blocking no single slice's detail):
 
 ## Slice 1 (A1) — source-authority allowlist + scoring registry (T1/T2/T3)
 
-**Status: posted for Slice 1 review** (not yet sealed — awaiting auditor + overseer Slice-1 review).
+**Status: final for Slice 1 — approved by planner** (content-bound to the Slice-1 substance at
+`22f3d67` — auditor content SEAL (`2fb561d`) + overseer governance SEAL (`0d27a27`) both at `22f3d67`.
+This marker is **content-invariant**: only this Status line changed; §1.1–§1.7 are byte-identical to
+`22f3d67`, so it does **not** re-stale the reviewers' seals (§0.1/§8). All Slice-1 findings resolved —
+A-1…A-4 + OV-1…OV-3 Confirms; A-5/A-6 + OV-4/OV-5 + OV-6 (NS-7 relay, pending-auth) resolved-by-fold;
+§1.7.)
 
 **Execution-gate (Gate 2): BLOCKED pending authenticated spec-author ratification of the new
 source-authority AC-D mint.** This detail is written **against the recommended direction** — a
