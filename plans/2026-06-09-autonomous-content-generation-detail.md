@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 10
-(D3) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+(D3) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
 B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8`.* *(NS-7 **RULED** degrade-not-gate,
@@ -1917,6 +1917,123 @@ discovery + generation flows are extended with a signal write, not restructured.
 ### 9.7 Reviewer findings folded — Slice 9
 
 *(none yet — Slice 9 posted for review; accumulates the auditor's + overseer's Slice-9 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 10 (D3) — gap-detection sweep + catalogue-health checks → generation trigger
+
+**Status: posted for Slice 10 review** (not yet sealed — awaiting auditor + overseer Slice-10 review.
+Appending this section does **not** re-stale Slices 1–9's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — D3 reads `GapSignal` (D1–D2) AND
+*drives generation* (B3/B2), so it needs D1–D2 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 —
+this is where the D-follows-B dependency lands (parent §5) — and (b) D3's own surfaces:** the **§6.5
+rewrite** (the G2-analog: §6.5 from human-gated "pill proposal" to autonomous gap-detection + generation
++ auto-publish — **amend §6.5 once** with C2/D1–D2, §1 amend-once) and the carried **NS-4**
+(catalogue-health-check definition). Written **against the recommended direction**; detail-planning is
+**not** gated.
+
+**Implements:** the **autonomous trigger** that closes the loop — a **gap-detection sweep** clustering
+`GapSignal`s (D1–D2) into candidate topics + a **scheduled catalogue-health check** (proactive, not only
+Testee-signal-driven), both invoking the generation fan-out (`enqueue_generated_drafts`, B3) **directly
+(domain-fn call, no HTTP gate)**. It stops at the trigger logic: the **crons that schedule it** are
+Slice 11 / D4; **generation/gate** are Stages B/C; **no** dashboard.
+
+### 10.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The signal store is D1–D2's `GapSignal`.** Polymorphic (`signal_type` / `dedup_key` /
+  `occurrence_count`, Slice 9 §9.2a) — D3 reads + clusters it.
+- **The generation fan-out is B3's `enqueue_generated_drafts`.** `(db, *, topic, target_count, batch_id,
+  gap_signal)` (Slice 6 §6.2a) → N draft rows → C auto-publish gate. **D3 calls it directly** (the
+  domain-fn trigger; no admin action) — *the D-follows-B dependency.* D3 supplies the `gap_signal`
+  (the cluster's signals) + a fresh `batch_id`.
+- **The catalogue is `Subject` + `Pill`.** `models.py:280 Subject`, `:291 Pill`. The **catalogue-health
+  check** reads these for coverage gaps (thin-band pills, uncovered subjects — NS-4).
+- **The 3-arm dedup, third arm.** D1–D2 = signal-layer; B3 = persistence-layer
+  (`(topic, gap_signal)` pending-skip); **D3 = gap-detection-layer** — don't open a generation batch for
+  a topic already covered (a live `Pill`) or already pending (a B3 draft batch). D3 owns the third arm.
+- **§6.5 today is human-gated "pill proposal".** `SPEC.md:340-348` — the analysis-only + refiner shape;
+  the **G2-analog rewrite** makes §6.5 autonomous (signal capture / gap-detection / generation /
+  auto-publish phases). Coordinate the §6.5 rewrite across C2 + D1–D2 + D3 (§1 amend-once).
+
+### 10.2 Build choices — concrete (recommended direction)
+
+**(a) Gap-detection sweep — `app/domain/...` `gap_detection_sweep(db)`.** Read recent `GapSignal`s →
+**cluster** into candidate topics: group by normalized `dedup_key` + signal-type affinity, summing
+`occurrence_count` into a **topic weight**; a cluster above a weight threshold → a candidate topic. For
+each candidate, apply the **third dedup arm** (skip if a live `Pill` already covers it, or a pending B3
+batch exists for `(topic, gap_signal)`) → otherwise `enqueue_generated_drafts(topic, …, batch_id=new,
+gap_signal=cluster.signals)` (B3). Mark the consumed `GapSignal`s (e.g. a `consumed_at` / status) so the
+next sweep doesn't re-cluster them. Idempotent by design.
+**(b) Catalogue-health check — `catalogue_health_check(db)` (NS-4).** A **proactive** coverage sweep
+independent of Testee signals: assess the catalogue for **thin-coverage bands** (pills/subjects with
+sparse difficulty-band coverage) and **uncovered subjects** (subjects with few/no discoverable pills) →
+emit candidate topics → the **same** `enqueue_generated_drafts` path (+ the same third-arm dedup). **NS-4
+defines exactly what it assesses** (§10.3).
+**(c) Coherence with A3 / DS3-a (auditor A-18 watch).** Both the A3 **weekly corpus-refresh backstop**
+(DS3-a: refresh-target = active catalogue subjects/pills) and the D3 **catalogue-health check** (NS-4)
+read the **catalogue** — but they are **distinct in output and must stay so:** A3 refreshes the
+**corpus** (the knowledge base) for catalogue topics (re-validate/re-embed sources); **D3 generates
+pills** for catalogue **coverage gaps**. Same input surface (the catalogue), **different actions**
+(corpus refresh vs. pill generation). §10.3 keeps them explicitly non-overlapping so the two
+catalogue-derived sweeps don't double-fire or conflate.
+**(d) Both drive B directly.** No HTTP gate; both are domain fns the D4 crons (Slice 11) schedule.
+
+### 10.3 Embedded ratification-class items — SURFACED (blocking D3 execution, Gate 2)
+
+- **§6.5 rewrite (the #106 G2-analog).** Class (ii). §6.5 from human-gated "pill proposal" to
+  **autonomous**: separate **signal-analysis (D1–D2) / gap-detection (D3) / generation (B) / auto-publish
+  (C)** phases (the approval phase reframed as the auto-publish gate). **Amend §6.5 once** across C2 +
+  D1–D2 + D3 (§1 amend-once — overseer OV-45). Blocks D3 execution.
+- **NS-4 (carried) — catalogue-health-check definition.** Class (ii). What does the scheduled health
+  check assess to trigger generation? **Lean: thin-coverage bands + uncovered subjects** (§10.2b) — a
+  conservative, catalogue-derived definition; stale-pill detection is a possible third axis (flagged,
+  not leaned-in). **Surfaced** because it defines an **autonomous generation trigger** (a §6.5-scope
+  question), and because it must stay **coherent with A3/DS3-a** (§10.2c) — the spec author rules the
+  exact assessment set + confirms the A3-corpus-refresh / D3-pill-generation boundary. Blocks D3
+  execution.
+- **Carried holds:** D3 needs **D1–D2 + B2 + B3 merged** (it reads signals + drives generation) **+
+  NS-5** — the slice where the **D-follows-B** serialization (parent §5) binds.
+
+> **Detail-plan call (not surfaced) — recorded for the reviewers:**
+> - **DS10-a — cluster/threshold mechanics.** The clustering (group-by-`dedup_key` + weight threshold)
+>   and the weight formula are build-design choices; lean the §10.2a shape (sum `occurrence_count`,
+>   threshold a tunable `SystemSettings` field). Rides the §6.5 rewrite; surfaced only if a reviewer
+>   reads the threshold as an autonomy-control gate worth spec-author ratification.
+
+### 10.4 Docs / mirror sweeps
+
+**Spec surfaces — in the spec-author's amendment PR(s):** the **SPEC §6.5 rewrite** (autonomous phases;
+amend-once with C2 + D1–D2 — the 3-slice §6.5 set, OV-45); the **NS-4** catalogue-health definition (in
+§6.5 / §8.9); coordinate with the §290 audit-log prose (gap-detection-triggered generation events).
+**Code (D3 execution):** `gap_detection_sweep` + `catalogue_health_check` domain fns; the third-arm
+dedup; the `GapSignal.consumed_at` (or status) column + migration if needed; a `SystemSettings`
+gap-threshold field; zero-network tests. **No cron registration in D3** (D4 schedules these).
+
+### 10.5 Tests (AC-CD15 — zero-network)
+
+1. **Gap-detection cluster → generate.** Seeded `GapSignal`s clustering to a topic above threshold →
+   `gap_detection_sweep` calls `enqueue_generated_drafts(topic, …)` (assert via a stubbed B3); below
+   threshold → no call.
+2. **Third-arm dedup.** A topic already covered by a live `Pill` (or a pending B3 batch) → **no** new
+   generation; consumed `GapSignal`s are marked so the next sweep skips them.
+3. **Catalogue-health check.** A thin-band / uncovered subject → `catalogue_health_check` emits the topic
+   → `enqueue_generated_drafts`; a well-covered catalogue → no trigger.
+4. **A3/D3 coherence.** The catalogue-health check triggers **generation** (not corpus refresh); assert
+   it does not invoke the A3 corpus-refresh path (the two catalogue-derived sweeps stay distinct).
+5. **Zero-network** (B3/generation stubbed; AC-CD15).
+
+### 10.6 What D3 does NOT touch (scope fence)
+
+No **crons / beat schedule** (Slice 11 / D4 schedules `gap_detection_sweep` + `catalogue_health_check`);
+no **generation internals** (Stage B — D3 calls `enqueue_generated_drafts`); no **auto-publish** (C); no
+**signal capture** (D1–D2 — D3 *consumes* `GapSignal`); no **corpus refresh** (A3 — distinct sweep,
+§10.2c); no **dashboard** (E); no **FE**.
+
+### 10.7 Reviewer findings folded — Slice 10
+
+*(none yet — Slice 10 posted for review; accumulates the auditor's + overseer's Slice-10 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
