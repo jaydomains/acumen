@@ -157,12 +157,15 @@ that assumes them but blocking no single slice's detail):
   dashboard-flagged) on same-model multi-pass review; NO second-provider prerequisite gate** (honours
   ruling 2's "nothing held pre-publish"). This is the **NS-7 status-of-record** for the whole plan. It
   supersedes the planner's original PR #107 §7.2 prereq-gate lean and the earlier "pending-authentication"
-  framing. **Authentication trail (role files §8.3):** the reported degrade-not-gate ruling first appeared
-  on the **unmerged** `vibrant-euler@92886fe` addendum — a **relay** (pending, not actionable) per
-  OV-6/A-6; the plan-auditor recorded it authenticated to **its** session; the **plan-overseer's lane
-  reported it still pending** ("no ruling via my channel"); the **planner then confirmed it through the
-  planner's own authenticated channel** (the in-session spec-author, this conversation) — *that* is the
-  authentication this ruling rests on, not the relay. **Effect:** C1's safety-pass degradation path
+  framing. **Authentication trail (role files §8.3; updated per overseer OV-40):** the reported
+  degrade-not-gate ruling first appeared on the **unmerged** `vibrant-euler@92886fe` addendum — a
+  **relay** (pending, not actionable) per OV-6/A-6. **All three sessions then authenticated NS-7
+  independently through their *own* in-session channels — no party relied on the relay:** the
+  **plan-auditor** (origin: the in-session spec-author, this conversation), the **plan-overseer**
+  (independently, via its own channel — issue-comment `4664355136`; the authoritative NS-7 lane per
+  A-6/OV-6), and the **planner** (independently confirming through the planner's own authenticated
+  channel — the in-session spec-author answering the planner's direct question, this conversation).
+  *That* triple, each-own-channel authentication — not the relay — is what this ruling rests on. **Effect:** C1's safety-pass degradation path
   (already authored as the recommended direction) **is the ruled behavior**; C1 §7.3 / C2 §8.3 set the
   degradation switch to **degrade**, and the C1/C2 *execution* NS-7 Gate-2 item is **un-blocked** (each
   execution PR still re-confirms NS-7 through its own authenticated channel, per OV-2 relay discipline —
