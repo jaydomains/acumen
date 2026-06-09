@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1 (A1) + 2 (A2) SEALED 3/3 (@ `22f3d67` / `5d26906`); Slice 3 (A3)
-next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–3 (A1–A3) SEALED 3/3 (@ `22f3d67` / `5d26906` / `5a6f84e`); Slice 4
+(B1) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1).
 
@@ -683,8 +683,11 @@ planner posts `Status: final for Slice 2`.
 
 ## Slice 3 (A3) — hybrid refresh cron (per-topic / on-demand / weekly) + corpus retrieval helper
 
-**Status: posted for Slice 3 review** (not yet sealed — awaiting auditor + overseer Slice-3 review.
-Appending this section does **not** re-stale Slices 1–2's seals — §0.1.)
+**Status: final for Slice 3 — approved by planner** (content-bound to the Slice-3 substance at
+`5a6f84e` — auditor content SEAL (`42e4397`) + overseer governance SEAL (`02ba8d1`) both at `5a6f84e`.
+**Content-invariant**: only this Status line changed; §3.1–§3.7 byte-identical to `5a6f84e`, so it does
+**not** re-stale the reviewers' seals (§0.1/§8). All Slice-3 findings resolved — A-14…A-18 + OV-12…OV-14
+Confirms; A-13 / OV-15 resolved-by-fold; §3.7.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried A1+A2 holds** (A3 reads the A2 `CorpusChunk`
 store and calls A2's `acquire_for_topic`, so it needs **A1 + A2 merged**) **and (b) A3's own ratification
