@@ -886,6 +886,14 @@ mint (carried G1) + the prompt-registry version trajectory (carried G7b).** This
 `pill_proposal` refiner (carried G7a, lean keep); new prompt module at `VERSION = "1.0.0"` carrying the
 **core topic→N schema only** (grounding/provenance are Slice 5 / B2). Detail-planning is **not** gated.
 
+**B1's complete execution-precondition set (overseer OV-20 — gate-completeness + the Stage-A-independence
+boundary).** Unlike A2/A3, **B1 does NOT require Stage A merged** — the `pill_generation` primitive +
+its offline stub **import nothing from Stage A** (`source_authority`/`corpus_builder` are not referenced;
+the stub grounds in nothing). **The A→B dependency lands at Slice 5 (B2)**, where generation first grounds
+against the corpus — *not* at B1. So **B1 execution-close = { G1 mint + G7b version trajectory
+ratifications } + { NS-5 phase-home }**, and B1 is **independently executable** (it may land before, or in
+parallel with, the Stage-A execution PRs). B1 **detail** is gated by none of these.
+
 > **Direct lineage to the merged #106 Slice 1.** #106 detail-planned *exactly this op-mint* (PR #106
 > `plans/2026-06-07-…detail.md` §1, squashed at `9bde51f`); the parent workstream §9 carries **G1** as
 > "ratified-for-#106 / carries to the autonomous generator." This slice re-grounds that detail **at
@@ -1065,8 +1073,26 @@ No `app/domain/catalogue.py` (`enqueue_*`/persistence — Slice 6); no corpus gr
 
 ### 4.7 Reviewer findings folded — Slice 4
 
-*(none yet — Slice 4 posted for review; accumulates the auditor's + overseer's Slice-4 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `eecdb4b` review — **5 Confirms, 0 Refines,
+sealed @ `351d562`**; overseer `claude/sharp-cray-gueezy` @ `c4fd5b5` comment `4663807161`) — **no
+blocking finding; 5 + 4 Confirms, 1 low Refine folded; none dropped.** Slices 1–3 seals **not** re-staled
+(this fold edits only §4.*). *The auditor's early seal @ `351d562` is re-staled by this OV-20 fold (§0.1)
+and re-verifies at the folded SHA — OV-20 is a gate-completeness clarification that touches no content the
+auditor's Confirms cover.*
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-19…A-23** | auditor | Confirm ×5 | `pill_generation` a **new** op distinct from `generation`/`pill_proposal`; the **ops-count GT-1 sweep "exemplary"** (enum 8→9 / spec-prose seven→eight; all cites verified accurate — `SPEC.md:296/372/397/443/523`, `DECISIONS.md:63/96`, the 4 op-keyed maps + 3 construction-oracle test floors, no drift); provider/stub/prompt wiring correct; **G1 surfaced fresh** (PS-B1.7) + G7b surfaced + G7a carried-lean; scope fence clean. No action. |
+| **OV-16** | overseer | Confirm | Ops-count sweep per GT-1 with grep commands + construction-oracle floors. No action. |
+| **OV-17** | overseer | Confirm (dominant) | **G1 op-mint surfaced FRESH** — §4.3 cites OV-2 (#106 ratification reads as a relay downstream; re-confirmed through this workstream's exec-PR channel; blocks B1 exec; **not** baked on superseded #106). No action. |
+| **OV-18** | overseer | Confirm | G7b carried/leaned/blocks-exec, not baked; G7a carried-lean. No action. |
+| **OV-19** | overseer | Confirm | NORMAL merge-class + Slices 1–3 not re-staled + absorbable AC-CD18 config. No action. |
+| **OV-20** | overseer | Refine (low) | **Folded:** the execution-gate now states **B1's complete precondition set** = { G1 mint + G7b } + { NS-5 } **and the Stage-A-independence boundary** — B1's stub imports nothing from Stage A, so **B1 does not require Stage A merged** (the A→B dependency lands at B2, not B1; B1 is independently executable). |
+
+**Round-trips:** OV-20 1/5 (A-19…A-23, OV-16…OV-19 = positive-coverage Confirms — no round-trip owed).
+**Set-diff (this revision):** 10 added [A-19…A-23, OV-16…OV-20] / 0 dropped. No push-back; no design
+change; no halt-class. Awaiting both reviewers' (re-)seal at the folded content-SHA, then the planner
+posts `Status: final for Slice 4`.
 
 ---
 
