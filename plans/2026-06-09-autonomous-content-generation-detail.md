@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slice 1 (A1) SEALED 3/3 @ `22f3d67`; Slice 2 (A2) posted for review**
-(per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1 (A1) + 2 (A2) SEALED 3/3 (@ `22f3d67` / `5d26906`); Slice 3 (A3)
+next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1).
 
@@ -431,9 +431,11 @@ Slice-1 seals at the folded content-SHA, then the planner posts `Status: final f
 
 ## Slice 2 (A2) — corpus acquisition pipeline (allowlist web-search → fetch → extract → embed → pgvector)
 
-**Status: posted for Slice 2 review** (not yet sealed — awaiting auditor + overseer Slice-2 review.
-Appending this section does **not** re-stale Slice 1's seal — §0.1: a later-slice append is a content
-change *elsewhere* in the doc.)
+**Status: final for Slice 2 — approved by planner** (content-bound to the Slice-2 substance at
+`5d26906` — auditor content SEAL (`6f5190e`) + overseer governance SEAL (`e2f14d3`) both at `5d26906`.
+**Content-invariant**: only this Status line changed; §2.1–§2.7 byte-identical to `5d26906`, so it does
+**not** re-stale the reviewers' seals (§0.1/§8). All Slice-2 findings resolved — A-9…A-12 + OV-7…OV-10
+Confirms; A-7 (DS2-b elevated to a surface) / A-8 / OV-11 resolved-by-fold; §2.7.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried A1 holds** — the source-authority AC-D mint
 + NS-5 phase-home (A2 consumes A1's `source_authority` registry, so A1's gates flow through) — **and
