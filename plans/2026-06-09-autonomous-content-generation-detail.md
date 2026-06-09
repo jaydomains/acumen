@@ -1,6 +1,6 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–6 (A1–A3, B1–B3) SEALED 3/3 — Stages A+B complete; Slice 7 (C1) next**
+**Status: in progress — Slices 1–6 (A1–A3, B1–B3) SEALED 3/3 — Stages A+B complete; Slice 7 (C1) posted**
 (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
@@ -1390,6 +1390,165 @@ are untouched (B3 is a distinct `task_name`).
 ### 6.7 Reviewer findings folded — Slice 6
 
 *(none yet — Slice 6 posted for review; accumulates the auditor's + overseer's Slice-6 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 7 (C1) — multi-pass + cross-model self-review protocol (the safety floor)
+
+**Status: posted for Slice 7 review** (not yet sealed — awaiting auditor + overseer Slice-7 review.
+Appending this section does **not** re-stale Slices 1–6's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — C1 reviews the generated drafts, so
+it needs B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 — and (b) C1's own ratification surfaces:** a
+**new AC-D (self-review protocol, ruling 4)**, the carried **NS-2** (new `Operation`(s) vs reuse
+`anchor_self_review` + the op-count magnitude), an **AC-D21 body change** (the safety pass re-adjudicates
+`safety_relevant`), and the carried **NS-7** (single-provider cross-model degradation — **PENDING
+AUTHENTICATION**, §7.3). Written **against the recommended direction**; detail-planning is **not** gated.
+
+**Implements:** the **non-negotiable safety floor** (ruling 4) — the multi-pass + cross-model self-review
+the auto-publish gate (C2) runs on every generated draft: independent **grounding/factual**, **safety**,
+and **provenance** review passes, on a **different provider from the generator** (Anthropic generates per
+B2; OpenAI reviews), extending the established `_REVIEW_DEFAULT_OPS` / AC-D19 / AC-D23 cross-provider
+pattern. It stops at the **protocol** (the passes + their verdicts): **no** confidence scoring or
+auto-publish threshold (Slice 8 / C2 consumes the verdicts), **no** publish/`Pill` creation, **no**
+dashboard.
+
+### 7.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The cross-provider review pattern already exists.** `_REVIEW_DEFAULT_OPS = {grade_review,
+  anchor_self_review}` (`provider.py:162-164`) routes review ops to `system_settings.review_provider`
+  (OpenAI default, `provider.py:342-348`). **AC-D23 already runs a cross-provider self-review on every
+  generated anchor question** (parent §2, `DECISIONS.md` AC-D23 — "a second AI call using a different
+  provider per the AC-D19 pattern evaluates each anchor"). **C1's multi-pass extends this established
+  pattern**, it does not invent cross-model review.
+- **The prompt variant registry supports multi-pass.** `_VARIANT_REGISTRY` (`prompts/__init__.py:58`) +
+  `get_prompt(operation, *, variant=...)` (`:67`) lets **one op carry several named prompt variants** —
+  the mechanism for the three review passes (grounding / safety / provenance) as **variants of one
+  `content_self_review` op** (NS-2 lean, §7.2a), keeping distinct pass contracts without three enum
+  members.
+- **Provider routing is op-keyed.** `resolve_provider` (`provider.py:340-348`): a review op → the
+  configured `review_provider`; Anthropic-default op → `anthropic`; else `openai`. A new
+  `content_self_review` op joins `_REVIEW_DEFAULT_OPS` → routes to OpenAI when the generator was Anthropic
+  (the cross-model floor).
+- **The safety floor today is the removed admin gate.** With the human approve gate gone (parent §4.3),
+  the **safety review pass owns re-adjudicating the `safety_relevant` classification itself** — the
+  autonomous replacement for AC-D21's pre-publish admin catch on a **false-negative mis-tag** (a safety
+  topic mistagged non-safety would otherwise receive AI teaching content via §6.4, violating the "Acumen
+  never generates safety teaching content" floor, `DECISIONS.md` AC-D21). This is an **AC-D21 body
+  change** (§7.3), coordinating with the A2 AC-D21 change.
+- **`auto_tag_safety` is the existing classifier the safety pass strengthens.** `catalogue.py:207`
+  `auto_tag_safety(name, description, db)` (keyword + AI self-classification, AC-D21) — the safety pass
+  **re-runs/strengthens** this on the generated draft, cross-model, and can flip the tag.
+
+### 7.2 Build choices — concrete (recommended direction)
+
+**(a) One new op `content_self_review` + three prompt-variant passes (NS-2 lean).** Add
+`Operation.content_self_review` to the enum; it joins **`_REVIEW_DEFAULT_OPS`** (OpenAI-default,
+cross-model). Three `_VARIANT_REGISTRY` entries — `(content_self_review, "grounding")`,
+`(…, "safety")`, `(…, "provenance")` — each a prompt module with its own contract:
+- **grounding/factual** — "are the draft's claims supported by the cited corpus chunks (the B2
+  `grounding_refs` / `GenerationProvenance`)?" → verdict + unsupported-claim list;
+- **safety** — "is the `safety_relevant` classification correct, and is any safety-teaching content
+  present?" → **re-adjudicated `safety_relevant`** + verdict (the §7.3 AC-D21 change);
+- **provenance** — "does every claim resolve to a corpus source (no orphan claims)?" → verdict +
+  orphan-claim list.
+**(b) The protocol domain fn.** `self_review_draft(db, *, draft, provenance) -> SelfReviewResult` runs
+the three passes (each a `content_self_review` call with its variant), each **cross-model** (OpenAI when
+the draft was Anthropic-generated). Returns the three verdicts + the re-adjudicated `safety_relevant`;
+**C2 (Slice 8) consumes them** into the confidence score + the publish decision. The four op-keyed maps
+(`resolve_model` / `_MAX_OUTPUT_TOKENS` / `OP_TO_METHOD` / `_REGISTRY`) gain a `content_self_review`
+entry (OpenAI-side: `OP_TO_METHOD: "review"`); the ops-count sweep (§7.4).
+**(c) Cross-model verification (ruling 4 floor).** The passes route to a **different provider from the
+generator** (`provider.py` review routing). When a second provider **is** configured, the floor runs as
+specified. When it is **not**, see NS-7 (§7.3) — **the degradation rule is pending-authentication, not
+baked.**
+**(d) Determinism / offline.** The stub `content_self_review` returns deterministic per-variant verdicts
+(seeded by the draft) so the protocol is exercisable offline (AC-CD15); a cue-bearing unsafe draft trips
+the safety pass deterministically.
+
+### 7.3 Embedded ratification-class items — SURFACED (blocking C1 execution, Gate 2)
+
+- **New AC-D — self-review protocol (ruling 4).** Class (i)/(ii). The multi-pass + cross-model floor;
+  the spec-author-authored AC-D body; the `content_self_review` op + the three passes ride it. Cites the
+  AC-D19/AC-D23 cross-provider precedent it extends. Blocks C1 execution.
+- **NS-2 (carried) — new `Operation`(s) vs reuse `anchor_self_review`; + the op-count magnitude.**
+  Class (i)/(ii) (AC-CD8). **Lean: ONE new `content_self_review` op + three `_VARIANT_REGISTRY`
+  variants** (distinct input/output contract from anchor review — it reviews a *generated pill draft*
+  against grounding/safety/provenance, not an *anchor question* against quality criteria; reusing
+  `anchor_self_review` would conflate contracts + provenance/cost aggregation). **This is the SECOND
+  ops-count expansion** (after B1's `pill_generation`): the cross-family op count **2 → 3**
+  (`grade_review`, `anchor_self_review`, **`content_self_review`**), the named total **8 → 9**, the enum
+  **9 → 10**. Run the §4.4 three-class sweep at execution HEAD; **coordinate the §6 ops-count amendment
+  across B1 + C1** so SPEC §6/§6.5/§8.x is amended coherently (the count lands at its final value once
+  both ops are ratified). Blocks C1 execution.
+- **AC-D21 body change — the safety self-review pass owns re-adjudicating `safety_relevant`** (auditor
+  A-13, parent §7.1). Class (i)/(ii). The autonomous replacement for the removed pre-publish admin catch
+  on a false-negative mis-tag; AC-D21's *"admin override the tag at any time"* **relocates to the
+  retroactive dashboard** (Stage E / E2). **Fold with the A2 AC-D21 change** (web search → corpus) so
+  AC-D21 is amended **once**, completely (corpus use + safety re-adjudication + override relocation).
+  Blocks C1 execution.
+- **NS-7 (carried) — single-provider cross-model degradation — PENDING AUTHENTICATION (§8.3).** Ruling 4
+  makes cross-model the *non-negotiable safety floor*, but a single-provider deployment cannot run it —
+  a genuine cross-ruling edge with ruling 2 (*nothing held pre-publish, incl. safety-relevant*). **A
+  spec-author *degrade-not-gate* ruling has been *reported* on the unmerged `vibrant-euler@92886fe`
+  addendum** (single-provider → publish-with-warning + same-model multi-pass + a "single-provider
+  verified" flag; no dual-provider gate), **overriding the planner's original prereq-gate lean** — but
+  per role files §8.3 a ruling seen on an unmerged branch under the shared byline is a **relay: pending,
+  not actionable** until authenticated to the acting session (overseer OV-6; auditor A-6). **So C1
+  records NS-7 as recorded-but-pending-authentication and bakes neither option:**
+  - the **reported (degrade)** posture — single-provider safety-relevant **publishes-with-warning**,
+    always dashboard-flagged, same-model multi-pass + a verified flag; vs.
+  - the **original planner lean (gate)** — a second provider is a deployment **prerequisite** for
+    safety-relevant auto-publish; absent it, hold-with-warning.
+  **C1 is authored so the degradation behaviour is a single policy point the C2 gate (Slice 8) reads**,
+  switchable to whichever the spec author authenticates. **@spec-author: please confirm the NS-7 ruling
+  through this PR's authenticated channel** (or land the `vibrant-euler` addendum through its proper
+  ratification gate) so C1/C2 execution can act on it. **The auditor has flagged it will escalate the
+  NS-7 authentication (PS-C1)** — this detail supports that escalation: NS-7 stays **surfaced + pending**,
+  not baked. Class (ii) (it qualifies ruling 4 + binds the C2 gate AC-D).
+- **Carried holds:** C1 needs **B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5**.
+
+### 7.4 Docs / mirror sweeps — the second ops-count expansion
+
+The `content_self_review` op is the **second** "seven AI operations" expansion (after B1). Re-run the
+§4.4 three-class structural greps at execution HEAD. **Coordinate B1 + C1**: the SPEC §6 prose count, the
+"five of seven"/"two cross-family" enumerations (`SPEC.md:296/397/...`), `DECISIONS.md:63/96`, and the
+four op-keyed code maps all land at their **final** values once **both** `pill_generation` (Anthropic
++1) and `content_self_review` (OpenAI/cross-family +1) are ratified — net **seven → nine** named ops,
+enum **8 → 10**. The spec author may author the §6 ops-count amendment **once** covering both, or per-op;
+either way each op-adding execution PR re-runs the sweep and folds completely (no silent partial-fold).
+**Code (C1 execution):** the new op + the three variant prompt modules + the four op-keyed map entries
+(`OP_TO_METHOD: "review"`) + `_REVIEW_DEFAULT_OPS` membership + the stub branch + `.env.example` model
+field; the construction-oracle test floors (`set(OP_TO_METHOD)==set(Operation)` etc.) enforce
+completeness.
+
+### 7.5 Tests (AC-CD15 — zero-network)
+
+1. **Three passes run cross-model.** `self_review_draft` (stub provider) runs grounding/safety/provenance
+   variants; assert each resolves to the **review provider** (OpenAI-side) when the draft was
+   Anthropic-generated (the cross-model floor).
+2. **Safety pass re-adjudicates.** A draft mistagged `safety_relevant=False` on a cue-bearing topic →
+   the safety pass flips it to `True` (the false-negative catch); a correctly-tagged draft is unchanged.
+3. **Grounding/provenance verdicts.** A draft whose claims all cite corpus chunks → grounding+provenance
+   pass; a draft with an orphan claim → provenance verdict lists it.
+4. **Op wiring + sweep floors.** `content_self_review ∈ _REVIEW_DEFAULT_OPS`, routes via `review`; the
+   `set(OP_TO_METHOD)==set(Operation)` + `registered_operations()` floors pass with the new member.
+5. **NS-7 degradation is a single switch.** With no second provider configured, the protocol takes the
+   **policy-configured** degradation path (a single point C2 reads) — the test asserts the switch exists
+   and defaults conservatively **pending the NS-7 ruling** (it does not bake either posture as the
+   behaviour). Zero-network (AC-CD15).
+
+### 7.6 What C1 does NOT touch (scope fence)
+
+No **confidence scoring / auto-publish threshold / publish-with-warning** (Slice 8 / C2 consumes the
+verdicts); no **`Pill` creation / publish** (the C2 gate's step); no **dashboard / rollback** (E); no
+**gap-detection** (D); no **endpoint/FE**. The `pill_proposal` refiner, `grade_review`, and
+`anchor_self_review` ops are untouched (C1 adds a distinct review op).
+
+### 7.7 Reviewer findings folded — Slice 7
+
+*(none yet — Slice 7 posted for review; accumulates the auditor's + overseer's Slice-7 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
