@@ -1099,6 +1099,159 @@ posts `Status: final for Slice 4`.
 
 ---
 
+## Slice 5 (B2) — corpus-grounded generation + per-draft provenance chain
+
+**Status: posted for Slice 5 review** (not yet sealed — awaiting auditor + overseer Slice-5 review.
+Appending this section does **not** re-stale Slices 1–4's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — B2 is where the A→B dependency lands
+(OV-20):** it grounds against the corpus, so it needs **A2 + A3 merged** (the `CorpusChunk` store +
+`retrieve_corpus_for_topic`) **and B1 merged** (the `pill_generation` op), **plus NS-5** — **and (b) B2's
+own ratification surfaces:** a **new AC-D (provenance chain)**, an **AC-D22 reframe** (the AI-built corpus
+is queried at §6.5 pill generation), the **G7b** v1.0.0→v1.1.0 bump (now materialised), and the carried
+**NS-3** (provenance granularity). Written **against the recommended direction**; detail-planning is
+**not** gated.
+
+**Implements:** the B1 `pill_generation` primitive learns to **ground** — it retrieves corpus context for
+the *topic* (A3's `retrieve_corpus_for_topic`), grounds each generated claim in cited corpus chunks, and
+emits a **provenance chain** per draft (which corpus chunk(s)/source(s) grounded each claim, with the
+chunk's authority tier). It stops there: **no** N-draft fan-out / `processing_tasks` persistence /
+cost-share / per-band decomposition (Slice 6 / B3), **no** self-review or gate (C1–C2), **no** endpoint/FE.
+
+### 5.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The test-generation prompt is the grounding precedent.** `app/ai/prompts/generation.py`
+  `VERSION="1.2.0"` injects `{rag_context}` (`:56`) + the instruction *"ground in the material (do not
+  invent facts beyond it; if it is empty, fall back to general knowledge)"* (`:67`); v1.1.0 first added
+  `rag_context` per AC-D22 P9 (`:16`). **B2 mirrors this** for `pill_generation` — a `{corpus_context}`
+  slot + a *ground-and-cite* instruction — bumping `pill_generation` v1.0.0 → **v1.1.0** (the B1-surfaced
+  G7b trajectory, now landing).
+- **A3 supplies the retrieval.** `retrieve_corpus_for_topic` (Slice 3 / A3) returns ranked `CorpusChunk`
+  hits **with `source_doc_ref`/`source_host`/`authority_tier`/`authority_score`** — exactly the fields a
+  provenance chain records. B2 consumes it (the A→B dependency lands here, OV-20).
+- **`AIProvenanceMixin` is per-row *cost* provenance, NOT a claim→source chain.** `models.py:213-227`
+  carries `ai_provider`/`ai_model`/`ai_cost_usd` per row (the embedding/generation *call* cost). It does
+  **not** record *which source grounded which claim*. **The provenance chain is greenfield** — a grep of
+  `models.py` for `provenance|claim|citation|grounding` finds only `AIProvenanceMixin` + its consumers.
+  ⇒ B2 mints a **new model + a new AC-D**.
+- **Per-source rollback (ruling 5 / E2) forces a *queryable* provenance store.** E2's per-source rollback
+  must *"retract everything grounded on a discredited/withdrawn corpus source"* — which requires querying
+  provenance **by `source_host`/`corpus_chunk_id`**. So the provenance chain must be a **relational
+  table** (`draft_id` × `claim_ref` × `corpus_chunk_id`/`source_host` × `authority_tier`), **not** an
+  opaque JSONB blob on the draft. This is the load-bearing shape constraint (§5.2b).
+- **`record_provenance_share` is the B3 cost-share, not B2.** `cost.py:97 record_provenance_share(entity,
+  result, *, share_count)` splits one call's cost across N entities — the **N-draft fan-out** primitive,
+  **Slice 6 / B3** (confirmed: B2 is single-grounded-generation + provenance contract; B3 scales to N).
+- **Drafts persist as `ProcessingTask` rows.** `models.py:1174 ProcessingTask` (status + JSONB `payload`)
+  is the #106-precedent draft carrier — but the **N-row fan-out persistence is B3**. B2 defines the
+  provenance **model + writer**; B3 reuses the writer when it persists the N drafts (§5.3 B2/B3 split).
+
+### 5.2 Build choices — concrete (recommended direction)
+
+**(a) Corpus-grounded generation — `pill_generation` v1.1.0 + a domain fn.** Bump
+`app/ai/prompts/pill_generation.py` `VERSION` → **`1.1.0`** (G7b): add a `{corpus_context}` slot + the
+instruction *"ground each draft's claims in the cited corpus context; each draft must cite, in
+`grounding_refs`, the `source_doc_ref`s it used; do not invent beyond the corpus; if empty, fall back to
+general domain knowledge"* (mirrors `generation.py:67`). Output schema gains **`grounding_refs: [str]`**
+per draft. A domain fn `generate_grounded_drafts(db, *, topic, target_count)` calls
+`retrieve_corpus_for_topic(topic)` (A3) → `render_*` the corpus context (with authority tier/score) →
+`resolve_provider(pill_generation).generate(...)` → parses drafts + builds the provenance chain (b).
+Empty corpus → `grounding_refs: []` + general-knowledge fallback (same fail-soft as `generation.py`).
+
+**(b) Provenance-chain model — new `GenerationProvenance` table + migration.** A **relational** table (per
+the E2 by-source-query constraint, §5.1): columns `id`, `tenant_id`, `draft_ref` (the draft the claim
+belongs to — a `ProcessingTask`/pill ref once B3 persists), `claim_ref` (the claim/assertion identifier —
+shape per **NS-3**, §5.3), `corpus_chunk_id` (FK → `CorpusChunk`), `source_host`, `authority_tier`,
+`authority_score`, `created_at`. Indexed on `source_host` + `corpus_chunk_id` (the E2 rollback query
+keys). The generation fn writes one row per (claim, grounding-chunk). **New AC-D (provenance chain)** +
+the migration (up/down clean).
+
+**(c) Authority-weighted grounding (ruling 3).** The corpus context rendered into the prompt carries each
+chunk's **authority tier/score** (A1/A2), and the provenance rows stamp it — so downstream Stage-C
+confidence (C2) can weight a draft by the authority of the sources that grounded it, and Stage-E (E1) can
+show the authority breakdown. B2 *records* authority on the provenance; C2/E1 *consume* it.
+
+**(d) DS2-b coupling.** If the spec author rules the A2 "cross-reference" step ≥ **(ii) cross-source
+corroboration** (Slice 2 §2.3, DS2-b), the provenance chain is the natural home for the **corroboration
+count** (how many authoritative sources independently support a claim) — a per-`claim_ref` aggregate over
+the `GenerationProvenance` rows. B2 is authored so corroboration is an **additive** read over the
+provenance table *iff* DS2-b rules ≥(ii); it bakes nothing.
+
+### 5.3 Embedded ratification-class items — SURFACED (blocking B2 execution, Gate 2)
+
+- **New AC-D — provenance chain** (claim → corpus source, with authority tier). Class (i). The
+  spec-author-authored AC-D body + the `GenerationProvenance` model rides it. (Next sequential after the
+  source-authority AC-D mint; the spec author assigns.) Blocks B2 execution.
+- **AC-D22 reframe — corpus queried at §6.5 pill generation.** Class (i)/(ii). Coordinates with the
+  **A2 AC-D22 body change** (Drive retired → AI-built corpus): B2 adds the **§6.5-generation grounding
+  use** ("the index is queried at every generation call" extends from §6.1/§6.4 to **§6.5**). Fold with
+  the A2 AC-D22 change so AC-D22 is amended **once**, completely (the Drive→corpus mirror-sweep + the
+  §6.5 extension together). Blocks B2 execution.
+- **NS-3 (carried) — provenance granularity: per-claim vs per-draft source-set.** Ruling 0a says *"every
+  generated claim traces"* → **per-claim intent**; the **decomposition unit** (what counts as a "claim" —
+  a sentence? an assertion? the whole draft's source-set?) is the open point. **Lean: per-assertion**
+  (each factual claim in a draft maps to its grounding chunk(s)) — it is what makes per-source rollback
+  (E2) *precise* (retract the claims a discredited source grounded, not the whole draft). **But the
+  granularity sets the `claim_ref` shape + the row cardinality**, so it is **surfaced, not baked**
+  (class (i)/(ii), rides the provenance AC-D). *If ruled per-draft-set, `claim_ref` collapses to the
+  draft and the table is per-(draft, source).*
+- **G7b (carried) — the v1.0.0→v1.1.0 bump lands here.** B1 surfaced the trajectory; B2 materialises it
+  (the `grounding_refs` + corpus-grounding contract). The persisted `prompt_version` now records v1.1.0
+  on every B2-grounded draft. (Recorded as *resolved-here* once G7b rules "bump per contract change".)
+- **Carried holds:** B2 execution needs **A2 + A3 + B1 merged** (corpus + retrieval + op) **+ NS-5** — the
+  first slice where the A→B serialization (parent §5, OV-20) actually binds.
+
+> **B2/B3 split (auditor PS-B2 "persistence-split watch") — stated explicitly.** **B2** owns: the
+> grounding prompt-bump, the grounded-generation domain fn, the **provenance model + writer + new AC-D**,
+> and writing provenance for the drafts the primitive returns. **B3** owns: **N-draft fan-out**, the
+> `ProcessingTask` N-row **persistence**, **cost-share** (`record_provenance_share` across N), and
+> per-band decomposition (G3). The seam: B3 reuses B2's provenance writer when it persists each of the N
+> drafts — B2 defines *how a draft's provenance is recorded*; B3 defines *persisting N of them*. No
+> overlap: B2 has the model/contract, B3 has the fan-out/cost-share.
+
+### 5.4 Docs / mirror sweeps
+
+**Spec surfaces — in the spec-author's amendment PR(s)** (spec-author-authored):
+- the new **provenance-chain AC-D** body in `DECISIONS.md` + its decision-count header bump;
+- the **AC-D22 reframe** (`DECISIONS.md` AC-D22 body + `SPEC.md` §6.5 + the §7.3→corpus prose) — folded
+  with the A2 AC-D22 change (amend once);
+- **SPEC §6.5** gains the corpus-grounding + provenance language (coordinate with the §6.5 rewrite,
+  Slice 10 / D3, so §6.5 is amended coherently).
+
+**Code — in B2's execution:** `pill_generation.py` v1.1.0; the `generate_grounded_drafts` domain fn; the
+`GenerationProvenance` model + migration (up/down) + indices; the stub extended to echo injected corpus
+refs into `grounding_refs` + emit deterministic provenance rows (offline); `app/ai/cost.py` — no new
+spend table (provenance rows carry no independent AI cost; the generation call's cost rides the draft via
+`AIProvenanceMixin`/`record_provenance_share` at B3). Re-verify at execution HEAD.
+
+### 5.5 Tests (AC-CD15 — zero-network)
+
+1. **Grounded generation.** `generate_grounded_drafts` with a seeded `CorpusChunk` set (stub embed +
+   stub generate) → drafts whose `grounding_refs` echo the retrieved `source_doc_ref`s; empty corpus →
+   `grounding_refs: []` + general-knowledge fallback (assert the prompt rendered `(none)`).
+2. **Provenance chain written.** Each grounded draft writes `GenerationProvenance` rows mapping
+   `claim_ref` → `corpus_chunk_id`/`source_host`/`authority_tier`; assert the rows are queryable **by
+   `source_host`** (the E2 rollback key) and **by `draft_ref`**.
+3. **Authority recorded.** The provenance rows carry the A1 tier/score from the grounding chunks.
+4. **Version bump persisted.** A grounded draft's provenance carries `prompt_version == "1.1.0"`.
+5. **Determinism + zero-network.** Stub corpus + stub generate → byte-identical drafts + provenance on
+   re-call; no network (AC-CD15).
+
+### 5.6 What B2 does NOT touch (scope fence)
+
+No **N-draft fan-out / `ProcessingTask` persistence / cost-share / per-band decomposition** (Slice 6 /
+B3); no **self-review / confidence / auto-publish gate** (C1–C2); no **endpoint/FE**; no **gap-detection
+trigger** (D3 calls `generate_grounded_drafts`); no **dashboard / rollback** (E — though B2's provenance
+table is what E2's per-source rollback queries). The `pill_proposal` refiner + Drive path are untouched
+(Drive retirement is the NS-1 ruling, not B2 code).
+
+### 5.7 Reviewer findings folded — Slice 5
+
+*(none yet — Slice 5 posted for review; accumulates the auditor's + overseer's Slice-5 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
 ## Loop mechanics (role files §4–§8)
 
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = **exact**
