@@ -875,6 +875,201 @@ reviewers' re-verification + Slice-3 seals at the folded content-SHA, then the p
 
 ---
 
+## Slice 4 (B1) — `Operation.pill_generation` mint + provider/stub wiring
+
+**Status: posted for Slice 4 review** (not yet sealed — awaiting auditor + overseer Slice-4 review.
+Appending this section does **not** re-stale Slices 1–3's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending authenticated ratification of the `Operation.pill_generation`
+mint (carried G1) + the prompt-registry version trajectory (carried G7b).** This detail is written
+**against the recommended direction** — **mint** `Operation.pill_generation`; **keep** the existing
+`pill_proposal` refiner (carried G7a, lean keep); new prompt module at `VERSION = "1.0.0"` carrying the
+**core topic→N schema only** (grounding/provenance are Slice 5 / B2). Detail-planning is **not** gated.
+
+> **Direct lineage to the merged #106 Slice 1.** #106 detail-planned *exactly this op-mint* (PR #106
+> `plans/2026-06-07-…detail.md` §1, squashed at `9bde51f`); the parent workstream §9 carries **G1** as
+> "ratified-for-#106 / carries to the autonomous generator." This slice re-grounds that detail **at
+> `2110a56`** (line numbers re-verified) and **adopts the auditor's GT-1 correction**: the `Operation`
+> enum is **already 8** (7 SPEC ops + `embed`), so this mint is *spec-prose "seven → eight"* over an
+> **enum 8 → 9**, not a naive "enum seven → eight" (§4.4).
+
+**Implements:** the AI **primitive** the autonomous generator (B2) and the gap-detection trigger (D3)
+will call — a versioned `pill_generation` prompt-registry entry, the `Operation`-enum + provider-
+resolution wiring that routes it, a deterministic offline **stub**, and an **AC-CD15 zero-network test**.
+It stops at the primitive: **no** corpus grounding / provenance chain (Slice 5 / B2), **no** N-row
+`processing_tasks` persistence / fan-out / cost-share (Slice 6 / B3), **no** self-review or gate
+(Slices 7–8 / C1–C2), **no** endpoint or FE.
+
+### 4.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The refiner is one-in-one-out (kept; G7a).** `app/ai/prompts/pill_proposal.py` `VERSION="1.0.0"` —
+  admin supplies `name`/`description`/`subject_id`/difficulty; output is a **single** object, not a list.
+  It does not accept a topic and does not emit N drafts. **B1 leaves it untouched** (recommended-keep).
+- **The `Operation` enum is already 8 (GT-1).** `provider.py:136-143` — `generation, grading, weakness,
+  learning_material, pill_proposal, grade_review, anchor_self_review, embed`. The docstring (`:122`)
+  reads *"The seven AI operations of AC-CD8 v1.6 plus `embed`"*; the routing map (`:128-134`) sends
+  `generation`/`weakness`/`learning_material`/`pill_proposal` → `generate`. A generator op is a
+  **generate-family** op (AC-D12 primary content) → routes through `AIProvider.generate`,
+  Anthropic-default.
+- **Provider-default sets.** `_ANTHROPIC_DEFAULT_OPS` (`provider.py:149-157`, the 5 Anthropic ops incl.
+  `pill_proposal`); `_REVIEW_DEFAULT_OPS` (`:162-164`). A new generator op joins
+  `_ANTHROPIC_DEFAULT_OPS`.
+- **Stub dispatch.** `StubAIProvider.generate` switches on the op; an unbranched op falls to a generic
+  `{"operation": …, "stubbed": True}` dict — so a `pill_generation` **stub branch** is required for a
+  usable offline dev/test path.
+- **Four op-keyed structural maps (strict — `KeyError` if unset).** `resolve_model` map
+  (`provider.py:418-427`, strict `[operation]` subscript at **`:427`**; `pill_proposal →
+  anthropic_model_pill_proposal` at `:423`); `anthropic.py:61` `_MAX_OUTPUT_TOKENS` (strict subscript at
+  **`:146`**; `pill_proposal: 1000` at `:66`); `cost.py:132` `OP_TO_METHOD` (total map; `pill_proposal:
+  "generate"` at `:137`); `prompts/__init__.py:37` `_REGISTRY` (`pill_proposal` at `:45`;
+  `registered_operations() = frozenset(_REGISTRY)` at `:139`). **Each needs a `pill_generation` entry or
+  it `KeyError`s / fails a floor** (§4.4).
+- **Config + `Settings`.** `resolve_model` reads `anthropic_model_<op>` env-default fields (AC-CD18);
+  `anthropic_model_pill_proposal` is the precedent. A new op needs a sibling field or `resolve_model`
+  `KeyError`s.
+- **Provenance + zero-network.** `AIResult` carries provider/model/prompt_version/tokens/cost; the stub
+  returns `prompt_version="0.0.0-stub"`, zero tokens, `cost_usd=0.0` (AC-CD15 no-spend). `conftest.py`
+  forbids network in tests; the stub is the offline path.
+
+### 4.2 Build choices — concrete (recommended direction)
+
+**(a) New prompt module — `app/ai/prompts/pill_generation.py`, `VERSION="1.0.0"`.** Mirrors
+`pill_proposal.py`'s module shape (docstring JSON contract; `VERSION`; `TEMPLATE`). Inputs: `topic`,
+`subject_id` (optional parent), `target_count` (N), `available_difficulty_min`/`_max`. Output: a **list
+under a `drafts` key** (a keyed object so B2/B3 can add sibling metadata without re-shaping):
+`{"drafts": [{"name", "description", "subject_id"|null, "available_difficulty_min" 1-10,
+"available_difficulty_max" 1-10, "estimated_minutes"|null, "safety_relevant" bool, "rationale",
+"evidence_count" int, "gap_signal" str}]}`. `evidence_count`+`gap_signal` satisfy the §6.5 output bar
+(`SPEC.md:346/348`). **`grounding_refs`/provenance are intentionally absent at v1.0.0** — Slice 5 (B2)
+scope; whether B2 bumps to v1.1.0 is the **G7b** sub-question (§4.3). Per-band metadata richer than the
+`min/max` pair is **G3** (Slice 6). No `TBD`, no speculative fields (doc-hygiene).
+
+**(b) `Operation` enum + routing — `app/ai/provider.py`.**
+- Add `pill_generation = "pill_generation"` to `Operation` (`:136-143`) and list it under `generate` in
+  the routing docstring (`:128-134`).
+- Add `Operation.pill_generation` to `_ANTHROPIC_DEFAULT_OPS` (`:149-157`).
+- Add a `StubAIProvider.generate` branch → `_stub_pill_generation_content(payload)` (module-level):
+  deterministic N-draft set **seeded by `topic`+`target_count`** (same input → byte-identical drafts),
+  each carrying the full v1.0.0 schema, safety self-classified against the existing stub cue list.
+- Add `Operation.pill_generation: "anthropic_model_pill_generation"` to the `resolve_model` map
+  (`:418-427`, strict `[operation]` at `:427`).
+
+**(c) The three other op-keyed maps (or it breaks at runtime / fails a floor).**
+- `anthropic.py:61` `_MAX_OUTPUT_TOKENS` — add `Operation.pill_generation: ~4000` (N-draft response is
+  larger than the 1000-token single ops; strict subscript at `:146` → **generate-time `KeyError`**
+  without it).
+- `cost.py:132` `OP_TO_METHOD` — add `Operation.pill_generation: "generate"` (cost-dashboard routing;
+  `set(OP_TO_METHOD)==set(Operation)` floor fails without it).
+- `prompts/__init__.py:37` `_REGISTRY` — add `Operation.pill_generation: (pill_generation.TEMPLATE,
+  pill_generation.VERSION)` (so `get_prompt`/`registered_operations()` resolve it).
+
+**(d) Config field — `app/config.py`.** Add `anthropic_model_pill_generation` (env-default, AC-CD18),
+sibling to `anthropic_model_pill_proposal`; `.env.example` gets `ANTHROPIC_MODEL_PILL_GENERATION=`. An
+**absorbable AC-CD18 addition** riding G1 (it exists only if the op is minted) — folded into the slice
+handover, not a separate spec PR (the #106 OV-S1.11 ruling; caveat: holds only while B1 stays within one
+sibling field + one prompt module).
+
+**(e) No domain / router / FE in B1.** `enqueue_*` + N-row persistence is Slice 6; grounding is Slice 5;
+the endpoint/trigger are Slice 4-of-#106-analog → here the autonomous trigger is D3. B1's only callable
+surface is `resolve_provider(Operation.pill_generation).generate(...)`, exercised by §4.5.
+
+### 4.3 Embedded ratification-class items — SURFACED (blocking B1 execution, Gate 2)
+
+- **G1 (carried) — mint `Operation.pill_generation`.** Class (i) (AC-CD8 / AC-D1 anchor) + (ii) (the
+  SPEC §6 ops-count prose). **Recommendation: MINT** (the refiner and the generator have different
+  input *and* output contracts; overloading one op would force payload-shape branching and conflate
+  per-op cost/provenance aggregation). **Carried from #106 §9 as ratified-for-#106**, but per Gate 2 the
+  mint is re-confirmed through **this** workstream's execution-PR authenticated channel (OV-2 — the
+  merged #106/#107 record reads as a relay downstream). **Ratification scope is class (i)+(ii)**: it
+  amends `DECISIONS.md:96` (AC-D1 *Implications*, an **AC-D body**) + `DECISIONS.md:63` (AC-CD8 numeral)
+  + the SPEC ops-count prose + the code mirrors (§4.4). **Blocks B1 execution.**
+- **G7b (carried) — prompt-registry version trajectory.** Class (ii)/(iv). B1 lands `pill_generation`
+  at **v1.0.0** (core topic→N schema). When Slice 5 (B2) adds `grounding_refs`/provenance to the output
+  contract, does the version **bump to v1.1.0** (the persisted `prompt_version` then records which
+  contract produced each draft) or does the **full schema land at v1.0.0 now** with empty
+  `grounding_refs` until B2 fills it? **Recommendation: bump per contract change (v1.0.0 → v1.1.0 at
+  B2)** — landing fields B1 cannot populate violates doc-hygiene; a version bump is what the persisted
+  registry is *for*. **Blocks B1 execution** (the `VERSION` string + the schema it pins).
+- **G7a (carried, lean — *not* B1-blocking).** Keep the `pill_proposal` refiner as an optional manual
+  path (parent §4.5 / §9). B1 keeps it untouched; its ultimate fate as an "optional manual surface" is a
+  Stage-E/dashboard question, not a B1 gate. Recorded so the reviewers see it is carried-lean, not baked.
+
+### 4.4 Docs / mirror sweeps — the "seven AI operations" count invariant (the load-bearing sweep)
+
+Minting `pill_generation` makes the **named** AI-operation count **eight** (the SPEC prose names the 7
+non-`embed` ops) over an `Operation` **enum 8 → 9** (GT-1). This is the #106 Slice-1 three-class
+structural mirror-sweep, re-grounded here. **Dissolves entirely if G1 = EXTEND** (no new op → count
+stays seven). **Re-run all three greps at execution HEAD** (keyed on *structure*, not recalled names):
+
+```
+# (A) WORD forms  # (A2) NUMERAL forms  # (B) STRUCTURAL (name-agnostic)
+grep -rniE 'seven[- ](value|ai|distinct|operation|prompt)|(all|the|each) seven (ai )?(operation|prompt)|five of seven|eighth (ai )?operation' SPEC.md CODE_SPEC.md DECISIONS.md ROADMAP.md CHECKLIST.md app/ tests/ | grep -viE 'cron|seventh integrity'
+grep -rnE '[0-9]+-(operation|method)' SPEC.md CODE_SPEC.md DECISIONS.md app/ tests/ | grep -viE 'cron'
+grep -rnE 'dict\[Operation|\[operation\]|set\(Operation\)|list\(Operation\)|frozenset\(_REGISTERED' app/ tests/
+```
+
+**Spec surfaces — in the spec-author's G1 amendment PR** (spec-author-authored; the AC-CD8 body change
+rides it): `SPEC.md:296` ("seven distinct AI operations" + the by-name enumeration → eight),
+`SPEC.md:372` ("All seven prompts"), `SPEC.md:397` ("five of seven" → six of eight; `pill_generation`
+is Anthropic-default), `SPEC.md:443` ("all seven operations"), `SPEC.md:523` (SiteMesh "seven AI
+operations"), **SPEC §6 subsection structure** (the generator needs its own §6 subsection — coordinate
+with the §6.5 rewrite, Slice 10/D3), `CODE_SPEC.md` AC-CD8 prose ("seven operations"), **`DECISIONS.md:96`
+AC-D1 *Implications*** (AC-D **body** — "seven AI-driven operations", by-name; class (i)), **`DECISIONS.md:63`
+AC-CD8 numeral** ("7-operation → 4-method" → 8-operation). *(Re-verify each line at execution HEAD;
+several are the surfaces #106 took four rounds to fully enumerate — the structural greps close the set
+by construction.)*
+
+**Code — in B1's execution** (in-body-override; the authored anchor is truth, mirrors follow):
+- `provider.py:122` enum docstring ("seven AI operations … plus `embed`" → eight … plus `embed`) +
+  `provider.py:4` module docstring twin (if it carries the count — verify);
+- `prompts/__init__.py:10` package docstring (lists the ops — add `pill_generation`);
+- the **four op-keyed maps** (§4.2b/c: `resolve_model`, `_MAX_OUTPUT_TOKENS`, `OP_TO_METHOD`, `_REGISTRY`)
+  + `_ANTHROPIC_DEFAULT_OPS` membership + the stub branch;
+- `.env.example` (`ANTHROPIC_MODEL_PILL_GENERATION=`).
+
+**The construction oracle (what makes this regress-proof).** The code carries its own completeness
+oracles: `test_p5_cost.py` `assert set(OP_TO_METHOD) == set(Operation)`, `test_p5_prompts.py`
+`registered_operations() == frozenset(_REGISTERED_OPERATIONS)`, `test_p5_resolve.py` `_ALL_OPS =
+list(Operation)` per-op loop — **each red-flags its surface the moment `pill_generation` joins the enum
+and the suite runs**. So the two-tier method: **(1) doc/spec prose** — no test catches a stale "seven"
+in prose, so the **(A)+(A2) greps are load-bearing and must be exhaustive**; **(2) code** — the executor
+adds the enum member + brings the full suite + `mypy` green, which catches every coverage-tested +
+exercised-subscript site (incl. `anthropic.py:61`'s `KeyError`-only-at-real-call latent surface). Grep
+proves the un-oracled; the green suite proves the rest.
+
+### 4.5 Tests (AC-CD15 — `app/ai/*` near-full coverage, zero-network)
+
+New `tests/unit/test_ai_pill_generation.py`:
+1. **Resolution.** `resolve_provider(Operation.pill_generation)` → Anthropic singleton when keyed, else
+   `StubAIProvider`; `resolve_model` → `anthropic_model_pill_generation`; a `model_by_operation` override
+   wins.
+2. **Stub determinism + schema.** `StubAIProvider.generate(pill_generation, payload)` → `content["drafts"]`
+   of length `target_count` (clamped), each carrying the full v1.0.0 keys; **same payload → byte-identical
+   set** on re-call; safety self-classification fires on a cue-bearing topic.
+3. **Provenance.** The `AIResult` carries `provider="stub"`, `prompt_version="0.0.0-stub"`, zero tokens,
+   `cost_usd=0.0`.
+4. **Zero-network** under the `conftest.py` guard, no monkeypatched real provider.
+5. **Enum/routing + map-completeness guard.** `pill_generation ∈ _ANTHROPIC_DEFAULT_OPS`, routes via
+   `generate`; the `set(OP_TO_METHOD)==set(Operation)` + `registered_operations()` floors pass with the
+   new member; `resolve_model(pill_generation)` does not raise.
+
+**Acceptance for B1 (execution):** the tests pass under the three-layer green gate; the structure-gate
+passes with the new prompt module + config field; the four op-keyed maps + the floors are green; no
+network.
+
+### 4.6 What B1 does NOT touch (scope fence)
+
+No `app/domain/catalogue.py` (`enqueue_*`/persistence — Slice 6); no corpus grounding / provenance chain
+(Slice 5 / B2); no `app/routers/*` / FE; no migration (B1 adds no table/column); no self-review / gate
+(C1–C2); no cron; no signal store (Stage D). The `pill_proposal` refiner is **untouched** (G7a keep).
+
+### 4.7 Reviewer findings folded — Slice 4
+
+*(none yet — Slice 4 posted for review; accumulates the auditor's + overseer's Slice-4 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
 ## Loop mechanics (role files §4–§8)
 
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = **exact**
