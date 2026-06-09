@@ -168,7 +168,11 @@ that assumes them but blocking no single slice's detail):
   execution PR still re-confirms NS-7 through its own authenticated channel, per OV-2 relay discipline —
   the merged detail-plan reads as a relay downstream). *(C1 §7.3's "pending-authentication" wording is
   superseded by this bullet; its substance — the degradation switch — is unchanged, so C1's seal is not
-  re-staled. C2 §8.3 reflects the ruling directly, C2 being mid-review.)*
+  re-staled. C2 §8.3 reflects the ruling directly, C2 being mid-review.)* **§7.3 reconciliation (auditor
+  A-45, tracked pre-global-marker item):** C1 §7.3's now-stale "pending-authentication" line is reconciled
+  to this RULED status **at the global final-marker pass** (where the whole doc re-binds and a C1 re-stale
+  is absorbed once), so the global marker does **not** carry the §7.3↔§1 inconsistency unresolved — the
+  §1 status-of-record governs in the interim.
 - **Multi-slice anchor amend-once (overseer OV-33) — author each shared anchor's amendment COMPLETE
   up-front.** Three canonical anchors are touched by **more than one slice**, and the earlier slice was
   **sealed with the narrower scope** — a partial-amend / double-amend risk (the §7 silent-partial-fold
