@@ -1,9 +1,10 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–5 (A1–A3, B1–B2) SEALED 3/3; Slice 6 (B3) posted** (per-slice
-`Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–6 (A1–A3, B1–B3) SEALED 3/3 — Stages A+B complete; Slice 7 (C1) next**
+(per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
-seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd`.*
+seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
+B3 `07080d1`.*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1258,8 +1259,12 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 
 ## Slice 6 (B3) — N-draft fan-out + `processing_tasks` persistence + cost-share
 
-**Status: posted for Slice 6 review** (not yet sealed — awaiting auditor + overseer Slice-6 review.
-Appending this section does **not** re-stale Slices 1–5's seals — §0.1.)
+**Status: final for Slice 6 — approved by planner** (content-bound to the Slice-6 substance at
+`07080d1` — auditor content SEAL (`696bda3`, 5 Confirms / 0 findings) + overseer governance SEAL
+(`43e6af3`, 4 Confirms / no Refine) both at `07080d1`. **Content-invariant**: only this Status line
+changed; §6.1–§6.7 byte-identical to `07080d1` (incl. §6.7 at its sealed placeholder), so it does **not**
+re-stale the reviewers' seals (§0.1/§8). **Genuinely clean — no fold**; the clean-seal record is in the
+planner wake-log.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — B3 needs B2 merged** (the
 grounded-generation fn + provenance writer; transitively A2+A3+B1) **+ NS-5 — and (b) B3's own surface:**
