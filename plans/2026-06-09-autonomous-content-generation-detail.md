@@ -1,10 +1,11 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–7 (A1–A3, B1–B3, C1) SEALED 3/3; Slice 8 (C2) posted** (per-slice
-`Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 9
+(D1–D2) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
-B3 `07080d1` · C1 `e46e9f5`.* *(NS-7 stands pending-authentication — a C1/C2 execution Gate-2 item, not a seal blocker.)*
+B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1.
+Tracked pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1622,8 +1623,13 @@ the folded content-SHA, then the planner posts `Status: final for Slice 7`.
 
 ## Slice 8 (C2) — confidence scoring + auto-publish gate (single global threshold; publish-with-warning)
 
-**Status: posted for Slice 8 review** (not yet sealed — awaiting auditor + overseer Slice-8 review.
-Appending this section does **not** re-stale Slices 1–7's seals — §0.1.)
+**Status: final for Slice 8 — approved by planner** (content-bound to the Slice-8 **§8** substance at
+`18a2e74`/`1afb2cf` — auditor content SEAL (`c442485`, §8 @ `18a2e74`; A-40 resolved, A-45 deferred to the
+global pass) + overseer governance SEAL (`7dc95dc`, @ `1afb2cf`; OV-40 resolved, OV-39/§7.3
+merge-exec-tracked). **Content-invariant**: only this Status line changed; §8.1–§8.7 byte-identical, so it
+does **not** re-stale the reviewers' seals (§0.1/§8). NS-7 RULED degrade-not-gate (triple-authenticated,
+§1). **Stage C (auto-publish gate) complete.** One tracked pre-global-marker item: the C1 §7.3 NS-7-line
+reconciliation (A-45/OV-39, §1 NS-7 bullet).)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — C2 consumes C1's self-review verdicts
 + the B3 draft rows, so it needs C1 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 — and (b) C2's
