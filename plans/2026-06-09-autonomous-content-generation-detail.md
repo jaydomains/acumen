@@ -1,6 +1,6 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–7 (A1–A3, B1–B3, C1) SEALED 3/3; Slice 8 (C2) next** (per-slice
+**Status: in progress — Slices 1–7 (A1–A3, B1–B3, C1) SEALED 3/3; Slice 8 (C2) posted** (per-slice
 `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
@@ -172,6 +172,10 @@ that assumes them but blocking no single slice's detail):
     at §6.5 generation);
   - **SPEC §6 ops-count** — B1 (`pill_generation`, Anthropic +1) **+** C1 (`content_self_review`,
     cross-family +1) → the named count lands at its **final** value (seven → nine) only when both are in.
+  - **AC-D7** — C2 (remove the human approve/queue gate — generated pills auto-publish) **+** F1 (the
+    incremental bootstrap trigger moves approve → publish);
+  - **AC-D23** — B2/C1 (the cross-provider self-review precedent extended) **+** F1 (bootstrap's anchor
+    self-review step) — verify the touching set at execution HEAD.
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
@@ -1594,6 +1598,149 @@ change (OV-33 *adds* a coordination discipline); no halt-class. **NS-7 remains P
 (no ruling has arrived through either reviewer's authenticated channel; both reviewers + the planner hold
 it un-baked, and the auditor is escalating it to the spec author). Awaiting both reviewers' (re-)seal at
 the folded content-SHA, then the planner posts `Status: final for Slice 7`.
+
+---
+
+## Slice 8 (C2) — confidence scoring + auto-publish gate (single global threshold; publish-with-warning)
+
+**Status: posted for Slice 8 review** (not yet sealed — awaiting auditor + overseer Slice-8 review.
+Appending this section does **not** re-stale Slices 1–7's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — C2 consumes C1's self-review verdicts
++ the B3 draft rows, so it needs C1 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5 — and (b) C2's
+own ratification surfaces:** a **new AC-D (auto-publish gate: single global threshold + publish-with-
+warning; rulings 1+2)**, an **AC-D7 body change** (remove the human approve/queue gate — generated pills
+auto-publish; **multi-slice with F1**, §1 amend-once), the carried **NS-6** (threshold value + per-type
+telemetry), the **§6.5 rewrite + audit-log governance prose**, and the carried **NS-7** (the safety-
+relevant single-provider degradation switch — **still PENDING AUTHENTICATION**, §8.3). Written **against
+the recommended direction**; detail-planning is **not** gated.
+
+**Implements:** the **(C) auto-publish gate** — for each B3-produced `pending` draft it runs C1's
+multi-pass self-review, computes a **confidence score**, and **publishes** with **no human step**:
+**≥ a single global threshold → publish live**; **< threshold → publish-with-warning** (live + a
+dashboard flag); **nothing held pre-publish, including safety-relevant** (subject to the NS-7 rule). It
+**replaces the `approve_pill_proposal` human gate** for generated drafts. It stops at the gate: the
+**bootstrap-on-publish** is Slice 14 / F1 (rides the publish event); the **oversight dashboard +
+rollback** are Slices 12–13 / E1–E2 (consume the publish + the publish-with-warning flag).
+
+### 8.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **`approve_pill_proposal` is the human gate being replaced.** `catalogue.py:567-613` reads
+  `task.payload["proposal"]` → `create_pill(discoverable=True, ai_safety_classification=...)` → marks the
+  task `done` + audits `pill_proposal.approve`. **C2's auto-publish gate is the autonomous replacement**
+  for the `pill_generation` draft rows; `approve_pill_proposal` **stays only for the `pill_proposal`
+  refiner** (G7a optional-manual path) — C2 does not delete it, it **bypasses** it for generated drafts.
+- **`create_pill` is the publish primitive.** `catalogue.py:153` creates a `Pill` (discoverable). The
+  gate's publish step calls it (honouring C1's **re-adjudicated** `safety_relevant`, not the raw draft
+  tag).
+- **The draft rows are B3's `processing_tasks`.** `task_name="pill_generation"`, `status=pending`
+  (Slice 6). The gate iterates pending draft rows → publish or publish-with-warning → `status=done`.
+- **C1 supplies the verdicts.** `self_review_draft` (Slice 7) returns grounding/safety/provenance verdicts
+  + the re-adjudicated `safety_relevant`; the **confidence score is computed from these + the provenance
+  authority tiers** (B2) + corroboration (if DS2-b ruled ≥(ii)).
+- **`SystemSettings` is the threshold home.** `models.py` `SystemSettings` already carries tunable
+  per-tenant config (e.g. `anchor_calibration_confidence_threshold`, `models.py:~888`); a **single
+  global `pill_publish_confidence_threshold`** field follows that pattern (ruling 1).
+- **The audit-log governance prose is `SPEC.md:290`** (*"pill proposals approved or rejected"*) → for the
+  autonomous flow, **published / publish-with-warning / rolled-back** events. And **SPEC §6.5** (the
+  "pill proposal" section, `SPEC.md:340-348`) is rewritten autonomous (coordinate with D3, the §6.5
+  rewrite owner).
+- **No confidence/flag store exists** (verified) — the confidence score + the low-confidence flag are
+  greenfield (a field on `Pill` / the draft, or a small table; §8.2).
+
+### 8.2 Build choices — concrete (recommended direction)
+
+**(a) Confidence scoring — `app/domain/...` `compute_confidence(self_review, provenance) -> float`.** A
+0..1 score combining C1's three verdicts (a hard fail on grounding or provenance floors it; safety is
+handled by the NS-7 path) + the **authority-weighted provenance** (mean/min tier-score of the grounding
+chunks, DS1-a) + corroboration count (if DS2-b ≥(ii)). The exact formula default is **NS-6** (§8.3).
+**(b) Auto-publish gate — `auto_publish_draft(db, task)`.** For each `pending` `pill_generation` draft:
+run `self_review_draft` (C1) → `compute_confidence` → **≥ threshold → publish** (`create_pill`,
+honouring the re-adjudicated `safety_relevant`; `status=done`; audit `pill_generation.publish`); **<
+threshold → publish-with-warning** (`create_pill` + a **`low_confidence` flag** + audit
+`pill_generation.publish_flagged`); **nothing held** (ruling 2). Stamp the `confidence`, the per-pass
+verdicts, and the `batch_id` (B3) on the published pill / a `PublishRecord` so E1/E2 can surface +
+roll back. Replaces `approve_pill_proposal` for generated drafts.
+**(c) Single global threshold (ruling 1).** A `SystemSettings.pill_publish_confidence_threshold` field
+(single global, **not** per-type — counter to a per-type gate; ruling 1). NS-6 sets the default.
+**(d) Publish-with-warning (ruling 2).** A `low_confidence` boolean (+ the confidence float) on the
+published pill (or a `PublishRecord` row) → E1 dashboard flag; the content is **live** regardless.
+**(e) Per-type confidence telemetry (NS-6).** Record confidence + the pass outcomes **per type**
+(safety-relevant vs not; optionally per subject) on the `PublishRecord`, so ruling 1's "re-evaluate to
+per-type iff data warrants" has the data from day one.
+**(f) NS-7 degradation switch (pending-auth).** For a **safety-relevant** draft when the cross-model
+floor cannot run (single provider): C2 reads the **C1 NS-7 policy switch** — *degrade* (publish-with-
+warning, always flagged) **or** *gate* (hold-with-warning) — **whichever the spec author authenticates**.
+C2 bakes neither; it wires the switch the C1 protocol exposes.
+
+### 8.3 Embedded ratification-class items — SURFACED (blocking C2 execution, Gate 2)
+
+- **New AC-D — auto-publish gate** (single global threshold + publish-with-warning; rulings 1+2; removes
+  the human approve gate for generated drafts). Class (i)/(ii). Blocks C2 execution.
+- **AC-D7 body change — remove the "queue for admin review / approve" governance language; generated
+  pills auto-publish.** Class (i)/(ii). **Multi-slice with F1** (F1 changes AC-D7's bootstrap trigger
+  approve→publish) — per the §1 **amend-once** discipline, AC-D7 is authored **complete (C2 approve-gate
+  removal + F1 bootstrap-on-publish) before the first of C2/F1 executes**. Blocks C2 execution.
+- **NS-6 (carried) — confidence-threshold value + per-type telemetry.** Class (ii). Ruling 1 fixed the
+  shape (single global); the **numeric default** + the confidence **formula** + how per-type failure data
+  is captured (for the later per-type re-evaluation) are unruled. **Lean: a conservative default + the
+  `compute_confidence` formula above + per-type telemetry from day one.** Couples to **DS1-a** (tier
+  scores feed the score). Surfaced, not baked.
+- **§6.5 rewrite + audit-log governance prose.** Class (ii). `SPEC.md:340-348` §6.5 → autonomous
+  generation + auto-publish (coordinate with D3, the §6.5-rewrite owner — amend §6.5 once); `SPEC.md:290`
+  audit-log prose *"pill proposals approved or rejected"* → published / publish-with-warning / rolled-back.
+- **NS-7 (carried) — single-provider safety degradation — STILL PENDING AUTHENTICATION** (§7.3 / §8.3).
+  C2 is the slice that *acts* on the NS-7 switch (publish vs hold for single-provider safety-relevant),
+  so the ruling most directly gates C2 execution. Recorded un-baked; the C2 gate reads whichever posture
+  the spec author authenticates. **@spec-author: NS-7 authentication is load-bearing for C2.**
+- **Carried holds:** C2 needs **C1 + B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5**.
+
+> **Detail-plan calls (not surfaced) — recorded for the reviewers:**
+> - **DS8-a — `low_confidence`/confidence on `Pill` vs a `PublishRecord` table.** Lean **a `PublishRecord`
+>   row per publish** (pill_id, batch_id, confidence, per-pass verdicts, low_confidence, per-type
+>   telemetry) — it is the natural read-surface for E1 (recent publishes + provenance + confidence) and
+>   the per-batch rollback join for E2, and keeps `Pill` uncluttered. A few flag columns on `Pill` would
+>   work but scatter the oversight data; the `PublishRecord` is the E1/E2-facing contract. Rides the
+>   auto-publish-gate AC-D / the E1 dashboard AC-CD.
+
+### 8.4 Docs / mirror sweeps
+
+**Spec surfaces — in the spec-author's amendment PR(s):** the new auto-publish-gate AC-D body; the
+**AC-D7** body change (complete C2+F1 scope, §1 amend-once); **SPEC §6.5** rewrite (with D3); `SPEC.md:290`
+audit-log prose; the §6 error-handling prose for the new publish path (`SPEC.md:378-388`). **Code (C2
+execution):** `compute_confidence` + `auto_publish_draft`; the `SystemSettings.pill_publish_confidence_
+threshold` field + migration + the v1.x default seed; the `PublishRecord` model + migration (DS8-a);
+audit actions `pill_generation.publish` / `.publish_flagged`; reuse `create_pill`. No ops/cron count
+touched (C2 mints no op/cron).
+
+### 8.5 Tests (AC-CD15 — zero-network)
+
+1. **Above-threshold → publish live.** A high-confidence draft (stub C1 verdicts all-pass, high authority)
+   → `create_pill` (discoverable), `PublishRecord` with `low_confidence=False`, audit `…publish`, task
+   `done`.
+2. **Below-threshold → publish-with-warning.** A low-confidence draft → `create_pill` **+**
+   `low_confidence=True` + audit `…publish_flagged`; the pill is **live** (nothing held).
+3. **Re-adjudicated safety honoured.** The published pill's `safety_relevant` is C1's re-adjudicated
+   value, not the raw draft tag.
+4. **Single global threshold.** Reads `SystemSettings.pill_publish_confidence_threshold`; a tenant
+   override moves the boundary; **no per-type threshold** (ruling 1).
+5. **Per-type telemetry.** The `PublishRecord` carries the per-type (safety vs not) confidence/outcome
+   data (NS-6).
+6. **NS-7 switch.** Safety-relevant + single-provider → the gate takes the **policy-configured** NS-7
+   path (the C1 switch); the test asserts the switch is read and defaults conservatively **pending the
+   ruling** (bakes neither). Zero-network (AC-CD15).
+
+### 8.6 What C2 does NOT touch (scope fence)
+
+No **self-review protocol** (C1 owns it; C2 *consumes* the verdicts); no **bootstrap-on-publish** (Slice
+14 / F1 rides the publish event); no **dashboard / rollback** (Slices 12–13 / E1–E2 consume the
+`PublishRecord` + flag); no **gap-detection** (D); no **FE**. `approve_pill_proposal` is **kept** (the
+refiner path, G7a) — C2 bypasses it for generated drafts, does not delete it.
+
+### 8.7 Reviewer findings folded — Slice 8
+
+*(none yet — Slice 8 posted for review; accumulates the auditor's + overseer's Slice-8 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
 
