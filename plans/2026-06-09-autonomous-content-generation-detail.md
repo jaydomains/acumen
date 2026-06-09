@@ -1,12 +1,17 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D+E complete; Slice 14 (F1) — the FINAL slice —
-posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
-the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
-slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
-`39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a` ·
-E1 `20df54e` · E2 `6079e06`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1. Tracked
-pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
+**Status: final — approved by planner (all slices)** — **all 14 slices (A1–A3, B1–B3, C1–C2, D1–D2, D3,
+D4, E1, E2, F1) SEALED 3/3** (auditor content + overseer governance, each at its slice's content-SHA);
+this is the **global planner final-marker** at the final whole-doc content-SHA. The tracked
+pre-global-marker item — **C1 §7.3 NS-7-line reconciliation (A-45/OV-39)** — is **DONE** (§7.3 now reads
+RULED degrade-not-gate, pointing at the §1 status-of-record), absorbing the single C1 re-stale here at
+the global pass. **NS-7 RULED** degrade-not-gate, triple-authenticated (§1). Convergence requires the
+**auditor's + overseer's global final-markers at this same whole-doc content-SHA** + the three-layer
+green gate + the 24h override window → the **overseer** flips draft→ready and squash-merges (§ Global
+final-marker pass). The planner **never** flips draft→ready and **never** merges.
+*Per-slice sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` · B3
+`07080d1` · C1 `e46e9f5` (§7.3 reconciled at the global pass) · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3
+`e8e1a73` · D4 `5b1946a` · E1 `20df54e` · E2 `6079e06` · F1 `34b1cdd`.*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1559,25 +1564,18 @@ the safety pass deterministically.
   retroactive dashboard** (Stage E / E2). **Fold with the A2 AC-D21 change** (web search → corpus) so
   AC-D21 is amended **once**, completely (corpus use + safety re-adjudication + override relocation).
   Blocks C1 execution.
-- **NS-7 (carried) — single-provider cross-model degradation — PENDING AUTHENTICATION (§8.3).** Ruling 4
-  makes cross-model the *non-negotiable safety floor*, but a single-provider deployment cannot run it —
-  a genuine cross-ruling edge with ruling 2 (*nothing held pre-publish, incl. safety-relevant*). **A
-  spec-author *degrade-not-gate* ruling has been *reported* on the unmerged `vibrant-euler@92886fe`
-  addendum** (single-provider → publish-with-warning + same-model multi-pass + a "single-provider
-  verified" flag; no dual-provider gate), **overriding the planner's original prereq-gate lean** — but
-  per role files §8.3 a ruling seen on an unmerged branch under the shared byline is a **relay: pending,
-  not actionable** until authenticated to the acting session (overseer OV-6; auditor A-6). **So C1
-  records NS-7 as recorded-but-pending-authentication and bakes neither option:**
-  - the **reported (degrade)** posture — single-provider safety-relevant **publishes-with-warning**,
-    always dashboard-flagged, same-model multi-pass + a verified flag; vs.
-  - the **original planner lean (gate)** — a second provider is a deployment **prerequisite** for
-    safety-relevant auto-publish; absent it, hold-with-warning.
-  **C1 is authored so the degradation behaviour is a single policy point the C2 gate (Slice 8) reads**,
-  switchable to whichever the spec author authenticates. **@spec-author: please confirm the NS-7 ruling
-  through this PR's authenticated channel** (or land the `vibrant-euler` addendum through its proper
-  ratification gate) so C1/C2 execution can act on it. **The auditor has flagged it will escalate the
-  NS-7 authentication (PS-C1)** — this detail supports that escalation: NS-7 stays **surfaced + pending**,
-  not baked. Class (ii) (it qualifies ruling 4 + binds the C2 gate AC-D).
+- **NS-7 — RULED: degrade-not-gate (authenticated; §1 NS-7 status-of-record).** *(Reconciled at the
+  global final-marker pass per the tracked A-45/OV-39 item — superseding this slice's original
+  "pending-authentication" framing.)* Ruling 4 makes cross-model the *non-negotiable safety floor*, but a
+  single-provider deployment cannot run it — a genuine cross-ruling edge with ruling 2. **The spec author
+  RULED degrade-not-gate, authenticated through all three parties' own in-session channels** (planner +
+  overseer + auditor, no relay reliance — full trail in the §1 NS-7 bullet): **single-provider
+  safety-relevant content PUBLISHES-WITH-WARNING (always dashboard-flagged) on same-model multi-pass
+  review + a "single-provider verified" flag; NO second-provider prerequisite gate** (honours ruling 2's
+  "nothing held"). **C1's safety pass exposes the degradation switch the C2 gate reads; its default is
+  `degrade`** — the ruled behavior. The C1/C2 *execution* NS-7 Gate-2 item is **un-blocked** (each
+  downstream execution PR re-confirms NS-7 through its own authenticated channel — OV-2). Class (ii) (it
+  qualifies ruling 4 + binds the C2 gate AC-D).
 - **Carried holds:** C1 needs **B2 + B3 merged** (transitively A2+A3+B1) **+ NS-5**.
 
 ### 7.4 Docs / mirror sweeps — the second ops-count expansion
@@ -2417,8 +2415,10 @@ reviewers' (re-)seal at the folded content-SHA, then the planner posts `Status: 
 
 ## Slice 14 (F1) — bootstrap-on-publish (reframed AC-D7/AC-D23) — the FINAL slice
 
-**Status: posted for Slice 14 review** (not yet sealed — awaiting auditor + overseer Slice-14 review.
-Appending this section does **not** re-stale Slices 1–13's seals — §0.1.)
+**Status: final for Slice 14 — approved by planner** (content-bound to the Slice-14 §14 substance at
+`a379e7f`/`34b1cdd` — auditor content SEAL (`bad2554`, §14 @ `a379e7f`; 0 findings) + overseer governance
+SEAL (`2e2cf54`, @ `34b1cdd`; OV-67 resolved). §14.1–§14.7 byte-identical, content-invariant. **All 14
+slices sealed 3/3 — the global final-marker pass runs below.**)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — F1 rides the C2 auto-publish event,
 so it needs C2 merged** (transitively the spine) **+ NS-5 — and (b) F1's own surfaces:** an **AC-D7 body
