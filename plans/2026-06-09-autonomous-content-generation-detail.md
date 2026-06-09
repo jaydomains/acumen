@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 9
-(D1–D2) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+(D1–D2) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
 B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1.
@@ -1787,6 +1787,133 @@ reviewer-finding ID). No push-back; no halt-class. **The plan-auditor's Slice-8 
 pending** — it recorded the NS-7 authentication + pre-registered PS-C2 and is **awaiting this planner
 NS-7 fold** before reviewing the §8 substance; its findings (if any) fold next. Awaiting the auditor's
 Slice-8 content review + both reviewers' Slice-8 seals, then the planner posts `Status: final for Slice 8`.
+
+---
+
+## Slice 9 (D1–D2) — the three §6.5 signal stores + dedup
+
+**Status: posted for Slice 9 review** (not yet sealed — awaiting auditor + overseer Slice-9 review.
+Appending this section does **not** re-stale Slices 1–8's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) NS-5 — and (b) Slice 9's own surfaces:** the carried
+**G5** (signal-capture data model — the Stage-D spine) and the carried **signal-3** (the assignment
+scope-clarification admin feature), plus the **SPEC §6.5 Inputs** amendment (the three signals are §6.5
+Inputs; §6.5 amend-once with C2/D3). *(D1–D2 is **signal capture** from existing flows — it does **not**
+require Stage A/B/C merged; it is the most independent Stage-D slice.)* Written **against the recommended
+direction**; detail-planning is **not** gated.
+
+**Implements:** the **signal spine** the gap-detection sweep (D3) consumes — persisting the three §6.5
+signals (**discovery-miss**, **question-tag**, **scope-clarification**) into a deduped store. It stops
+there: **no** gap-detection sweep / clustering / generation trigger (Slice 10 / D3), **no** crons
+(Slice 11 / D4), **no** generation (Stage B), **no** dashboard.
+
+### 9.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The three signals are the SPEC §6.5 Inputs.** `SPEC.md:344` — *"recent generated questions and their
+  pill tags, recent Testee discovery searches that returned no good match, recent assignments where admin
+  manually clarified scope."* None is captured today (auditor GT-7: no signal/gap table in `models.py`).
+- **The discovery-miss source is `list_discoverable_pills`.** `catalogue.py:261-284`
+  `list_discoverable_pills(db, *, search=None, …)` is the Testee discovery filter (AC-D8). A
+  **discovery-miss** = a `search` that returns **no good match** (empty / below a coverage bar) — captured
+  here. The discovery flow exists; only the signal write is new.
+- **The question-tag source is the generated `Question` + its pill tags.** Generated questions carry
+  pill-tag metadata (the P5 generation + the new B `pill_generation`); a **question-tag** signal captures
+  under-covered / frequently-tagged topics from recent questions. The generation flow exists.
+- **The scope-clarification source does NOT exist.** `Assignment` (`models.py:339`) has **no**
+  "admin clarified scope" field/action — capturing a **scope-clarification** signal needs an **admin
+  feature that is unbuilt** (signal-3, §9.3). Greenfield.
+- **No signal/gap model exists** (GT-7, re-verified) — the store is greenfield; D1–D2 adds the first
+  signal table + migration.
+- **Dedup precedent.** The B3 persistence-layer dedup (`(topic, gap_signal)`, Slice 6 §6.2d) is the
+  *downstream* half; D1–D2 owns the **signal-layer** dedup (the gap-detection sweep, D3, owns the third
+  arm) — the **3-arm dedup** the workstream named.
+
+### 9.2 Build choices — concrete (recommended direction)
+
+**(a) One polymorphic `GapSignal` table + migration (G5 lean).** A single table (not three): `id`,
+`tenant_id`, `signal_type` (enum: `discovery_miss` / `question_tag` / `scope_clarification`),
+`dedup_key` (a normalized key for the signal-layer dedup — e.g. the normalized search term / tag /
+scope phrase), `detail` (JSONB — the type-specific payload: search text + result-count for discovery_miss;
+the question/pill-tag refs for question_tag; the assignment + scope text for scope_clarification),
+`source_ref` (the originating entity, nullable), `occurrence_count`, `occurred_at`, `created_at`. Indexed
+on `(signal_type, dedup_key)` (the dedup + the D3 clustering key). **Rationale for one table:** the
+gap-detection sweep (D3) clusters *across* signal types into topics, and a single table makes that
+cluster query + the dedup uniform; three tables would fragment both. **G5 surfaces the model** (one
+polymorphic table vs. three typed tables); lean one.
+**(b) discovery-miss capture — `catalogue.py` `list_discoverable_pills`.** When a non-empty `search`
+returns **no good match** (zero results, or below a small coverage bar), write a `GapSignal(discovery_miss,
+dedup_key=normalize(search), detail={search, result_count, testee_ref})`. Idempotent via the signal-layer
+dedup (§9.2d).
+**(c) question-tag capture.** From recent generated questions, aggregate the pill-tag distribution and
+emit `question_tag` signals for under-covered / over-requested tags. Lean: a small capture helper invoked
+post-generation (existing P5 + the new B path), `dedup_key=tag`.
+**(d) Signal-layer dedup.** Collapse repeat signals by `(signal_type, dedup_key)` within a window —
+**upsert + increment `occurrence_count`** (so D3 can weight a topic by how many distinct misses it
+accumulated). This is the **first arm** of the 3-arm dedup (B3 persistence = second; D3 gap-detection =
+third).
+**(e) scope-clarification — signal type defined, capture deferred (signal-3, §9.3).** The
+`scope_clarification` enum value + the `GapSignal` shape are defined now; the **capture wiring waits on
+the admin scope-clarification feature** (signal-3, surfaced) — so the model is complete and forward-ready
+without building an unscoped admin feature speculatively.
+
+### 9.3 Embedded ratification-class items — SURFACED (blocking D1–D2 execution, Gate 2)
+
+- **G5 (carried) — signal-capture data model.** Class (ii) (a new SPEC §5 entity + model). **Lean: one
+  polymorphic `GapSignal` table** (§9.2a) — the Stage-D spine. Surfaced (the model is a new SPEC §5
+  entity the spec author ratifies); lean one-table. Blocks D1–D2 execution.
+- **signal-3 (carried) — the assignment scope-clarification admin feature.** Class (iii) (a feature-scope
+  decision, parallel-to-G8). The `scope_clarification` signal needs an **admin "clarify assignment scope"
+  action** that does not exist. **Is building that admin feature in this workstream's scope?** **Lean:**
+  define the signal *type* now (forward-ready) but **defer the admin feature** — D1–D2 captures the two
+  signals whose source flows exist (discovery-miss, question-tag); the scope-clarification signal lands
+  when/if the admin feature is built (a separate FE/admin scope call, like G8's generate-button).
+  **Surfaced; held** — the spec author rules whether the admin scope-clarification feature is in scope.
+- **SPEC §6.5 Inputs amendment.** Class (ii). The three signals are the §6.5 *Inputs* — the §6.5 rewrite
+  (autonomous) carries them; **amend §6.5 once** (coordinate with C2 §8.3 + D3, per the §1 amend-once
+  discipline for shared spec sections).
+- **Carried holds:** D1–D2 needs **NS-5** (phase-home). It does **not** require Stage A/B/C merged (it
+  captures signals from existing flows) — the most independent Stage-D slice; D3 (the sweep that drives
+  generation) is where the B dependency lands.
+
+> **Detail-plan call (not surfaced) — recorded for the reviewers:**
+> - **DS9-a — one polymorphic `GapSignal` table vs. three typed tables.** Lean **one** (§9.2a — uniform
+>   cluster + dedup for D3). Rides the G5 model ratification; if a reviewer judges three typed tables the
+>   better SPEC §5 shape, it is the G5 decision, not a separate item.
+
+### 9.4 Docs / mirror sweeps
+
+**Spec surfaces — in the spec-author's amendment PR(s):** the **SPEC §5** `GapSignal` entity (the G5
+model); the **SPEC §6.5 Inputs** amendment (amend-once with C2/D3); the signal-3 scope decision (if the
+admin feature is ruled in scope, the §6.5/admin-FE prose gains it). **Code (D1–D2 execution):** the
+`GapSignal` model + migration (up/down); the discovery-miss + question-tag capture helpers; the dedup
+upsert; zero-network tests. No ops/cron count touched (the gap-detection/health crons are D4).
+
+### 9.5 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+1. **discovery-miss capture.** A `list_discoverable_pills(search=…)` that returns no good match writes a
+   `GapSignal(discovery_miss)` with the normalized `dedup_key` + detail; a search that **does** match
+   writes none.
+2. **question-tag capture.** Recent generated questions → `question_tag` signals for the under-covered
+   tags; assert the dedup_key = tag.
+3. **Signal-layer dedup.** Repeat signals on the same `(signal_type, dedup_key)` upsert + increment
+   `occurrence_count` (not duplicate rows).
+4. **scope-clarification type defined, capture deferred.** The enum value exists + a `GapSignal(
+   scope_clarification)` round-trips through the model; **no** capture wiring is asserted (signal-3
+   deferred).
+5. **Migration up/down clean** + structure-gate passes with the new table.
+6. **Zero-network** (no AI/provider call — signal capture is deterministic; AC-CD15).
+
+### 9.6 What D1–D2 does NOT touch (scope fence)
+
+No **gap-detection sweep / clustering / topic-generation trigger** (Slice 10 / D3 consumes `GapSignal`);
+no **crons** (Slice 11 / D4); no **generation** (Stage B); no **auto-publish** (C); no **dashboard** (E);
+no **admin scope-clarification FE** (signal-3 deferred — only the signal *type* is defined). Existing
+discovery + generation flows are extended with a signal write, not restructured.
+
+### 9.7 Reviewer findings folded — Slice 9
+
+*(none yet — Slice 9 posted for review; accumulates the auditor's + overseer's Slice-9 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
 
