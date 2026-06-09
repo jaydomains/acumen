@@ -1,11 +1,11 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 9
-(D1–D2) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
+**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete; Slice 10
+(D3) next** (per-slice `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd` ·
-B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf`.* *(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1.
-Tracked pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
+B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8`.* *(NS-7 **RULED** degrade-not-gate,
+triple-authenticated — §1. Tracked pre-global-marker item: C1 §7.3 NS-7-line reconciliation — A-45/OV-39.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -1793,8 +1793,11 @@ Slice-8 content review + both reviewers' Slice-8 seals, then the planner posts `
 
 ## Slice 9 (D1–D2) — the three §6.5 signal stores + dedup
 
-**Status: posted for Slice 9 review** (not yet sealed — awaiting auditor + overseer Slice-9 review.
-Appending this section does **not** re-stale Slices 1–8's seals — §0.1.)
+**Status: final for Slice 9 — approved by planner** (content-bound to the Slice-9 §9 substance at
+`bb2dd89`/`0a85ee8` — auditor content SEAL (`04e7a23`, §9 @ `bb2dd89`; 5 Confirms / 0 findings) + overseer
+governance SEAL (`ecf28f1`, @ `0a85ee8`; OV-45 resolved). **Content-invariant**: only this Status line
+changed; §9.1–§9.7 byte-identical, so it does **not** re-stale the reviewers' seals (§0.1/§8). Clean seal,
+no §9 fold — OV-45 was a §1 amend-once-list completeness fix.)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) NS-5 — and (b) Slice 9's own surfaces:** the carried
 **G5** (signal-capture data model — the Stage-D spine) and the carried **signal-3** (the assignment
