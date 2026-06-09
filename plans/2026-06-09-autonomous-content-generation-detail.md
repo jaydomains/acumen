@@ -197,6 +197,12 @@ that assumes them but blocking no single slice's detail):
     **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] are each rewritten by
     more than one slice — author each section's rewrite **complete across all touching slices, once**,
     same as the anchors.
+  - **Shared *model* (overseer OV-50) — the discipline extends to a multi-slice SPEC §5 entity:** the
+    **G5 `GapSignal` model** is touched by **D1–D2** (defines it + the capture columns) **and D3** (the
+    `consumed_at`/status field its third-arm dedup marks) — author the entity **complete at D1–D2,
+    including the `consumed_at`/status field D3 needs (forward-ready), in one migration**; **D3 reuses it,
+    no second migration**. (Harmonizes D3 §10.4's "column … if needed" — it is authored at D1–D2, not
+    added at D3.)
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
