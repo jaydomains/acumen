@@ -1,6 +1,6 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–5 (A1–A3, B1–B2) SEALED 3/3; Slice 6 (B3) next** (per-slice
+**Status: in progress — Slices 1–5 (A1–A3, B1–B2) SEALED 3/3; Slice 6 (B3) posted** (per-slice
 `Status: final for Slice N` markers accumulate as each converges; the global
 `Status: final — approved by planner (all slices)` lands at the bottom only after the last slice
 seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2 `39273dd`.*
@@ -1252,6 +1252,139 @@ table is what E2's per-source rollback queries). The `pill_proposal` refiner + D
 ### 5.7 Reviewer findings folded — Slice 5
 
 *(none yet — Slice 5 posted for review; accumulates the auditor's + overseer's Slice-5 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 6 (B3) — N-draft fan-out + `processing_tasks` persistence + cost-share
+
+**Status: posted for Slice 6 review** (not yet sealed — awaiting auditor + overseer Slice-6 review.
+Appending this section does **not** re-stale Slices 1–5's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — B3 needs B2 merged** (the
+grounded-generation fn + provenance writer; transitively A2+A3+B1) **+ NS-5 — and (b) B3's own surface:**
+the carried **G3** (per-band difficulty decomposition). Written **against the recommended direction**;
+detail-planning is **not** gated.
+
+**Implements:** the **fan-out + persistence + cost-share** around B2's grounded-generation primitive —
+one generation call → **N persisted draft rows**, each carrying its provenance and its **1/N cost
+share**, all stamped with a **generation-batch id** (for the ruling-5 per-batch rollback, E2). It stops
+there: **no** self-review or auto-publish gate (Slices 7–8 / C1–C2 consume these draft rows), **no**
+gap-detection trigger (Slice 10 / D3 invokes the fan-out), **no** endpoint/FE, **no** dashboard/rollback
+(Slice 13 / E2).
+
+### 6.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **`ProcessingTask` is the draft carrier (AC-CD7).** `models.py:1174-1192` — `task_name` (indexed),
+  `status` (`ProcessingTaskStatus`: pending/running/done/failed, `models.py:152-156`), `payload` (JSONB),
+  `error`, `started_at`/`finished_at`. The **N generated drafts persist as `processing_tasks` rows**
+  (the #106 precedent), each `payload` carrying the draft + grounding_refs + provenance.
+- **`enqueue_pill_proposal` is the persistence precedent.** `catalogue.py:488-527` creates **one**
+  `ProcessingTask(task_name=PROPOSAL_TASK_NAME, status=pending, payload={proposal, provenance})`. B3's
+  `enqueue_generated_drafts` is the **1:N** sibling — one call → N rows.
+- **`record_provenance_share` is the N-cost-split.** `cost.py:97 record_provenance_share(entity, result,
+  *, share_count)` divides one call's tokens/cost by `share_count` (the 1:N case named in its docstring,
+  `cost.py:99`). B3 splits the single `generate_grounded_drafts` `AIResult` across the N drafts.
+- **`_pill_proposal_spend` is the payload-based spend aggregator.** `cost.py:197-206` sums per-call cost
+  out of `processing_tasks.payload` for `pill_proposal` rows into `current_month_spend` (the AC-CD8
+  spend invariant for entities with no `AIProvenanceMixin` row). B3 needs a **`_pill_generation_spend`
+  sibling** (the drafts live in `processing_tasks.payload`, not on an `AIProvenanceMixin` row) — an
+  **absorbable AC-CD8-pattern mirror** (§6.4), not a new anchor.
+- **Per-batch rollback (ruling 5) needs a batch id.** Ruling 5's matrix includes *"per generation
+  batch"* — so the N drafts of one run must share a **`batch_id`** that E2 (Slice 13) rolls back by.
+  Greenfield (no batch concept exists). B3 stamps it (§6.2b).
+- **B2 supplies the per-draft provenance writer.** `generate_grounded_drafts` (B2) returns drafts + their
+  `GenerationProvenance` rows; **B3 persists N of them, reusing B2's writer per draft** (the B2/B3 seam,
+  Slice 5 §5.3).
+
+### 6.2 Build choices — concrete (recommended direction)
+
+**(a) Fan-out + persistence — `app/domain/catalogue.py` (or a sibling `generation.py`).**
+`enqueue_generated_drafts(db, *, topic, target_count, batch_id, gap_signal=None) -> list[ProcessingTask]`
+— calls `generate_grounded_drafts(topic, target_count)` (B2) → for each draft, create a
+`ProcessingTask(task_name="pill_generation", status=pending, payload={draft fields, grounding_refs,
+batch_id, gap_signal, provenance:{provider, model, prompt_version, cost_share}})`. One call → N rows;
+each row is a **candidate awaiting the C auto-publish gate** (not a human approve queue — the gate is
+autonomous, C1–C2).
+**(b) Generation-batch id.** Each fan-out run gets a `batch_id` (UUID) stamped on all N rows' payload
+(and on the `GenerationProvenance` rows). **Lean: a `batch_id` field** (payload + provenance), *not yet*
+a separate `GenerationBatch` table — the table, if E2 needs batch metadata (trigger, timestamp, source
+topic), is an **E2 decision** (DS6-a, §6.3). The `batch_id` itself is the minimum E2 per-batch rollback
+needs and is cheap to stamp now.
+**(c) Cost-share.** Split the single generation `AIResult` across the N drafts: each draft payload's
+`provenance.cost_share = cost_usd / N` (+ tokens // N), via `record_provenance_share` semantics applied
+to the payload dict. The `_pill_generation_spend` aggregator (§6.4) sums them so the monthly total stays
+exact (AC-CD8). The rounding remainder (< N) is dropped, mirroring `record_provenance_share`
+(`cost.py:111`).
+**(d) Idempotency / dedup.** A re-triggered generation for the same gap must not duplicate drafts. **Lean:
+dedup on `(topic, gap_signal)` for *pending* draft rows** — if a batch for the same gap is already
+pending the gate, skip (return the existing). This is the B3 half of the **3-arm dedup** the D-stage
+gap-detection owns (Slice 9–10); B3 enforces the persistence-layer guard, D enforces the signal-layer
+guard. *(Carried from #106 Slice 3's idempotency concern.)*
+**(e) Provenance per draft (B2 seam).** For each persisted draft, write its `GenerationProvenance` rows
+(B2's writer) carrying the same `batch_id` — so E2's per-source **and** per-batch rollback both resolve.
+
+### 6.3 Embedded ratification-class items — SURFACED (blocking B3 execution, Gate 2)
+
+- **G3 (carried-open) — per-band difficulty decomposition.** Class (ii) (the generation output contract /
+  pill difficulty axis). How is the N-draft set decomposed across difficulty? **Lean: `min/max` range
+  only** — each draft carries `available_difficulty_min/max` (the **existing** axis, `DECISIONS.md` AC-D9;
+  `calibration.py` `_expand_supported_bands` consumes it), with **no** richer per-band breakdown at B3.
+  Rationale: the min/max envelope is what the calibration/anchor machinery already consumes; a per-band
+  decomposition (e.g. "2 drafts at band 3, 2 at band 5") is speculative until data shows it is needed
+  (*"rein in if it breaks"*). **Surfaced, not baked** — if the spec author wants per-band targeting, the
+  generation prompt + the draft schema gain a band-distribution field. Carried from #106 §9 (G3, lean
+  min/max).
+- **Carried holds:** B3 needs **B2 merged** (transitively A2+A3+B1) **+ NS-5**.
+
+> **Detail-plan calls (not surfaced) — recorded for the reviewers:**
+> - **DS6-a — `batch_id` field vs. a `GenerationBatch` table.** Lean **field on payload + provenance**
+>   now (the minimum per-batch rollback needs); a `GenerationBatch` *table* (batch trigger/timestamp/topic
+>   metadata) is **deferred to E2** (Slice 13), which owns the rollback contract — surfaced *there* if E2
+>   needs batch metadata beyond the id.
+> - **DS6-b — drafts as `processing_tasks` rows vs. a new draft table.** Lean **reuse `processing_tasks`**
+>   (the #106 precedent + AC-CD7; `task_name="pill_generation"`), an absorbable structural choice. A
+>   dedicated draft table is unnecessary pre-gate; published pills are real `Pill` rows (created at the C
+>   gate, Slice 8).
+
+### 6.4 Docs / mirror sweeps
+
+**Code — in B3's execution** (no new anchor; the spend-aggregator is an absorbable AC-CD8 mirror):
+- `app/domain/catalogue.py` (or `generation.py`) — `enqueue_generated_drafts`;
+- `app/ai/cost.py` — **`_pill_generation_spend`** aggregator (mirror `_pill_proposal_spend`
+  `cost.py:197`) + register it in `current_month_spend`'s payload-spend set, so the N-draft cost joins the
+  monthly total (the AC-CD8 spend invariant; verify the exact aggregation wiring at execution HEAD);
+- no migration if `batch_id` rides `payload` (DS6-a lean) and drafts reuse `processing_tasks` (DS6-b).
+**Spec surfaces:** none new beyond what the generation/provenance AC-Ds (Slices 4–5) already carry — B3
+is a fan-out/persistence mechanism over the already-surfaced contracts. *(G3, if ruled per-band, amends
+the generation output contract — folded into the generation AC-D / §6.5, not a separate B3 anchor.)*
+
+### 6.5 Tests (AC-CD15 — `app/domain/*` near-full coverage, zero-network)
+
+1. **Fan-out.** `enqueue_generated_drafts(topic, target_count=N)` (stub generate + stub corpus) → **N**
+   `processing_tasks` rows, `task_name="pill_generation"`, `status=pending`, each payload carrying the
+   draft + `grounding_refs` + a shared `batch_id` + `gap_signal`.
+2. **Cost-share exact.** The N payloads' `provenance.cost_share` sum (+ the dropped remainder) equals the
+   single call's `cost_usd`; `_pill_generation_spend` returns that sum (AC-CD8 invariant).
+3. **Provenance per draft.** Each draft's `GenerationProvenance` rows carry the same `batch_id` and are
+   queryable by `source_host` (E2 key) and `batch_id` (per-batch rollback key).
+4. **Idempotency.** Re-running for the same `(topic, gap_signal)` with a pending batch → **no** new rows
+   (returns the existing).
+5. **G3 min/max.** Each draft carries `available_difficulty_min/max` within `1..10`; no per-band field
+   (the leaned contract).
+6. **Zero-network** throughout (stub generate + stub corpus; AC-CD15).
+
+### 6.6 What B3 does NOT touch (scope fence)
+
+No **self-review / confidence / auto-publish gate** (C1–C2 consume the `pending` draft rows); no
+**`Pill` creation** (that is the C gate's publish step, Slice 8); no **gap-detection trigger** (D3 calls
+`enqueue_generated_drafts`); no **endpoint/FE**; no **dashboard / rollback** (E2 — though B3's `batch_id`
++ B2's provenance are what E2 rolls back by). The `pill_proposal` refiner + its `enqueue_pill_proposal`
+are untouched (B3 is a distinct `task_name`).
+
+### 6.7 Reviewer findings folded — Slice 6
+
+*(none yet — Slice 6 posted for review; accumulates the auditor's + overseer's Slice-6 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
