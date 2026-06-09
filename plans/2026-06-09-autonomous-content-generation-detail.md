@@ -714,11 +714,17 @@ dashboard.
   comment *"the seven crons + bootstrap enqueue"*. **The admin-triggered bootstrap is deliberately NOT a
   cron** (`beat_schedule.py:25-33`, AC-CD7 *"idempotent enqueued job; admin-triggered"*) — the precedent
   that A3's **admin on-demand** refresh is a **domain fn / enqueued task, not a beat entry**.
-- **`cosine_top_k` is the reusable ranker.** `drive_rag.py:196 cosine_top_k(candidates, query_vec, k)`
-  ranks `(chunk_id, embedding)` pairs by cosine, tie-broken by id, skips zero-norm; `_DEFAULT_TOP_K=5`
+- **`cosine_top_k` is the reusable ranker.** `drive_rag.py:196
+  cosine_top_k(query_vec, candidates, *, k)` (keyword-only `k`; auditor A-13) ranks
+  `(chunk_id, embedding)` pairs by cosine, tie-broken by id, skips zero-norm; `_DEFAULT_TOP_K=5`
   (`:580`); `render_rag_context` (`:587`). A3's `retrieve_corpus_for_topic` is the **`CorpusChunk`
   sibling** of `retrieve_for_generation` — same ranker, different table, **plus** it returns each hit's
   `authority_tier`/`authority_score` (the A2 columns) so B2 can authority-weight grounding (ruling 3).
+  **A3 is therefore a *second consumer* of `cosine_top_k` (overseer OV-15)** — the first being
+  `drive_rag.retrieve_for_generation` — so the **A2 §2.3 NS-1 relocation flag applies here too**: if
+  NS-1 = retire Drive, `cosine_top_k` (and `chunk_document`/`content_hash`) **relocate to a shared module
+  rather than being deleted with the Drive path**, *precisely because* A3's retrieval helper (and A2's
+  acquisition) depend on them. A3 strengthens, not weakens, the NS-1 relocation requirement.
 - **Ruling 6 (ratified) fixes the *shape*.** Workstream §1 ruling 6: **hybrid** = per-topic on-demand
   (gap-detection trigger) + admin on-demand (manual override) + **weekly** periodic backstop. So the
   **weekly cadence is ratified**; only the operational day/hour is a default (like the other crons'
@@ -841,8 +847,28 @@ ruling + the coupled §8.9 count, not A3 code).
 
 ### 3.7 Reviewer findings folded — Slice 3
 
-*(none yet — Slice 3 posted for review; accumulates the auditor's + overseer's Slice-3 findings, the
-per-round set-diff, and round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `b89dcc7`; overseer `claude/sharp-cray-gueezy`
+@ `d3ddc74` comment `4663721943`) — **no blocking finding; 5 + 3 Confirms, 2 low Refines folded; none
+dropped.** Slices 1–2 seals **not** re-staled (this fold edits only §3.*).
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-14** | auditor | Confirm | Hybrid refresh — all three modes of ruling 6 present (per-topic / admin / weekly). No action. |
+| **A-15** | auditor | Confirm | Cron-count sweep + **NS-1↔count coupling "exemplary"** (replacement→net-seven / keep→eight, rule together). No action. |
+| **A-16** | auditor | Confirm | Retrieval helper `retrieve_corpus_for_topic` reuses `cosine_top_k` + returns authority. No action. |
+| **A-17** | auditor | Confirm | Reuse + scope-fence + admin-as-domain-fn-not-cron + zero-network tests. No action. |
+| **A-18** | auditor | Confirm | DS3-a catalogue-target a sound build-choice; + a forward NS-4 coherence watch (kept distinct). No action. |
+| **A-13** | auditor | Refine (low) | **Folded:** §3.1 `cosine_top_k` signature `(candidates, query_vec, k)`→**`(query_vec, candidates, *, k)`** (keyword-only `k`; verified `drive_rag.py:196-201`). |
+| **OV-12** | overseer | Confirm | Seven-crons sweep completeness + the NS-1 cron interaction independently caught — matches pre-reg. No action. |
+| **OV-13** | overseer | Confirm | §8.9 + AC-CD7 surfaced held-on-NS-1; ruling-6 cadence not re-surfaced; full exec-precondition set. No action. |
+| **OV-14** | overseer | Confirm | NORMAL merge-class + Slices 1–2 not re-staled. No action. |
+| **OV-15** | overseer | Refine (low) | **Folded:** §3.1 now cross-refs that A3's retrieval helper is a **second consumer** of `cosine_top_k`, so the A2 §2.3 **NS-1 relocation flag applies to A3 too** (the shared primitive relocates, not deleted, *because* A3 depends on it) — A3 strengthens the relocation requirement. |
+
+**Round-trips:** A-13 1/5 · OV-15 1/5 (A-14…A-18, OV-12…OV-14 = positive-coverage Confirms — no
+round-trip owed). **Set-diff (this revision):** 10 added [A-13…A-18, OV-12…OV-15] / 0 dropped. No
+push-back; no design change; no halt-class. Both Refines folded into the same §3.1 bullet. Awaiting both
+reviewers' re-verification + Slice-3 seals at the folded content-SHA, then the planner posts
+`Status: final for Slice 3`.
 
 ---
 
