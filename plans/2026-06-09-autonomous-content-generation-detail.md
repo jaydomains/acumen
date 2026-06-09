@@ -61,6 +61,13 @@ Markers bind to **content**, not the raw branch-tip SHA — and the slice-iterat
 - Per-slice seals are **interim checkpoints; they never sum to a merge authorization.** Gate 1 merge
   (§0.2) requires the **global** three sign-offs at the **final whole-doc content-SHA** + the
   three-layer green gate + the override window — a stack of per-slice seals is not a merge gate.
+- **Global-marker symmetry — all three parties (overseer OV-4).** At final convergence **each** of the
+  three parties posts its **own global final-marker content-bound to the final whole-doc content-SHA**:
+  the planner's `Status: final — approved by planner (all slices)` (a content-invariant commit on the
+  canonical branch) **and** the auditor's + the overseer's global final-markers (on their own review
+  branches, content-bound). An early per-slice reviewer seal is **never** read as a whole-doc sign-off;
+  the overseer (merge-executor) re-confirms **three** global final-markers at one whole-doc content-SHA
+  + green + the override window — not a sum of per-slice seals.
 - Reviewer markers sit **off** the canonical branch, on each reviewer's own branch
   (`REQUIRED_READING.md` §6 D3); the planner's per-slice/global markers are content-invariant commits
   on this canonical branch.
@@ -137,7 +144,22 @@ that assumes them but blocking no single slice's detail):
   Slice 4 (B1, the op mint) + Slice 7 (C1, the self-review passes); the **"seven crons"** sweep is
   owned by Slice 3 (A3, corpus-refresh) + Slice 11 (D4, gap-detection/health crons). Each owning slice
   runs the #106 three-class structural mirror-sweep (word / numeral / `dict[Operation]`-or-`[operation]`-
-  subscript / op-set-floor) at execution HEAD.
+  subscript / op-set-floor) at execution HEAD. **Forward-accuracy (auditor A-3 / GT-1):** the
+  `Operation` enum is **already 8 members** — the seven SPEC §6 ops **+ `embed`** (`provider.py:121-143`;
+  the docstring reads "seven … plus `embed`"). The "seven AI operations" count invariant is a
+  **spec-prose** count that **excludes `embed`**, so the Slice-4/7 ops sweep is *spec-prose "seven" →
+  "seven+K"* mapped onto an enum **already at 8** — **not** a naive "enum seven → eight." The Slice-4/7
+  detail must encode it that way.
+- **NS-7 — reported spec-author ruling, pending authentication (auditor A-6).** The auditor reports a
+  spec-author NS-7 ruling — *degrade-not-gate*: single-provider safety-relevant content
+  **publishes-with-warning** (always dashboard-flagged) rather than being **gated** behind a
+  second-provider prerequisite, **overriding the planner's PR #107 §7.2 prereq-gate lean** — on an
+  **unmerged** addendum branch. Per role files §8.3 a ruling seen second-hand / on an unmerged branch is
+  **pending, not actionable** until authenticated through the direct channel; its **authentication
+  status is the overseer's lane**. **Slice 7 (C1) / Slice 8 (C2) detail will reflect the ruled outcome
+  once authenticated** — it is **not baked now**, and NS-7 does **not** touch Slice 1. Recorded here so
+  the ruling is not silently lost between PR #107's merged §7.2 text (which predates the addendum) and
+  the Slice-7/8 detail that consumes it.
 
 ---
 
@@ -151,8 +173,17 @@ source-authority AC-D mint.** This detail is written **against the recommended d
 tier-scoring + an allowlist-filter primitive, env-extensible per the AC-CD18 pattern, **no DB table /
 no migration in A1**. The *tiered scheme and the T1 seed are pre-settled by ruling 3* (workstream §1);
 the **mint of the AC-D body is still the Gate-2 ratification event** (class (i) anchor mint), and three
-residual design points ruling 3 leaves open are surfaced (§1.3, DS1-a/b/c). Detail-planning itself is
-**not** gated; only execution waits for the ruling.
+residual design points ruling 3 leaves open are surfaced (§1.3, DS1-a/b/c).
+
+**A1's complete execution-gate set (overseer OV-5 — gate-completeness).** The A1 *execution* PR is
+gated by **two** items, both of which must be ratified before it can close: **(a)** the source-authority
+**AC-D mint** (ratification-class (i), the blocking gate above); **and (b)** the cross-cutting **NS-5
+phase-home ruling** (class (iii)) — required before the A1 execution PR can record its **ROADMAP /
+CHECKLIST row** (`SESSION_START.md` requires a CHECKLIST update with real evidence at PR close, and a
+build slice needs a phase identity: P12+ vs. a named non-phase workstream). So **NS-5 is a precondition
+for A1 *execution-close*, not for A1 detail.** A1 **detail-planning is gated by neither** — only
+execution waits; this section is authored against the recommended direction so it is ready the moment
+both ratifications land.
 
 **Implements:** the **foundation** the corpus builder (A2) and downstream confidence/authority surfaces
 (C2, E1) depend on — a pure, offline-testable registry that answers two questions about any URL/host:
@@ -180,7 +211,7 @@ restricted to the allowlist"). It deliberately stops at the primitive: **no** fe
   (`sabs.co.za`, `*.gov.za`, `nrcs.org.za`, `iso.org`); **T2** industry/professional bodies + recognised
   standards; **T3** reputable industry/educational; **web search restricted to the allowlist; authority
   score by tier.** T1 is enumerated concretely; **T2/T3 are categorical** (no seed hosts named) → DS1-b.
-- **AC-D21 already carries an informal authority notion — no tiering.** `DECISIONS.md:529` lists
+- **AC-D21 already carries an informal authority notion — no tiering.** `DECISIONS.md:531` lists
   *"NACE materials, SANS abstracts, manufacturer technical data sheets, OSH publications"* as the
   authoritative safety-link sources, and `WebSearchResult.source` exists *"so the admin queue can
   sort/filter by authority"* (`web_search.py:71`). **The new AC-D formalises this into a scored tiered
@@ -368,8 +399,27 @@ change (B1); no generation, self-review, gate, or dashboard. The AC-D21 safety-l
 
 ### 1.7 Reviewer findings folded — Slice 1
 
-*(none yet — Slice 1 posted for review; this section accumulates the auditor's + overseer's Slice-1
-findings, the per-round set-diff record, and the round-trip counts as the loop runs.)*
+Round-1 review (auditor `claude/jolly-ptolemy-oui39p` @ `5f0a2da`; overseer `claude/sharp-cray-gueezy`
+@ `b8407c4`) — **no blocking finding; 4 + 3 Confirms, 4 Refines all folded; none dropped.**
+
+| ID | Reviewer | Tag | Resolution |
+|---|---|---|---|
+| **A-1** | auditor (content) | Confirm | Ruling 3 faithfully encoded (T1 verbatim; `filter_to_allowlist` = "web search restricted to the allowlist"; A1 ships filter / A2 applies it). No action. |
+| **A-2** | auditor | Confirm | Ratification items correctly surfaced-not-baked; DS1-d correctly an in-scope detail-plan build choice. No action. |
+| **A-3** | auditor | Confirm (+ forward) | Count-invariant handling + scope fence correct. **Forward note folded** (§1 cross-cutting): the `Operation` enum is **already 8** (7 SPEC ops + `embed`), so the Slice-4/7 ops sweep is *spec-prose "seven → seven+K"* over an enum already at 8, **not** "enum 7→8". |
+| **A-4** | auditor | Confirm | Grounding verified against the live tree (incl. CORS=AC-CD19 cited correctly, AC-CD18=model-ID defaults). No action. |
+| **A-5** | auditor | Refine (low) | **Folded:** §1.1 citation for the "NACE materials, SANS abstracts…" quote `DECISIONS.md:529`→**`:531`** (the `:529` cite for the *configurable safety keyword list* is the correct, distinct line — unchanged). |
+| **A-6** | auditor | Refine (forward) | **Folded** (§1 cross-cutting NS-7 bullet): records the reported spec-author NS-7 ruling (*degrade-not-gate*, on an **unmerged** addendum branch) as **pending authentication** (overseer's lane), to be reflected at Slice 7/8 once authenticated — **not baked now**; NS-7 does not touch Slice 1. |
+| **OV-1** | overseer (governance) | Confirm | Merge-class self-classification correct (PR diff `plans/**`-only → NORMAL). No action. |
+| **OV-2** | overseer | Confirm | Gate-2 relay discipline correct (merged §1 reads as a relay downstream; surface-not-bake held). No action. |
+| **OV-3** | overseer | Confirm | Recursive consistency: workflow described matches the workflow producing it. No action. |
+| **OV-4** | overseer | Refine | **Folded** (§0.1 + Loop-mechanics): global-marker symmetry made explicit — **all three** parties post a global final-marker content-bound to the final whole-doc SHA; an early per-slice reviewer seal is never read as a whole-doc sign-off. |
+| **OV-5** | overseer | Refine | **Folded** (Slice 1 execution-gate): A1's **complete execution-gate set** stated — (a) the AC-D mint (blocking) **+ (b)** the NS-5 phase-home ruling (precondition for execution-*close* per `SESSION_START.md` CHECKLIST/ROADMAP-row requirement, not for detail). |
+
+**Round-trips:** A-5 1/5 · A-6 1/5 · OV-4 1/5 · OV-5 1/5 (A-1…A-4, OV-1…OV-3 are positive-coverage
+Confirms — no round-trip owed). **Set-diff (this revision):** 11 added [A-1…A-6, OV-1…OV-5] / 0 dropped.
+No push-back; no design change; no halt-class condition. Awaiting both reviewers' re-verification +
+Slice-1 seals at the folded content-SHA, then the planner posts `Status: final for Slice 1`.
 
 ---
 
@@ -390,7 +440,9 @@ findings, the per-round set-diff record, and the round-trip counts as the loop r
   comment, bound to **Slice N's section content** (a later-slice append does not re-stale a sealed
   slice; editing a sealed slice does — §0.1). The **global** `Status: final — approved by planner (all
   slices)` lands after the last slice seals and is what Gate 1 merge binds to (the final whole-doc
-  content-SHA).
+  content-SHA). **Convergence binds to all three parties' global final-markers at that final whole-doc
+  content-SHA** (the auditor's + overseer's too, off-branch and content-bound — §0.1 OV-4), not only
+  the planner's.
 - **Convergence — two gates (§0.2; do not conflate):** Gate 1 (this PR's normal-class merge) vs.
   Gate 2 (per-item authenticated ratification, downstream). The planner **never** flips draft→ready and
   **never** merges; stays subscribed through merge; stands down only on merge verified via
