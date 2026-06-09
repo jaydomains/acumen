@@ -192,10 +192,11 @@ that assumes them but blocking no single slice's detail):
   - **AC-D23** — B2/C1 (the cross-provider self-review precedent extended) **+** F1 (bootstrap's anchor
     self-review step) — verify the touching set at execution HEAD.
   - **Shared SPEC *sections* (overseer OV-38) — the discipline extends beyond anchors to multi-slice
-    spec-section rewrites:** **SPEC §6.5** [C2 auto-publish + D3 §6.5 gap-detection/generation rewrite]
-    and the **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] are each
-    rewritten by more than one slice — author each section's rewrite **complete across all touching
-    slices, once**, same as the anchors.
+    spec-section rewrites:** **SPEC §6.5** [C2 auto-publish gate + D3 gap-detection/generation rewrite +
+    **D1–D2 §6.5 *Inputs* (the three signals)** — overseer OV-45: §6.5 is a **3-slice** rewrite] and the
+    **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] are each rewritten by
+    more than one slice — author each section's rewrite **complete across all touching slices, once**,
+    same as the anchors.
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
