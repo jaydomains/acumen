@@ -1,12 +1,12 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
-**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete + the autonomous trigger
-(D3); Slice 11 (D4) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+**Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C+D complete; Slice 12
+(E1) next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
-`39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73`.* *(NS-7 **RULED**
-degrade-not-gate, triple-authenticated — §1. Tracked pre-global-marker item: C1 §7.3 NS-7-line
-reconciliation — A-45/OV-39.)*
+`39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73` · D4 `5b1946a`.*
+*(NS-7 **RULED** degrade-not-gate, triple-authenticated — §1. Tracked pre-global-marker item: C1 §7.3
+NS-7-line reconciliation — A-45/OV-39.)*
 
 **Date:** 2026-06-09
 **Branch:** `claude/festive-tesla-p5p3ai` (this detail-plan PR — distinct from the reviewers' branches).
@@ -2055,8 +2055,11 @@ per-round set-diff, and round-trip counts as the loop runs.)*
 
 ## Slice 11 (D4) — gap-detection + catalogue-health crons (the second cron-count expansion)
 
-**Status: posted for Slice 11 review** (not yet sealed — awaiting auditor + overseer Slice-11 review.
-Appending this section does **not** re-stale Slices 1–10's seals — §0.1.)
+**Status: final for Slice 11 — approved by planner** (content-bound to the Slice-11 §11 substance at
+`5b1946a` — auditor content SEAL (`3e2cc5e`, 4 Confirms / 0 findings) + overseer governance SEAL
+(`e56de34`, 4 Confirms, fast-seal) both at `5b1946a`. **Content-invariant**: only this Status line
+changed; §11.1–§11.7 byte-identical, so it does **not** re-stale the reviewers' seals (§0.1/§8).
+**Genuinely clean — no fold. Stage D complete.**)
 
 **Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — D4 schedules D3's sweep fns, so it
 needs D3 merged** (transitively D1–D2 + B2 + B3) **+ NS-5 — and (b) D4's own surface:** the **SPEC §8.9
