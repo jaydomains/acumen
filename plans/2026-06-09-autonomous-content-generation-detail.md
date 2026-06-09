@@ -1,7 +1,7 @@
 # Autonomous AI content generation + retroactive oversight — granular detail-plan (slice-iterative)
 
 **Status: in progress — Slices 1–8 (A1–A3, B1–B3, C1–C2) SEALED 3/3 — Stages A+B+C complete + the autonomous trigger
-(D3); Slice 11 (D4) next** (per-slice `Status: final for Slice N` markers accumulate as each converges;
+(D3); Slice 11 (D4) posted** (per-slice `Status: final for Slice N` markers accumulate as each converges;
 the global `Status: final — approved by planner (all slices)` lands at the bottom only after the last
 slice seals — §0.1). *Sealed SHAs: A1 `22f3d67` · A2 `5d26906` · A3 `5a6f84e` · B1 `442247c` · B2
 `39273dd` · B3 `07080d1` · C1 `e46e9f5` · C2 `1afb2cf` · D1–D2 `0a85ee8` · D3 `e8e1a73`.* *(NS-7 **RULED**
@@ -204,6 +204,11 @@ that assumes them but blocking no single slice's detail):
     including the `consumed_at`/status field D3 needs (forward-ready), in one migration**; **D3 reuses it,
     no second migration**. (Harmonizes D3 §10.4's "column … if needed" — it is authored at D1–D2, not
     added at D3.)
+  - **Shared *count-invariant* — the SPEC §8.9 / AC-CD7 "seven crons" count** is touched by **A3**
+    (`corpus.refresh`, net 0 or +1 per NS-1) **and D4** (`gap_detection.sweep` + `catalogue_health.check`,
+    +2) — author the §8.9/AC-CD7 amendment **complete at the final count (nine if NS-1 = retire Drive; ten
+    if keep), once, before the first of A3/D4 executes** (the §1 count-invariant-sweeps bullet names the
+    co-ownership; this is its amend-once corollary; the *number* is held on NS-1).
 
   **Discipline:** the spec author authors **each** shared anchor's body **once, covering all touching
   slices' changes**, *before the **first** touching slice executes* — **not** incrementally per slice. A
@@ -2044,6 +2049,96 @@ no **generation internals** (Stage B — D3 calls `enqueue_generated_drafts`); n
 ### 10.7 Reviewer findings folded — Slice 10
 
 *(none yet — Slice 10 posted for review; accumulates the auditor's + overseer's Slice-10 findings, the
+per-round set-diff, and round-trip counts as the loop runs.)*
+
+---
+
+## Slice 11 (D4) — gap-detection + catalogue-health crons (the second cron-count expansion)
+
+**Status: posted for Slice 11 review** (not yet sealed — awaiting auditor + overseer Slice-11 review.
+Appending this section does **not** re-stale Slices 1–10's seals — §0.1.)
+
+**Execution-gate (Gate 2): BLOCKED pending (a) the carried holds — D4 schedules D3's sweep fns, so it
+needs D3 merged** (transitively D1–D2 + B2 + B3) **+ NS-5 — and (b) D4's own surface:** the **SPEC §8.9
+"seven crons" count amendment + AC-CD7 body change** — the **second** cron-count expansion, **co-owned
+with A3** (the auditor's PS-D4) and **NS-1-coupled** (the A3 corpus-refresh cron's net delta). Written
+**against the recommended direction**; detail-planning is **not** gated.
+
+**Implements:** the **schedulers** that fire D3's autonomous trigger — two new `beat_schedule.py` crons:
+**`gap_detection.sweep`** (runs `gap_detection_sweep`) and **`catalogue_health.check`** (runs
+`catalogue_health_check`). It stops there: the **sweep logic** is D3; **generation/gate** are B/C; **no**
+dashboard.
+
+### 11.1 Grounding (verified against the tree at this SHA, `2110a56`)
+
+- **The beat schedule is the flat `dict` (AC-CD7).** `beat_schedule.py:38-79` — D4 adds **two** entries
+  (`gap_detection.sweep`, `catalogue_health.check`) + their task registrations, mirroring the A3
+  `corpus.refresh` precedent (Slice 3 §3.2c).
+- **The sweep fns are D3's.** `gap_detection_sweep` + `catalogue_health_check` (Slice 10 §10.2) — D4
+  **schedules** them; it adds no sweep logic.
+- **The cron-count invariant + its mirror surfaces** (Slice 3 §3.1/§3.4, re-verified): `beat_schedule.py`
+  docstring + ASCII table, `CODE_SPEC.md:110/337/632` (AC-CD7), `ROADMAP.md:193/196`, SPEC §8.9,
+  CHECKLIST P11. **The "seven crons" sweep is co-owned by A3 + D4** (the §1 count-invariant bullet).
+- **The NS-1 coupling (from A3).** The A3 `corpus.refresh` cron is the functional successor of
+  `drive_rag.ingest` — **net +1 or net 0 depending on NS-1** (Slice 3 §3.3). D4 adds **+2**
+  unconditionally (`gap_detection.sweep` + `catalogue_health.check`). So the **final** cron count is
+  **7 + (NS-1 delta: 0 or +1) + 2 = nine or ten** — knowable only once NS-1 rules (§11.3).
+
+### 11.2 Build choices — concrete (recommended direction)
+
+**(a) `gap_detection.sweep` cron.** A new `beat_schedule.py` entry → `gap_detection_sweep` (D3). Cadence:
+an operational default (lean **daily**, sequential with the existing daily set's UTC offsets — e.g.
+09:00, past A3's Monday 08:00). Not a ratified cadence (unlike A3's ruling-6 weekly); a tunable default.
+**(b) `catalogue_health.check` cron.** A new entry → `catalogue_health_check` (D3). Cadence: an
+operational default (lean **daily** or **weekly** — the health check is a proactive backstop; lean
+weekly to avoid over-generating, *"rein in if it breaks"*). Tunable.
+**(c) Cron-count sweep at its final value — co-owned A3 + D4, NS-1-coupled.** D4's amendment + A3's
+amendment together land the §8.9/AC-CD7 count at its **final** value (nine or ten, §11.1) — authored
+**once, complete across A3 + D4** (the §1 amend-once discipline; the cron-count is a multi-slice
+invariant). Run the three-class cron grep (Slice 3 §3.4) at execution HEAD.
+
+### 11.3 Embedded ratification-class items — SURFACED (blocking D4 execution, Gate 2)
+
+- **SPEC §8.9 "seven crons" count amendment + AC-CD7 body change — co-owned A3 + D4, NS-1-coupled.**
+  Class (ii). D4 adds **+2** crons (`gap_detection.sweep` + `catalogue_health.check`); A3 adds the
+  corpus-refresh cron (net 0 or +1 per NS-1). The §8.9/AC-CD7 amendment is authored **complete across
+  A3 + D4** at the final count (**nine if NS-1 = retire Drive; ten if NS-1 = keep dormant**) — **§1
+  amend-once** (added to the list, §11.4). The *number* is held on NS-1 (the same coupling A3 surfaced).
+  Blocks D4 execution.
+- **Cron cadences** (§11.2a/b) are **operational defaults**, not ratified (unlike A3's ruling-6 weekly) —
+  recorded as a detail-plan call, not a surfaced item, *unless* a reviewer reads the gap-detection
+  cadence as an autonomy-control gate worth ratification (the autonomy principle argues a sane default).
+- **Carried holds:** D4 needs **D3 merged** (transitively D1–D2 + B2 + B3) **+ NS-5**.
+
+### 11.4 Docs / mirror sweeps — the "seven crons" count invariant at its final value
+
+**§1 amend-once (added):** the **SPEC §8.9 / AC-CD7 cron-count** is a multi-slice [A3 + D4] amendment —
+author it **complete at the final count** (nine/ten, NS-1-coupled) before the first of A3/D4 executes
+(the §1 count-invariant bullet already names the A3+D4 co-ownership; this is its amend-once corollary).
+**Spec surfaces — in the spec-author's §8.9/AC-CD7 amendment PR:** SPEC §8.9 (add the two D4 cron bullets
++ the A3 corpus-refresh bullet + the final count); `CODE_SPEC.md:632/337/110` (AC-CD7); `ROADMAP.md:193/
+196`; CHECKLIST P11. **Code (D4 execution):** the two `beat_schedule.py` entries + task registrations +
+the docstring/ASCII-table count sweep; re-run the three-class cron grep at execution HEAD; fold completely
+(no silent partial-fold). **No new model/migration** (D4 is scheduling only).
+
+### 11.5 Tests (AC-CD15 — zero-network)
+
+1. **Crons registered.** `beat_schedule["gap_detection.sweep"]` + `["catalogue_health.check"]` exist with
+   the correct task names + `crontab` cadences; the registered-cron **count** matches the swept final
+   value (a test floor parallel to the existing cron-set assertion — verify/extend at execution HEAD).
+2. **Tasks dispatch the D3 fns.** The `gap_detection.sweep` task calls `gap_detection_sweep`;
+   `catalogue_health.check` calls `catalogue_health_check` (assert via a stub).
+3. **Zero-network** (the sweep fns are stubbed; AC-CD15).
+
+### 11.6 What D4 does NOT touch (scope fence)
+
+No **sweep logic** (Slice 10 / D3 owns `gap_detection_sweep` + `catalogue_health_check`); no **generation
+/ gate** (B/C); no **signal capture** (D1–D2); no **corpus refresh cron** (A3 owns `corpus.refresh` — D4
+only co-owns the *count* amendment with it); no **model/migration**; no **dashboard** (E); no **FE**.
+
+### 11.7 Reviewer findings folded — Slice 11
+
+*(none yet — Slice 11 posted for review; accumulates the auditor's + overseer's Slice-11 findings, the
 per-round set-diff, and round-trip counts as the loop runs.)*
 
 ---
