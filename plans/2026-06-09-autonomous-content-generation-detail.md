@@ -190,8 +190,12 @@ that assumes them but blocking no single slice's detail):
     cross-family +1) → the named count lands at its **final** value (seven → nine) only when both are in.
   - **AC-D7** — C2 (remove the human approve/queue gate — generated pills auto-publish) **+** F1 (the
     incremental bootstrap trigger moves approve → publish);
-  - **AC-D23** — B2/C1 (the cross-provider self-review precedent extended) **+** F1 (bootstrap's anchor
-    self-review step) — verify the touching set at execution HEAD.
+  - **AC-D23** — **three** touchers (overseer OV-67): **A2** (the **A-8 Drive→corpus mirror** retires
+    AC-D23 bootstrap **step 4**, the Drive embed, `DECISIONS.md:574`) **+** **B2/C1** (the cross-provider
+    self-review precedent the auto-publish gate extends) **+** **F1** (bootstrap-on-publish trigger
+    reframe). **Double-touch risk:** AC-D23 is hit by both the **AC-D22/A-8 Drive-retirement** PR *and*
+    the **AC-D7/AC-D23 bootstrap** PR — author the AC-D23 body **complete across all three contributions,
+    once**, so neither PR lands a partial AC-D23 edit. Verify the touching set at execution HEAD.
   - **Shared SPEC *sections* (overseer OV-38) — the discipline extends beyond anchors to multi-slice
     spec-section rewrites:** **SPEC §6.5** [C2 auto-publish gate + D3 gap-detection/generation rewrite +
     **D1–D2 §6.5 *Inputs* (the three signals)** — overseer OV-45: §6.5 is a **3-slice** rewrite] and the
