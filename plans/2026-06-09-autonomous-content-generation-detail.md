@@ -195,9 +195,11 @@ that assumes them but blocking no single slice's detail):
   - **Shared SPEC *sections* (overseer OV-38) — the discipline extends beyond anchors to multi-slice
     spec-section rewrites:** **SPEC §6.5** [C2 auto-publish gate + D3 gap-detection/generation rewrite +
     **D1–D2 §6.5 *Inputs* (the three signals)** — overseer OV-45: §6.5 is a **3-slice** rewrite] and the
-    **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] are each rewritten by
-    more than one slice — author each section's rewrite **complete across all touching slices, once**,
-    same as the anchors.
+    **§290 audit-log prose** [C2 published/flagged events + E2 rolled-back events] and **SPEC §4.11
+    (admin grade override / loop oversight)** [E1 retroactive read surface + E2 rollback — overseer OV-59]
+    are each rewritten by more than one slice — author each section's rewrite **complete across all
+    touching slices, once**, same as the anchors. *(E1's "oversight is retroactive" note lands in **§4.11**,
+    not §6.5 — keeping §6.5 a 3-slice [C2+D1–D2+D3] rewrite, per OV-59.)*
   - **Shared *model* (overseer OV-50) — the discipline extends to a multi-slice SPEC §5 entity:** the
     **G5 `GapSignal` model** is touched by **D1–D2** (defines it + the capture columns) **and D3** (the
     `consumed_at`/status field its third-arm dedup marks) — author the entity **complete at D1–D2,
