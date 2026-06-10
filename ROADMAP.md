@@ -190,12 +190,14 @@ CODE_SPEC §17 risk #2 v1.8).
 
 **Deliverables:** AC-D23 idempotent bootstrap job (anchor self-review via
 OpenAI); AC-D21 web-search safety-link curation + monthly link-check; all
-seven crons scheduled in beat; cost dashboard + budget alerts; SMTP
-(setup/reset/reminder/escalation); attempt PDF export.
+seven P11 crons scheduled in beat (the canonical cron set grows to **nine**
+via the autonomous-content-generation workstream below — AC-CD7 v1.9); cost
+dashboard + budget alerts; SMTP (setup/reset/reminder/escalation); attempt
+PDF export.
 **Done-when:** one-command bootstrap populates anchors/links/index and is
-re-runnable without duplication; the seven crons are scheduled; a budget
-alert fires at threshold; an attempt exports to PDF; reminder/escalation
-emails send per AC-D26.
+re-runnable without duplication; the seven P11 crons are scheduled (nine
+canonical post-workstream); a budget alert fires at threshold; an attempt
+exports to PDF; reminder/escalation emails send per AC-D26.
 **Anchors:** AC-D18, AC-D21, AC-D23, AC-D26; AC-CD7.
 **Risks:** bootstrap idempotency — assert re-run is a no-op in E2E.
 
@@ -204,13 +206,32 @@ emails send per AC-D26.
 
 ---
 
+## Autonomous content generation + retroactive oversight (named non-phase workstream)
+
+> **Established v1.9** (NS-5 ruled: a **named non-phase workstream**, not a P12+ phase). This is the build home for the four-PR amendment cycle's new capability; each execution slice records its CHECKLIST/ROADMAP row against this workstream rather than a numbered phase.
+
+**Capability:** a fully-autonomous AI content-generation pipeline with retroactive admin oversight (no human pre-publish gate) — reference corpus builder → corpus-grounded generation with provenance → auto-publish gate with confidence + cross-model self-review → signal-driven gap detection → retroactive oversight dashboard + rollback. Parent plan PR #107 (`2110a56`); detail plan PR #108 (`bedd84c`); amendment-cycle extraction PR #109.
+
+**Amendment cycle (ratification-class, sequenced):**
+- **PR-A — corpus & authority foundation (this link):** mints **AC-D28** (source-authority allowlist + scoring) + **AC-CD25** (reference corpus builder); retires Drive RAG → reference corpus (amended AC-D22); amends AC-D21/AC-D23; cron count seven → **nine** (AC-CD7 / §8.9, `corpus.refresh` + the two D4 crons authored complete).
+- **PR-B — generation + provenance + ops-count;** **PR-C — auto-publish gate + self-review + governance prose;** **PR-D — signal spine + oversight** (each ratified per-PR through its own triage as the chain progresses).
+
+**Execution slices (post-amendment, build state tracked in CHECKLIST):** A1 source-authority registry · A2 corpus builder · A3 refresh cron + retrieval · B1–B3 generation · C1–C2 self-review + auto-publish gate · D1–D4 signals + gap-detection/health crons · E1–E2 oversight read + rollback · F1 bootstrap-on-publish. **Not yet built** — gated on the amendment merges + per-slice execution.
+
+**Sequencing guard (ratified coordination):** **D1–D2 execution is blocked until PR-C merges** — §6.5 (authored in PR-C) is what the D1–D2 signal stores feed, so D1–D2 must not execute ahead of it. (Recorded durably here + in the CHECKLIST D-row, not only in the PR-A body.)
+
+**New crons (this workstream, part of the canonical nine):** `corpus.refresh` (weekly; A3 — replaces Drive ingest), `gap_detection.sweep` (D4), `catalogue_health.check` (D4).
+
+---
+
 ## Anchor coverage
 
-Every AC-D1–AC-D27 and every AC-CD1–AC-CD18 is referenced by at least one
-phase above and one CHECKLIST row. AC-CD11's pre-build gate at P6 was
+Every AC-D1–AC-D28 and every AC-CD1–AC-CD25 is referenced by at least one
+phase or workstream above and one CHECKLIST row (AC-D28 + AC-CD25 minted in
+v1.9 are owned by the autonomous-content-generation workstream). AC-CD11's pre-build gate at P6 was
 **closed at v1.7**; AC-CD10's residual §10 ambiguity surfaced at the
 P10 plan-mode gate and was **closed at v1.8**; no anchor now carries
 an unresolved pre-build gate.
 
-*End of Acumen ROADMAP. Paired with `CODE_SPEC.md`, `SPEC.md` v1.2,
-`DECISIONS.md` v1.2.*
+*End of Acumen ROADMAP. Paired with `CODE_SPEC.md`, `SPEC.md` v1.9,
+`DECISIONS.md` v1.9 (pairing footer brought current in v1.9 from a long-stale v1.2 marker — noted, not a content change).*

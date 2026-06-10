@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.8 / `DECISIONS.md` v1.8.
+> **Status:** v1 target. Paired with `SPEC.md` v1.9 / `DECISIONS.md` v1.9.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
@@ -107,7 +107,7 @@ acumen/
     schemas.py         # Pydantic v2 request/response models
     permissions.py     # role-check dependency; port seam to Auth Hub
     worker.py          # make_celery(); task registry
-    beat_schedule.py   # the seven crons + bootstrap enqueue
+    beat_schedule.py   # the nine crons + bootstrap enqueue (v1.9; AC-CD7)
     routers/
       auth.py users.py groups.py catalogue.py paths.py tests.py
       assignments.py attempts.py grading.py review.py loop.py
@@ -308,7 +308,7 @@ per-operation model + prompt_version resolution and cost/provenance
 persistence. The seven operations route to the four protocol methods:
 generation / weakness / learning_material / pill_proposal -> `generate()`;
 grading -> `grade()`; grade_review / anchor_self_review -> `review()`;
-embed (Drive RAG only) -> `embed()`. Resolution order per operation per
+embed (reference-corpus acquisition per AC-CD25 / amended AC-D22; legacy Drive RAG retired, NS-1) -> `embed()`. Resolution order per operation per
 AC-D12: Test override -> `system_settings.provider_by_operation` /
 `model_by_operation` -> coded default; `review_provider` is the
 convenience default for grade_review / anchor_self_review. Provenance
@@ -334,7 +334,10 @@ stamps independently on its produced rows.
 Celery + Redis. `app/worker.py` exposes `make_celery(...)` (SiteMesh
 pattern). `processing_tasks` rows track async work
 (`pending|running|done|failed` + payload + error). `app/beat_schedule.py`
-registers the seven crons (SPEC §8.9): Drive ingest (daily), anchor
+registers the nine crons (SPEC §8.9, final count v1.9): corpus refresh
+(weekly, AC-CD25 — replaces the retired Drive ingest per NS-1),
+gap-detection sweep + catalogue-health check (the autonomous-content
+workstream's two §6.5 crons), anchor
 calibration recompute (daily), realism aggregation (nightly), safety-link
 check (monthly), cost/budget sweep (daily), reminder/escalation sweep
 (daily), grade-review reconcile (every N minutes, default 5 — retries
@@ -572,7 +575,15 @@ below). All AC-CD anchors now read `confident default`.
 shared pins exactly; bound Acumen-only additions.
 **Rationale:** mechanical SiteMesh port; reproducible builds.
 **Implications:** `requirements.txt` + `requirements-worker.txt`; CI
-fails on an unpinned add. **Confidence:** confident default.
+fails on an unpinned add. **(v1.9, AC-CD25 reference corpus)** the corpus
+builder's text-extraction step adds two bounded Acumen-only pins —
+`beautifulsoup4` (HTML→text) and `pypdf` (PDF→text) — supporting **HTML +
+PDF** extraction at the corpus-acquisition slice (A2). `pypdf` is chosen
+over `pdfplumber` for a lighter pure-Python footprint (no
+`pdfminer.six` / `Pillow` chain), adequate for standards/regulator PDF
+text extraction; widen deliberately if it proves insufficient. The pins
+land with this amendment; the importing code (`app/domain/corpus_builder.py`)
+is the A2 execution deliverable. **Confidence:** confident default.
 
 ### AC-CD2 — Repository layout
 **Decision:** SiteMesh module anatomy at a standalone repo root (§3).
@@ -629,7 +640,19 @@ frontend contract.
 doc). **Confidence:** confident default.
 
 ### AC-CD7 — Celery + Redis + beat; `processing_tasks`; bootstrap as job
-**Decision:** §8 background design; seven crons; idempotent bootstrap job.
+
+> **Amended in v1.9** — autonomous-content-generation cycle, **PR-A**. The
+> canonical cron count moves **seven → nine**, authored **complete** here
+> (amend-once across the A3 + D4 touchers, even though those slices execute
+> later): the **`corpus.refresh`** weekly cron (A3) **replaces**
+> `drive_rag.ingest` (NS-1 retires Drive ingest — a 1:1 replacement, net 0),
+> and the **`gap_detection.sweep`** + **`catalogue_health.check`** crons (D4)
+> add the other two → **nine**. The beat-schedule code change is the
+> per-slice **execution** deliverable; this amendment fixes the canonical
+> count + enumeration the execution sweeps against. Ratified through the
+> authenticated in-session channel for this cycle.
+
+**Decision:** §8 background design; **nine crons** (final count, v1.9); idempotent bootstrap job.
 **Rationale:** SiteMesh-compatible async contract.
 **Implications:** beat schedule in VCS; bootstrap re-runnable.
 **Confidence:** confident default.
@@ -1247,5 +1270,57 @@ alignment / caption / aspect-ratio decisions from design.
 
 ---
 
-*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.8
-and `DECISIONS.md` v1.8. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)).*
+### AC-CD25 — Reference corpus builder (acquisition pipeline + `CorpusChunk` store)
+
+> **Minted in v1.9** — autonomous-content-generation cycle, **PR-A**. Ratified
+> through the authenticated in-session channel (detail-plan PR #108 Slice 2/A2;
+> extraction PR #109 §B AM-2). Materialises amended **AC-D22** (Drive → AI-built
+> corpus) and **AC-D28** (source-authority scoring). The table/migration/module
+> are the **A2 execution** deliverable; this anchor fixes the architecture.
+
+**Decision.** A new `app/domain/corpus_builder.py` acquisition pipeline composes
+**reused** primitives, fail-soft throughout:
+allowlist-restricted web search (AC-D28 `filter_to_allowlist` over
+`get_web_search_source().search(topic)`) → per-URL fetch (injectable
+`httpx.AsyncClient` seam, fail-soft per source) → extract (HTML + PDF per
+AC-CD1) → deterministic ~500-token chunking (**reused** `chunk_document`) →
+content-hash dedup (**reused** `content_hash`) → embed
+(`text-embedding-3-small`, `record_provenance` stamping cost to OpenAI) →
+persist a **`CorpusChunk`** row. `CorpusChunk` is a **new table** mirroring
+`DriveChunk` (`Base, TimestampMixin, AIProvenanceMixin`; `embedding
+Vector(1536)`; `content_hash` indexed; `source_doc_ref` / `chunk_index` /
+`chunk_text` / `indexed_at`; IVFFlat index mirroring `ix_drive_chunk_embedding`;
+`tenant_id` from day one) **plus** corpus columns `source_host`,
+`authority_tier`, `authority_score` (AC-D28). Idempotent by
+`(source_host, content_hash)`. The retrieval helper `retrieve_corpus_for_topic`
+(Slice A3) is the `cosine_top_k`-over-`CorpusChunk` sibling of
+`drive_rag.retrieve_for_generation`, returning each hit's authority tier/score
+so Stage B can authority-weight grounding.
+
+**Safety cross-source corroboration (DS2-b — ruled option (ii)).** Content-hash
+dedup is the **floor** for all topics; for **safety-relevant** topics the
+pipeline additionally applies **cross-source corroboration**: it tracks when the
+same claim/fact appears across **≥ 2 authoritative sources** and stamps a
+corroboration signal on the chunk, feeding the Stage-C confidence score and the
+B2 provenance chain (materially stronger grounding for safety content).
+
+**Rationale.** Reuse over reinvention — the Drive-ingest path already ships the
+pure primitives (`chunk_document` / `content_hash` / `cosine_top_k` /
+`DriveChunk` / `AIProvenanceMixin` / `record_provenance` / the `embed` op); the
+corpus is a sibling acquisition path feeding an equivalent pgvector store, so it
+adds **no** new `Operation` enum value. A **new table** (not `DriveChunk` reuse,
+DS2-a) keeps per-source rollback (PR-D) clean, keeps the NS-1 Drive retirement
+from entangling the corpus, and isolates the corpus-only authority columns.
+
+**Implications.** New `CorpusChunk` table + the workstream's **first migration**
+(IVFFlat index); `app/domain/corpus_builder.py`; `CorpusChunk` joins the
+`current_month_spend` per-table provenance-spend aggregation in `app/ai/cost.py`
+(mirroring `DriveChunk` registration) so corpus-embed spend folds into the cost
+dashboard (AC-CD8 invariant); the NS-1 shared-primitive relocation (so corpus +
+retrieval keep `chunk_document` / `content_hash` / `cosine_top_k` after Drive
+retirement) is a coupled execution step. **Confidence:** confident default.
+
+---
+
+*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.9
+and `DECISIONS.md` v1.9. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception).*
