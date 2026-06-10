@@ -152,7 +152,7 @@
 | Corpus refresh cron + retrieval helper | A3 | AC-CD7; AC-CD25 | `app/beat_schedule.py` (`corpus.refresh`), `app/worker.py`, `app/domain/corpus_builder.py` | missing | not built — `corpus.refresh` is cron 1 of the canonical nine (replaces `drive_rag.ingest`). |
 | Generation + provenance + ops-count | B1–B3 | (PR-B) | TBD | missing | not built — PR-B amendment + execution. |
 | Self-review + auto-publish gate + governance | C1–C2 | (PR-C) | TBD | missing | not built — PR-C amendment + execution. |
-| Signal spine + gap-detection/health crons + oversight | D1–D4, E1–E2, F1 | (PR-D) | TBD | missing | not built — PR-D amendment + execution; `gap_detection.sweep` + `catalogue_health.check` are crons 8–9 of the canonical nine. |
+| Signal spine + gap-detection/health crons + oversight | D1–D4, E1–E2, F1 | (PR-D) | TBD | missing | not built — PR-D amendment + execution; `gap_detection.sweep` + `catalogue_health.check` are crons 8–9 of the canonical nine. **Sequencing guard (ratified coordination): D1–D2 must NOT execute until PR-C merges** — §6.5 (which the D1–D2 signal stores feed) is authored in PR-C. |
 | NS-1 Drive-ingest retirement (relocate shared primitives) | (execution) | AC-D22 | `app/domain/drive_rag.py` → shared module; remove Drive ingest path + `google-api-python-client` dep | missing | not built — NS-1 ruled *relocate-not-delete* (`chunk_document`/`content_hash`/`cosine_top_k` move to a shared module; corpus + retrieval depend on them). Distinct execution step; **not** part of the PR-A amendment. |
 
 ---

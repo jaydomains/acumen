@@ -218,6 +218,8 @@ exports to PDF; reminder/escalation emails send per AC-D26.
 
 **Execution slices (post-amendment, build state tracked in CHECKLIST):** A1 source-authority registry · A2 corpus builder · A3 refresh cron + retrieval · B1–B3 generation · C1–C2 self-review + auto-publish gate · D1–D4 signals + gap-detection/health crons · E1–E2 oversight read + rollback · F1 bootstrap-on-publish. **Not yet built** — gated on the amendment merges + per-slice execution.
 
+**Sequencing guard (ratified coordination):** **D1–D2 execution is blocked until PR-C merges** — §6.5 (authored in PR-C) is what the D1–D2 signal stores feed, so D1–D2 must not execute ahead of it. (Recorded durably here + in the CHECKLIST D-row, not only in the PR-A body.)
+
 **New crons (this workstream, part of the canonical nine):** `corpus.refresh` (weekly; A3 — replaces Drive ingest), `gap_detection.sweep` (D4), `catalogue_health.check` (D4).
 
 ---
