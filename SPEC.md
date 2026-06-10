@@ -3,7 +3,7 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.8. Paired with `DECISIONS.md` v1.8 (27 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate).
+> **Status:** v1.9. Paired with `DECISIONS.md` v1.9 (28 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27, + the v1.9 autonomous-content cycle PR-A: AC-D28 minted + AC-D21/AC-D22/AC-D23 amended; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate; v1.9 mints AC-CD25).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
 >
@@ -20,6 +20,8 @@
 > **Changes in v1.7:** AC-CD11 P6 gate closure — locks cross-family review as batched per attempt (single OpenAI call per submit, all AI-graded responses in one payload) with a 60-second hard ceiling; over-ceiling routes to the existing fail-soft `pending` + reconcile cron path. Amends AC-D19's "10–30 second" submit-wait wording to match (F10 resolved). Names the cron 5-min × max-retry 10 → ≈50-min stuck-pending auto-flag window explicitly (F11 amplified, no default changes). Doc-only.
 >
 > **Changes in v1.8:** AC-CD10 / §10 P10 build gate closure — locks the per-Testee JIT streaming execution model as in-process `asyncio.gather` + `asyncio.Semaphore` (Celery wording retired from the user-facing path); adds an attempt-scoped `attempt_position` column to Question (unique `(attempt_id, attempt_position)`) so streamed-arrival order is stable under concurrent generation; locks the single-Q-N-generation-failure policy as one orchestration-layer retry then AC-D11 pause. Amends AC-D25 in place. Doc-only; the additive `attempt_position` migration is a P10 build deliverable, not v1.8.
+>
+> **Changes in v1.9:** First link (**PR-A**) of the autonomous-content-generation amendment cycle — *corpus & authority foundation*. Mints **AC-D28** (tiered source-authority allowlist + scoring) and **AC-CD25** (reference corpus builder). Amends **AC-D22** (Google Drive RAG ingestion **retired** in favour of the AI-built reference corpus, NS-1; "queried at every generation call" extended to §6.5), **AC-D21** (web search extended to corpus acquisition; self-review re-adjudicates `safety_relevant`; admin tag-override relocated to retroactive oversight), **AC-D23** (Drive-embed bootstrap step retired → reference-corpus build; incremental bootstrap fires on auto-publish; mutual cross-reference with AC-D7), and **AC-CD7 / §8.9** (canonical cron count seven → **nine**, authored complete: `corpus.refresh` replaces Drive ingest, + the D4 gap-detection / catalogue-health crons). Spec surfaces swept: §3, §5, §6.1/§6.4, §7.3/§7.4, §8.3–§8.5/§8.8/§8.9, §9.3/§9.12. **Scope boundary (surfaced):** the CODE_SPEC code-level descriptions of still-live Drive code (the `drive_rag.py` module, `DriveChunk`/`drive_chunk` table, `google-api-python-client` deps) are **not** changed here — NS-1 ratified *relocate-not-delete*, so the code change is a downstream **execution-slice** deliverable. Ratified through the authenticated in-session channel for this sequenced ratification cycle (PR #107/#108/#109). Doc-only.
 
 ---
 
@@ -129,7 +131,7 @@ Roles are stored as a single field on the user record. User creation is admin-dr
 **Infrastructure**
 - Anthropic API for primary AI operations (generation, grading, weakness identification, learning material, pill proposal)
 - **OpenAI API for cross-family review pass and anchor self-review** per AC-D19 and AC-D23
-- **Google Drive API for passive RAG ingestion** per AC-D22
+- **Reference-corpus acquisition** (allowlist-restricted web search → fetch → extract → embed) per amended AC-D22 / AC-CD25 / AC-D28 — replaces Google Drive RAG ingestion (retired v1.9, NS-1)
 - **Web search for safety-pill external link curation** per AC-D21
 - Per-attempt cost tracking (tokens in/out, provider)
 - Basic email notifications for assignments, follow-ups, reminders, escalations
@@ -150,7 +152,7 @@ Roles are stored as a single field on the user record. User creation is admin-dr
 | Hard deletion of user data (POPIA erasure) | v1 retains all data per AC-D14; combined deactivation + export workflow is v1.x |
 | Video upload + transcription for learning material | Significant infrastructure; AI text explainers and admin-uploaded PDF/links cover v1 needs |
 | LMS integration (SCORM, xAPI) | Not needed for KBC; defer until a deployment requires it |
-| Knowledge Library integration | KL not deployed; Drive folder RAG per AC-D22 covers v1 passive moat |
+| Knowledge Library integration | KL not deployed; the AI-built reference corpus per amended AC-D22 / AC-CD25 covers the v1 passive moat (replaced Drive-folder RAG, retired v1.9) |
 | Slack / Teams / calendar integration | Defer to Comms module integration at port time |
 | Native mobile apps (iOS/Android) | Responsive web is sufficient for v1; native is a future product call |
 | Advanced analytics (charts, trends, benchmarks) | v1 ships flat tables and basic summaries; charts in v1.x |
@@ -163,7 +165,7 @@ Roles are stored as a single field on the user record. User creation is admin-dr
 
 ### Setup work for deployment
 
-Pill catalogue seeding is a real piece of v1 setup, not a development task. Half a day with Jay (and Gys) to populate KBC's initial Subjects and Pills. The AI can propose a starter set if given KBC's business context, but human curation is required before going live with Testees. **Once the catalogue is seeded, the autonomous bootstrap run per AC-D23 handles all subsequent setup work** — anchor pool generation with self-review, safety-pill external link curation, and initial Drive RAG indexing — with no admin involvement.
+Pill catalogue seeding is a real piece of v1 setup, not a development task. Half a day with Jay (and Gys) to populate KBC's initial Subjects and Pills. The AI can propose a starter set if given KBC's business context, but human curation is required before going live with Testees. **Once the catalogue is seeded, the autonomous bootstrap run per AC-D23 handles all subsequent setup work** — anchor pool generation with self-review, safety-pill external link curation, and the initial reference-corpus build per AC-CD25 (replacing Drive RAG indexing, retired v1.9) — with no admin involvement.
 
 ---
 
@@ -283,9 +285,9 @@ The application's domain consists of the entities below. Each is described conce
 
 **Competency Profile** — Per Testee, a two-dimensional view of pills × difficulty bands showing latest score, retake count, trend, and last activity per cell. **Includes `competence_estimate` (float, 1.0–10.0) per pill, computed via recency-weighted average against question effective-difficulty per amended AC-D9.** Derived from attempts and grades; may be materialised for performance.
 
-**Drive Index** — Per AC-D22, a vector index of documents present in the designated Drive folder. Each indexed chunk carries source document reference, chunk text, embedding vector, and last-indexed timestamp. Postgres pgvector at v1 scale; no external vector database needed.
+**Reference Corpus** (`CorpusChunk`) — Per amended AC-D22 / AC-CD25 / AC-D28, a vector index of authoritative content acquired autonomously from the AC-D28 tiered source-authority allowlist (replacing the retired Drive Index, NS-1 v1.9). Each chunk carries source document reference, chunk text, embedding vector, last-indexed timestamp, **and the corpus-specific `source_host` / `authority_tier` / `authority_score`** (AC-D28). Postgres pgvector at v1 scale; no external vector database needed. *(The legacy Drive Index entity — `drive_chunk` — persists in code until the NS-1 relocation/removal execution slice; see the v1.9 scope boundary in the header changelog.)*
 
-**System Settings** — Per-tenant configuration. Carries monthly AI budget (nullable), alert thresholds, per-Testee rate limits (self-initiated only per amended AC-D18), model selection per operation per AC-D12, **`review_provider` (default OpenAI) per amended AC-D19**, **`pending_assignment_age_threshold_days` (default 7), reminder schedules, and `escalation_enabled` flag per AC-D26**, **`competence_decay_halflife_days` (default 90) and `competence_sensitivity` (default 2.0) per amended AC-D9**, **`max_pause_duration_minutes` (default 30) per amended AC-D11**, **safety keyword list per AC-D21**, **anchor pool size per band (default 20), calibration confidence threshold (default n=20), and `anchor_calibration_prior_weight` (default 20) per AC-D20/AC-D27**, **Drive folder identifier and embedding model (default OpenAI `text-embedding-3-small`) per amended AC-D22**.
+**System Settings** — Per-tenant configuration. Carries monthly AI budget (nullable), alert thresholds, per-Testee rate limits (self-initiated only per amended AC-D18), model selection per operation per AC-D12, **`review_provider` (default OpenAI) per amended AC-D19**, **`pending_assignment_age_threshold_days` (default 7), reminder schedules, and `escalation_enabled` flag per AC-D26**, **`competence_decay_halflife_days` (default 90) and `competence_sensitivity` (default 2.0) per amended AC-D9**, **`max_pause_duration_minutes` (default 30) per amended AC-D11**, **safety keyword list per AC-D21**, **anchor pool size per band (default 20), calibration confidence threshold (default n=20), and `anchor_calibration_prior_weight` (default 20) per AC-D20/AC-D27**, **embedding model (default OpenAI `text-embedding-3-small`) per amended AC-D22** (the Drive folder identifier is retired in v1.9; the reference corpus is built autonomously per AC-CD25), **and the operator-extensible source-authority allowlist extension fields per AC-D28**.
 
 **Audit Log** — Cross-cutting record of significant state transitions: grade overrides, autonomous loop decisions reversed, pill proposals approved or rejected, pill retirements, user role changes, deactivations, manual deletions, campaign lock/unlock events per AC-D24, escalation notifications per AC-D26, bootstrap runs per AC-D23, safety-pill link drift detections per AC-D21. Lightweight in v1 — captures actor, action, target entity, and timestamp. Important for the SiteMesh port where audit becomes a platform concern.
 
@@ -299,11 +301,11 @@ Acumen runs **seven distinct AI operations** across two providers. Anthropic han
 
 Generates a question set against a Test spec. **Streaming generation per AC-D25** for per-Testee mode — question 1 synchronously at attempt start, 2-N as concurrent in-process tasks per amended AC-D25 v1.8 (`asyncio.gather` under an `asyncio.Semaphore`, not Celery). **Per-question call pattern (v1.8).** Per-Testee streaming invokes the generation prompt **once per question** (question_count=1 in the payload), so each Q-N call carries its own provenance row on the resulting Question and its own per-call cost; the shared RAG context + low-realism negative examples computed once at attempt start (per AC-D22) are reused unchanged across the per-question calls. **Benchmark mode generates sequentially per amended AC-D25** — one question at a time, each generated only after the previous is graded, because benchmark difficulty is adaptive on the prior outcome and cannot be pre-generated in parallel.
 
-**Inputs:** subject, target pills, difficulty integer (1–10) with band name, question count, question-type mix, optionally the Testee's prior weakness profile for adaptive targeting, **anchor questions from the pool as in-context calibration exemplars per AC-D20**, **retrieved Drive RAG chunks per AC-D22**, **negative examples from low-realism question pool per AC-D22**, optionally seed admin-uploaded reference material.
+**Inputs:** subject, target pills, difficulty integer (1–10) with band name, question count, question-type mix, optionally the Testee's prior weakness profile for adaptive targeting, **anchor questions from the pool as in-context calibration exemplars per AC-D20**, **retrieved reference-corpus chunks per amended AC-D22 / AC-CD25**, **negative examples from low-realism question pool per AC-D22**, optionally seed admin-uploaded reference material.
 
 **Outputs:** structured question set — each question carries type, prompt text, type-specific config (options + correct key for MCQ; rubric + model answer for short answer; etc.), pill tag, difficulty stamp.
 
-**Quality bar:** questions must be answerable from the pill's domain, calibrated to the difficulty band (cross-referenced against anchor exemplars), grounded in Drive RAG content where relevant, free of trivia or trick framing, and varied across runs (so two Testees on the same spec receive genuinely different questions, not just rephrasings).
+**Quality bar:** questions must be answerable from the pill's domain, calibrated to the difficulty band (cross-referenced against anchor exemplars), grounded in reference-corpus content where relevant, free of trivia or trick framing, and varied across runs (so two Testees on the same spec receive genuinely different questions, not just rephrasings).
 
 ### 6.2 Grading
 
@@ -331,7 +333,7 @@ After an attempt is fully graded and reviewed, identifies which pills the Testee
 
 Generates targeted explainer content for a weak pill. **Skipped entirely for safety-tagged pills per AC-D21 — these pills serve curated external links instead.**
 
-**Inputs:** pill identifier, the weakness severity, optionally the specific questions the Testee got wrong (so the explainer addresses the actual confusion), **retrieved Drive RAG chunks per AC-D22**, optionally admin-uploaded reference material for the pill.
+**Inputs:** pill identifier, the weakness severity, optionally the specific questions the Testee got wrong (so the explainer addresses the actual confusion), **retrieved reference-corpus chunks per amended AC-D22 / AC-CD25**, optionally admin-uploaded reference material for the pill.
 
 **Outputs:** structured explainer — a 200–400-word teaching text with one or two worked examples, formatted for in-app display, optionally cross-referencing admin reference material if available.
 
@@ -383,14 +385,14 @@ AI calls have retry-with-backoff for transient failures (rate limits, network er
 - For grade review per amended AC-D19: if review provider is unreachable at submit, grade displays as preliminary with "review pending" label; system retries on next cron pass.
 - For generation per AC-D25: if first-question generation fails, attempt cannot start; Testee sees "test temporarily unavailable, please try again shortly." If the per-Testee streaming buffer empties, the attempt is paused with retry/abandon options. For benchmark mode (sequential per amended AC-D25), a mid-test generation failure pauses the attempt at the current question with retry/abandon; already-graded questions are retained.
 - For weakness, learning material, pill proposal, anchor self-review: silently retried; no Testee-facing impact.
-- For Drive RAG fetch failures per AC-D22: generation continues without RAG context; logged for review.
+- For reference-corpus fetch failures per amended AC-D22 / AC-CD25: generation continues without corpus grounding context; logged for review.
 - For safety link verification per AC-D21: broken links surface in admin attention queue; the loop continues to serve any working links and falls back to "ask your administrator" if all links are dead.
 
 ---
 
 ## 7. Integrations
 
-Acumen v1 standalone runs against five external services. Each is a thin, replaceable integration point.
+Acumen v1 standalone runs against four external services (Anthropic, OpenAI, web search, SMTP). Each is a thin, replaceable integration point. *(The Google Drive integration was **retired in v1.9** per amended AC-D22 / NS-1; the reference corpus is acquired via web search + HTTP fetch — see §7.3.)*
 
 ### 7.1 Anthropic API
 
@@ -400,13 +402,13 @@ The primary AI provider for five of seven operations per §6 (generation, gradin
 
 Per amended AC-D19, the secondary AI provider for the two cross-family operations: grade review (§6.6) and anchor self-review (§6.7). Authentication via separate API key held in server-side environment configuration. Calls use OpenAI's chat completions endpoint with the configured model and recorded cost metadata. Cross-family review failure handling per §6 above — fail-soft for grade review (preliminary display with retry on cron), fail-recoverable for anchor self-review (bootstrap can be re-run).
 
-### 7.3 Google Drive API
+### 7.3 Reference corpus acquisition (replaces Google Drive RAG ingestion — v1.9)
 
-Per AC-D22, read-only access to a designated Drive folder for passive RAG ingestion. Service account credentials and folder identifier held in environment configuration. Daily ingest cron computes file diffs against the existing index and re-embeds changed or new documents. Deleted Drive files drop from the index. Embedding model is a configuration value (default OpenAI `text-embedding-3-small`, 1536 dimensions, per amended AC-D22; Anthropic exposes no embeddings API, and OpenAI is already in the stack for AC-D19 cross-family review so no new provider integration is added). Embedding cost is tracked against the OpenAI provider in the cost dashboard per amended AC-D18. Chunking strategy is configuration (default ~500-token chunks). Index lives in Postgres pgvector — no external vector database in v1.
+Per amended AC-D22 and AC-CD25, the Google Drive read-only RAG ingestion integration is **retired** (NS-1) in favour of an autonomously-built **reference corpus**. Acumen acquires authoritative content by **web search restricted to the AC-D28 tiered source-authority allowlist** (T1/T2/T3), fetching each allowlisted source over HTTP (fail-soft per source, the `safety_links` fetch pattern reused), extracting text (**HTML + PDF** per AC-CD1), chunking (~500-token, the relocated shared primitive), and embedding into the **same Postgres pgvector store** the Drive index used (no external vector database). Each stored `CorpusChunk` carries its `source_host` / `authority_tier` / `authority_score` (AC-D28). The embedding model is a configuration value (default OpenAI `text-embedding-3-small`, 1536 dimensions, per amended AC-D22; Anthropic exposes no embeddings API, and OpenAI is already in the stack for AC-D19 cross-family review so no new provider integration is added); embedding cost is tracked against the OpenAI provider in the cost dashboard per amended AC-D18. The corpus is refreshed by the weekly `corpus.refresh` cron plus per-topic and admin on-demand refresh (§8.9). Google Drive service-account credentials and a folder identifier are **no longer required** configuration. *(The legacy Drive ingest code and its `drive_chunk` store persist until the NS-1 relocation/removal execution slice — see the v1.9 header changelog scope boundary.)*
 
 ### 7.4 Web search
 
-Per AC-D21, used for two purposes: (a) initial curation of external link sets for safety-tagged pills at pill creation, (b) monthly autonomous link-check cron that re-validates cached URLs and finds replacements for broken or substantially drifted links. Integration uses a web search API (configuration value — operator chooses provider).
+Per AC-D21 and AC-D28, used for three purposes: (a) initial curation of external link sets for safety-tagged pills at pill creation, (b) monthly autonomous link-check cron that re-validates cached URLs and finds replacements for broken or substantially drifted links, (c) **reference-corpus acquisition** per amended AC-D22 / AC-CD25 — discovering authoritative sources per topic, **restricted to the AC-D28 tiered source-authority allowlist** (corpus acquisition only; the AC-D21 safety-link curation search in (a)/(b) is **unchanged** — DS1-c ruled the allowlist governs corpus acquisition, not the curation search). Integration uses a web search API (configuration value — operator chooses provider).
 
 ### 7.5 Transactional email (SMTP)
 
@@ -434,22 +436,22 @@ Deployment is on Hostinger VPS infrastructure in the European Union (Netherlands
 
 ### 8.3 Configuration
 
-All deployment-specific values held in environment variables: **Anthropic API key, OpenAI API key**, Google Drive service account credentials and folder identifier, web search API credentials, SMTP credentials and sender identity, database connection string, application secret keys, public URL / domain, file storage path or S3 credentials. No secrets in code, no secrets in the database. Loaded at container startup.
+All deployment-specific values held in environment variables: **Anthropic API key, OpenAI API key**, web search API credentials, the operator-extensible source-authority allowlist fields per AC-D28, SMTP credentials and sender identity, database connection string, application secret keys, public URL / domain, file storage path or S3 credentials. *(Google Drive service-account credentials and folder identifier are no longer required — Drive ingestion retired in v1.9 per amended AC-D22.)* No secrets in code, no secrets in the database. Loaded at container startup.
 
 ### 8.4 Initial deployment
 
 Four operator actions on first run:
 
-1. Run the database migration — creates the schema (including pgvector extension and tables for anchor pools, Drive index, realism feedback) and seeds system defaults (AI prompts at v1.1 versions for all seven operations, default model and provider selections, default difficulty band definitions per AC-D9, default safety keyword list per AC-D21, default reminder schedules per AC-D26, default decay half-life per amended AC-D9).
+1. Run the database migration — creates the schema (including pgvector extension and tables for anchor pools, the reference corpus (`CorpusChunk`, per AC-CD25), realism feedback) and seeds system defaults (AI prompts at v1.1 versions for all seven operations, default model and provider selections, default difficulty band definitions per AC-D9, default safety keyword list per AC-D21, default reminder schedules per AC-D26, default decay half-life per amended AC-D9).
 2. Create the initial Administrator user via a one-shot command (which sends the setup email).
 3. Administrator logs in and seeds the initial pill catalogue (Subjects and Pills for KBC) — typically a half-day exercise with Jay and Gys per AC-D7.
-4. **Initiate the autonomous bootstrap run per AC-D23** — generates anchor pools per band per pill with cross-family self-review, fetches curated external link sets for safety-tagged pills, and embeds the initial Drive folder contents. Operator initiates with a single command and the run proceeds in background. Completion notification surfaces in the admin dashboard. One-time cost ~$50–60 per amended AC-D18.
+4. **Initiate the autonomous bootstrap run per AC-D23** — generates anchor pools per band per pill with cross-family self-review, fetches curated external link sets for safety-tagged pills, and **builds the initial reference corpus per AC-CD25** (replacing the retired Drive-folder embed step, v1.9). Operator initiates with a single command and the run proceeds in background. Completion notification surfaces in the admin dashboard. One-time cost ~$50–60 per amended AC-D18.
 
 Acumen is operational after these four steps. Testees can be added and assignments can begin.
 
 ### 8.5 Backup and durability
 
-All application data is retained indefinitely in v1 per AC-D14 — no automatic expiry, archival, or deletion. Postgres remains the primary backup target for disaster recovery purposes only. Daily database dumps retained for at least 30 days on the host, plus an optional weekly off-site copy. **Drive RAG index is regenerable from the Drive folder contents and need not be backed up; anchor pools are regenerable via re-bootstrap but backing them up preserves their accumulated performance statistics.** Backups are a recovery mechanism, not a data lifecycle policy.
+All application data is retained indefinitely in v1 per AC-D14 — no automatic expiry, archival, or deletion. Postgres remains the primary backup target for disaster recovery purposes only. Daily database dumps retained for at least 30 days on the host, plus an optional weekly off-site copy. **The reference-corpus index is regenerable by re-running corpus acquisition per AC-CD25 and need not be backed up; anchor pools are regenerable via re-bootstrap but backing them up preserves their accumulated performance statistics.** Backups are a recovery mechanism, not a data lifecycle policy.
 
 ### 8.6 Updates and rollback
 
@@ -468,19 +470,23 @@ Notice acknowledgement is recorded against the user record with timestamp. The E
 
 ### 8.8 Operational responsibilities
 
-The operator is responsible for monitoring application logs, running backups, applying updates, rotating SMTP credentials and the Anthropic and OpenAI API keys as needed, periodically reviewing AI cost reports, and dropping reference documents into the designated Drive folder for passive RAG ingestion. Acumen ships with sane logging defaults but no built-in external monitoring service in v1 — log review is the standard operational practice. External monitoring integration is out of scope.
+The operator is responsible for monitoring application logs, running backups, applying updates, rotating SMTP credentials and the Anthropic and OpenAI API keys as needed, periodically reviewing AI cost reports, and reviewing the retroactive oversight surfaces. **As of v1.9 the operator no longer maintains a Drive reference folder — the reference corpus is built autonomously per AC-CD25.** Acumen ships with sane logging defaults but no built-in external monitoring service in v1 — log review is the standard operational practice. External monitoring integration is out of scope.
 
 ### 8.9 Autonomous crons and background processes
 
 Acumen runs several scheduled background processes, all initiated and maintained without operator intervention after deployment:
 
-- **Daily Drive RAG ingest** per AC-D22 — fetches and embeds changed or new documents in the designated folder.
+- **Weekly reference-corpus refresh** (`corpus.refresh`) per amended AC-D22 / AC-CD25 — re-acquires and re-embeds authoritative allowlisted sources for the active catalogue's topics (replaces the retired daily Drive RAG ingest, NS-1; also runs per-topic on the gap-detection trigger and on admin on-demand).
 - **Monthly safety-pill link verification** per AC-D21 — checks cached external links for safety-tagged pills, re-fetches replacements for broken ones, flags substantial content drift for admin attention.
 - **Nightly Testee feedback aggregation** per AC-D22 — computes the low-realism question pool used to weight subsequent generation.
 - **Continuous anchor calibration recomputation** per AC-D20 — updates effective_difficulty estimates for anchor questions as new attempts accumulate.
 - **Continuous competence_estimate recomputation** per amended AC-D9 — updates competence floats for affected Testees after each new attempt outcome.
 - **Continuous engagement reminder dispatch** per AC-D26 — checks for assignments due for reminder dispatch on the configured schedule.
 - **Continuous grade-review reconcile** per amended AC-D19 — retries `grade_review` rows still `pending` (review provider was unreachable or over-ceiling at submit) against the configured review provider; on success updates the row in place to `confirmed` or `flagged`, leaving it `pending` on continued failure. Runs every N minutes (default 5; a P6 behavioural default, not yet a `system_settings` column). After max-retry consecutive failures (default 10; AC-D19 v1.6) a `pending` row auto-promotes to `flagged` with reason `auto_flagged_stuck_pending` — at the 5-min × 10 defaults this is a ≈50-minute wall-clock window before auto-flag (AC-CD11 v1.7).
+- **Periodic gap-detection sweep** (`gap_detection.sweep`) per the §6.5 autonomous gap-detection model — scans captured signals for catalogue coverage gaps and triggers autonomous generation. *(Authored complete here per amend-once; the §6.5 prose and this cron's execution land in the downstream generation / gap-detection links — Slice D4.)*
+- **Periodic catalogue-health check** (`catalogue_health.check`) per the §6.5 model — assesses thin-band / uncovered-subject coverage to trigger corpus refresh or generation. *(Slice D4; authored complete here.)*
+
+These scheduled processes total **nine** canonical crons (AC-CD7, v1.9) — `corpus.refresh` (replacing the retired Drive ingest), `gap_detection.sweep`, `catalogue_health.check`, plus the six carried forward. *Surfaced (v1.9, planner): this §8.9 bullet list and the AC-CD7 / CODE_SPEC §8 enumeration carry a **pre-existing one-item divergence** — §8.9 lists a continuous `competence_estimate` recompute where CODE_SPEC §8 lists a cost/budget sweep. This amendment preserves each surface's existing enumeration (it does not introduce or resolve the divergence) and surfaces the reconciliation to the spec author as a non-blocking follow-up, rather than silently merging the two lists inside a scoped cron-count amendment.*
 
 ---
 
@@ -502,7 +508,7 @@ Auth Hub replaces AC-D10's email/password mechanism entirely. Acumen's User enti
 
 ### 9.3 Knowledge Library integration
 
-KL becomes the primary content source for Acumen, replacing the Drive folder RAG mechanism per AC-D22 as the standalone-era moat substitute. AI test generation can seed from KL documents directly; AI grading rubrics can cite KL source documents; learning material can pull from KL rather than only AI-generated explainers. The fact pack built passively via AC-D22 during standalone phase becomes the seed for KL-era richer integration.
+KL becomes the primary content source for Acumen, replacing the AI-built reference corpus per amended AC-D22 / AC-CD25 as the standalone-era moat substitute. AI test generation can seed from KL documents directly; AI grading rubrics can cite KL source documents; learning material can pull from KL rather than only AI-generated explainers. The reference corpus built autonomously via amended AC-D22 / AC-CD25 during standalone phase becomes the seed for KL-era richer integration.
 
 ### 9.4 Media module integration
 
@@ -547,7 +553,7 @@ The simplified privacy notice per amended §8.7 is a single-tenant-internal-staf
 Per CH-D34, Acumen continues to function as a standalone-capable module post-port. When peers are absent, capability degrades gracefully:
 
 - Auth Hub absent → not viable (auth is foundational); Acumen would not deploy without Auth Hub in SiteMesh context.
-- KL absent → falls back to Drive folder RAG per AC-D22 plus general knowledge.
+- KL absent → falls back to the AI-built reference corpus per amended AC-D22 / AC-CD25 plus general knowledge.
 - Comms absent → notifications fall back to in-app dashboard only (no email/SMS).
 - Media absent → no admin-uploaded reference material possible; AI explainers for non-safety pills and external links for safety pills still work.
 - Mesh Intelligence absent → Acumen's bundled grading, generation, and review continue to function; MI add-on capabilities (natural-language profile queries) absent.
