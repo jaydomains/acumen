@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.10 / `DECISIONS.md` v1.10.
+> **Status:** v1 target. Paired with `SPEC.md` v1.9 / `DECISIONS.md` v1.9.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
@@ -303,10 +303,10 @@ exponential backoff. Anchored as **AC-CD8**.
 
 **(v1.6, AC-CD8)** Every provider call carries an `operation` enum
 {generation, grading, weakness, learning_material, pill_proposal,
-grade_review, anchor_self_review, **pill_generation** (v1.10),
-**content_self_review** (v1.10, wiring completes in PR-C)}; the enum (not
+grade_review, anchor_self_review, **pill_generation** (v1.9),
+**content_self_review** (v1.9, wiring completes in PR-C)}; the enum (not
 the method) drives per-operation model + prompt_version resolution and
-cost/provenance persistence. **(v1.10, AC-CD8 — PR-B)** The named operation
+cost/provenance persistence. **(v1.9, AC-CD8 — PR-B)** The named operation
 count moves **seven → nine** (`pill_generation` Anthropic-family +
 `content_self_review` cross-family; `embed` remains the internal,
 un-counted enum member). The **nine** operations route to the four protocol
@@ -1327,5 +1327,5 @@ retirement) is a coupled execution step. **Confidence:** confident default.
 
 ---
 
-*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.10
-and `DECISIONS.md` v1.10. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.10 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29).*
+*End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.9
+and `DECISIONS.md` v1.9. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29).*
