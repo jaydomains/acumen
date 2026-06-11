@@ -214,7 +214,11 @@ exports to PDF; reminder/escalation emails send per AC-D26.
 
 **Amendment cycle (ratification-class, sequenced):**
 - **PR-A — corpus & authority foundation (this link):** mints **AC-D28** (source-authority allowlist + scoring) + **AC-CD25** (reference corpus builder); retires Drive RAG → reference corpus (amended AC-D22); amends AC-D21/AC-D23; cron count seven → **nine** (AC-CD7 / §8.9, `corpus.refresh` + the two D4 crons authored complete).
-- **PR-B — generation + provenance + ops-count;** **PR-C — auto-publish gate + self-review + governance prose;** **PR-D — signal spine + oversight** (each ratified per-PR through its own triage as the chain progresses).
+- **PR-B — generation + provenance + ops-count:** mints **AC-D29** (generation provenance chain); AI-op count seven → **nine**.
+- **PR-C — auto-publish gate + self-review + governance prose:** mints **AC-D30** (self-review protocol) + **AC-D31** (auto-publish gate + `PublishRecord`); rewrites §6.5 (NS-4); amends AC-D7; §290 rolled-back.
+- **PR-D — signal spine + oversight (the final link):** adds the **GapSignal** §5 entity (polymorphic signal store); mints **AC-CD26** (retroactive oversight dashboard — read surface + rollback matrix per-pill/question/batch/source + the `demoted_sources` DB source-override layer completing AC-D28's [A1+E2] design, DS13-a); extends §4.11; authors the deferred oversight FE spec (`fe-specs/FE-10-admin-oversight.md`). **Closes the PR-A→PR-D amendment chain.** Each link ratified per-PR through its own triage; all four merged.
+
+**Workstream anchors:** AC-D28, AC-CD25 (PR-A) · AC-D29 (PR-B) · AC-D30, AC-D31 (PR-C) · AC-CD26 + GapSignal §5 (PR-D).
 
 **Execution slices (post-amendment, build state tracked in CHECKLIST):** A1 source-authority registry · A2 corpus builder · A3 refresh cron + retrieval · B1–B3 generation · C1–C2 self-review + auto-publish gate · D1–D4 signals + gap-detection/health crons · E1–E2 oversight read + rollback · F1 bootstrap-on-publish. **Not yet built** — gated on the amendment merges + per-slice execution.
 

@@ -1327,5 +1327,66 @@ retirement) is a coupled execution step. **Confidence:** confident default.
 
 ---
 
+### AC-CD26 — Oversight dashboard (retroactive read surface + rollback matrix + source-override layer)
+
+> **Minted in v1.9** — autonomous-content-generation cycle, **PR-D** (the final
+> link). Ratified through the authenticated in-session channel (detail-plan
+> PR #108 Slices 12/E1 + 13/E2; extraction PR #109 §C AM-17). Materialises the
+> **retroactive-oversight** half of the autonomy model (§4.11, §6.5) — the
+> "rein-in" the no-pre-publish-gate posture (AC-D31) depends on. One anchor
+> spans the read surface (E1) and the rollback matrix (E2); the routers/domain
+> module + the source-override migration are the **E1/E2 execution** deliverable.
+
+**Decision.** A new admin-role-gated (AC-CD5) `app/routers/oversight.py` (thin —
+validation/authz/envelope per AC-CD2) over `app/domain/oversight.py`, in two
+halves authored as one contract:
+
+**Read (E1) — pure aggregation, no new persistence.** Endpoints over the
+existing `PublishRecord` (AC-D31) + `GenerationProvenance` (AC-D29) + the AC-D28
+authority tiers: **recent publishes** (paginated, newest-first, filterable by
+`low_confidence`/date/subject), **per-item provenance** (the claim → corpus
+source → authority-tier chain), **confidence** (per-publish score + per-pass
+self-review verdicts, AC-D30), **source-authority breakdown** (publishes/claims
+aggregated by `authority_tier` / `source_host` — the rein-in radar), and
+**spot-check sampling** (`sample_for_spotcheck(db, *, n, bias="low_confidence")`,
+deterministic under a seed).
+
+**Rollback (E2) — retract-not-delete (retire per AC-D14 + audit per §290), idempotent.**
+The full matrix: `rollback_pill(pill_id)`, `rollback_question(question_id)`,
+`rollback_batch(batch_id)` (every pill/question of the B3 batch, joined via
+`PublishRecord`/`GenerationProvenance.batch_id`), and **`rollback_source(source_host)`**
+(query `GenerationProvenance` by `source_host` → retract exactly the claims that
+host grounded — per-assertion precision per AC-D29). The relocated AC-D21
+safety-tag override (`override_safety_relevant(pill_id, *, value, actor_id)` —
+retroactive `safety_relevant` retoggle + `safety_relevant_overridden_at`) is part
+of this contract.
+
+**Source-override layer (DS13-a — completes AC-D28's [A1+E2] design).** A small
+`demoted_sources` table (`source_host`, `denied` / `tier_override`, `reason`,
+`actor_id`, timestamp) that AC-D28's `is_allowlisted` / `authority_tier` checks
+**consult on top of the code-VCS seed** (the AC-CD18 code registry supplies the
+default tier; this DB override supplies any operator demotion; the effective
+authority signal is the **join**). `rollback_source` writes a demotion here so the
+corpus builder (AC-CD25) stops re-acquiring the discredited host — making
+per-source rollback **durable** rather than purely reactive. This is the DS1-d
+"code seed + DB overrides" promotion AC-D28 §1.3 forward-referenced, realized
+where the need first appears.
+
+**Rationale.** One oversight contract (read + rollback) keeps the dashboard's read
+joins and the rollback joins on the same `PublishRecord` / `GenerationProvenance` /
+`batch_id` / `source_host` keys the spine was built around (AC-D29 §5.1 relational
+store "for exactly this"). Retract-not-delete retains everything for audit.
+
+**Implications.** New `oversight.py` router + domain module (an absorbable
+structural addition — structure-gate stays green, AC-CD2); the `demoted_sources`
+migration (the only new table — read endpoints add none); the four `rollback_*`
+fns + `override_safety_relevant` + `sample_for_spotcheck`; admin authz (AC-CD5);
+audit actions (`pill_generation.rollback_*`); zero-network domain tests (AC-CD15).
+The admin **FE** is a deferred deliverable — its surface spec is authored
+(`fe-specs/FE-10-admin-oversight.md`); the build lands separately. **Confidence:**
+confident default.
+
+---
+
 *End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.9
-and `DECISIONS.md` v1.9. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30").*
+and `DECISIONS.md` v1.9. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30". **AC-CD26 minted at v1.9 (autonomous-content cycle PR-D, the final link)** — the retroactive oversight dashboard (read surface + rollback matrix + the DB source-override layer completing AC-D28's [A1+E2] design); confident-default from inception; the GapSignal §5 entity rides SPEC §5 + AC-D29/§6.5 (no separate AC-CD). The PR-A→PR-D amendment chain is complete; no open technical anchors.).*
