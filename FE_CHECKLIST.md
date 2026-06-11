@@ -131,3 +131,13 @@
 | Cost dashboard (rolling month, by provider/model, budget %, alerts) | FE-9 | AC-D18 | `frontend/src/app/(authed)/(admin)/cost/page.tsx` | done | PR #66 Slice 4 — `/cost`, read-only; `admin-cost-dashboard.test.tsx` |
 | Anchor calibration (run / flagged / resolve) | FE-9 | AC-D20, AC-D27 | `frontend/src/app/(authed)/(admin)/calibration/page.tsx` | done | PR #66 Slice 5 — `/calibration`, VerdictTile reuse; `admin-calibration.test.tsx`. v1 = AC-D23 flag queue; AC-D27 drift queue deferred (§E.4) |
 | System page (bootstrap / drive-ingest / drive-index status / realism aggregate / safety-link check) | FE-9 | AC-D22, AC-D23 | `frontend/src/app/(authed)/(admin)/system/page.tsx` | done | PR #66 Slice 6 — `/system`, 5 SystemOpCards; `admin-system-page.test.tsx` |
+
+## FE-10 — Admin oversight (autonomous content) — deferred
+
+> Spec authored in the autonomous-content-generation cycle (PR-D, v1.9 — `fe-specs/FE-10-admin-oversight.md`). **Build deferred**, gated on the AC-CD26 backend (E1/E2 execution) + FE-1..FE-9 builds. Rows below are `deferred`, not `missing` — the surface is ratified, the build is not yet scheduled.
+
+| Capability | Phase | Anchors | Files to touch | Status | Evidence |
+|---|---|---|---|---|---|
+| Oversight read dashboard (recent publishes / provenance / confidence / source-authority breakdown / spot-check) | FE-10 | AC-CD26, AC-D31, AC-D30, AC-D29, AC-D28 | `frontend/src/app/(authed)/(admin)/oversight/page.tsx` (NEW) | deferred | spec `fe-specs/FE-10-admin-oversight.md` §2; gated on AC-CD26 backend (E1) |
+| Rollback matrix actions (per pill / question / batch / source + source-demotion) | FE-10 | AC-CD26, AC-D28 (`demoted_sources`, DS13-a), AC-D14 | `oversight/_components/rollback-*.tsx` (NEW) | deferred | spec §3; gated on AC-CD26 backend (E2) |
+| Retroactive safety-tag override | FE-10 | AC-D21 | `oversight/_components/safety-override.tsx` (NEW) | deferred | spec §3.5; relocated AC-D21 override |
