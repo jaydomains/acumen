@@ -3,7 +3,7 @@
 > **Application:** Acumen
 > **Phase:** Standalone v1 (pre-SiteMesh-port)
 > **Decision prefix:** AC-D{n}
-> **Status:** v1.9. Paired with `DECISIONS.md` v1.9 (28 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27, + the v1.9 autonomous-content cycle PR-A: AC-D28 minted + AC-D21/AC-D22/AC-D23 amended; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate; v1.9 mints AC-CD25).
+> **Status:** v1.9. Paired with `DECISIONS.md` v1.9 (29 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27, + the v1.9 autonomous-content cycle PR-A: AC-D28 minted + AC-D21/AC-D22/AC-D23 amended, AC-CD25 minted; + the v1.9 autonomous-content cycle PR-B: AC-D29 minted + the AI-operation count amended seven→nine; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate).
 >
 > **Changes from v1.0:** Adds anchor calibration (AC-D20), safety-pill auto-tagging with curated external material (AC-D21), passive moat via Drive RAG and Testee feedback (AC-D22), autonomous bootstrap run (AC-D23), shared-test integrity with content lock and presentation shuffle (AC-D24), just-in-time generation with parallel streaming (AC-D25), and assignment engagement tracking (AC-D26). Amends six v1.0 decisions: AC-D4 #5 (n-gram overlap replaces stylistic detection), AC-D9 (derived competence_estimate float), AC-D11 (pause blanks content), AC-D18 (worked cost example, rate-limit carve-outs), AC-D19 (cross-family synchronous review), §8.7 (simplified privacy notice).
 >
@@ -22,6 +22,8 @@
 > **Changes in v1.8:** AC-CD10 / §10 P10 build gate closure — locks the per-Testee JIT streaming execution model as in-process `asyncio.gather` + `asyncio.Semaphore` (Celery wording retired from the user-facing path); adds an attempt-scoped `attempt_position` column to Question (unique `(attempt_id, attempt_position)`) so streamed-arrival order is stable under concurrent generation; locks the single-Q-N-generation-failure policy as one orchestration-layer retry then AC-D11 pause. Amends AC-D25 in place. Doc-only; the additive `attempt_position` migration is a P10 build deliverable, not v1.8.
 >
 > **Changes in v1.9:** First link (**PR-A**) of the autonomous-content-generation amendment cycle — *corpus & authority foundation*. Mints **AC-D28** (tiered source-authority allowlist + scoring) and **AC-CD25** (reference corpus builder). Amends **AC-D22** (Google Drive RAG ingestion **retired** in favour of the AI-built reference corpus, NS-1; "queried at every generation call" extended to §6.5), **AC-D21** (web search extended to corpus acquisition; self-review re-adjudicates `safety_relevant`; admin tag-override relocated to retroactive oversight), **AC-D23** (Drive-embed bootstrap step retired → reference-corpus build; incremental bootstrap fires on auto-publish; mutual cross-reference with AC-D7), and **AC-CD7 / §8.9** (canonical cron count seven → **nine**, authored complete: `corpus.refresh` replaces Drive ingest, + the D4 gap-detection / catalogue-health crons). Spec surfaces swept: §3, §5, §6.1/§6.4, §7.3/§7.4, §8.3–§8.5/§8.8/§8.9, §9.3/§9.12. **Scope boundary (surfaced):** the CODE_SPEC code-level descriptions of still-live Drive code (the `drive_rag.py` module, `DriveChunk`/`drive_chunk` table, `google-api-python-client` deps) are **not** changed here — NS-1 ratified *relocate-not-delete*, so the code change is a downstream **execution-slice** deliverable. Ratified through the authenticated in-session channel for this sequenced ratification cycle (PR #107/#108/#109). Doc-only.
+>
+> **Changes in v1.9 (second link — PR-B):** Second link (**PR-B**) of the autonomous-content-generation amendment cycle — *generation + provenance + ops-count*. (The cycle ships under **one v1.9 batch** per the spec-author standing rule — a sequenced ratification cycle = one version; PR-A/PR-B/PR-C/PR-D are coordinated links of v1.9, not separate minor versions.) Mints **AC-D29** (generation provenance chain — a relational, per-assertion claim→corpus-source store with authority stamping, queryable by `source_host` for the Stage-E rollback matrix). Amends the **AI-operation count seven → nine** (`pill_generation`, Anthropic-family, B1; `content_self_review`, cross-family, C1 — its protocol AC-D lands in PR-C) across **AC-D1** Implications, **AC-CD8** (enum prose + numeral), **AC-D12** (Anthropic five→six, cross-family two→three), and the SPEC §6/§6-prompt/§7.1/§7.2/§8.4/§9.7 count surfaces; adds a concise **§6.8 generator** subsection (the autonomous-pipeline *phase* prose is PR-C's §6.5 rewrite — not pre-duplicated here). **Built-state note:** nine ops are canonical; `pill_generation` wiring lands with PR-B's B1 execution, `content_self_review` wiring completes in PR-C. **Not re-touched:** AC-D22 (its §6.5 extension was folded complete in PR-A); the cron count (nine, PR-A); historical build-state surfaces (ROADMAP/CHECKLIST P5 "five Anthropic ops" reflect what P5 built, not the canonical count). Ratified through the authenticated in-session channel for this cycle. Doc-only; the `GenerationProvenance` migration is a B2 execution deliverable.
 
 ---
 
@@ -295,7 +297,7 @@ The application's domain consists of the entities below. Each is described conce
 
 ## 6. AI operations
 
-Acumen runs **seven distinct AI operations** across two providers. Anthropic handles primary operations (generation, grading, weakness identification, learning material, pill proposal). OpenAI handles cross-family operations (grade review per amended AC-D19, anchor self-review per AC-D23). Each is a separate version-controlled prompt with its own input contract, output contract, and quality expectations. All AI calls are server-side; no API key is exposed to the Testee or Administrator browser.
+Acumen runs **nine distinct AI operations** across two providers (v1.9). Anthropic handles the six primary operations (generation, grading, weakness identification, learning material, pill proposal, **pill generation per AC-D29 — §6.8**). OpenAI handles the three cross-family operations (grade review per amended AC-D19, anchor self-review per AC-D23, **content self-review** — the cross-model generated-content review floor; its protocol AC-D + wiring land in the auto-publish-gate link, PR-C). Each is a separate version-controlled prompt with its own input contract, output contract, and quality expectations. All AI calls are server-side; no API key is exposed to the Testee or Administrator browser. *(The internal `embed` call is not counted among the nine user-facing AI operations.)*
 
 ### 6.1 Test generation
 
@@ -369,9 +371,19 @@ Per AC-D23, evaluates each generated anchor question during bootstrap before it 
 
 **Quality bar:** evaluates pill-fit, difficulty calibration, rubric clarity, freedom from ambiguity, factual reasonableness. Rejected anchors regenerate; questions failing three regeneration attempts are excluded from the pool with admin-attention flag.
 
+### 6.8 Pill generation (autonomous generator)
+
+Per AC-D29, the autonomous **generator** operation (`pill_generation`, v1.9) — distinct from the §6.5 pill-proposal **refiner** (which polishes an admin-supplied name+description). Given a *topic*, it generates **N pill drafts** grounded in the reference corpus (AC-CD25 / amended AC-D22), each draft emitting a **provenance chain** (per AC-D29: which corpus chunk(s)/source(s) grounded each claim, with authority tier/score per AC-D28). Anthropic-family (routes through `generate`).
+
+**Inputs:** topic, optional parent subject, target draft count N, `available_difficulty_min`/`_max` (the AC-D9 difficulty axis; per-band decomposition is min/max-range only — no richer breakdown), retrieved reference-corpus context for the topic (authority-tagged).
+
+**Outputs:** a list of pill drafts — each with name, description, parent subject, `available_difficulty_min`/`_max`, estimated minutes, self-applied `safety_relevant` classification per AC-D21, rationale, evidence count, and **`grounding_refs`** (the corpus `source_doc_ref`s the draft cited; the prompt contract that adds `grounding_refs` is the v1.1.0 bump). Drafts persist as candidate rows awaiting the autonomous auto-publish gate (the gate, confidence scoring, and self-review are the auto-publish link, PR-C — not a human approve queue).
+
+**Quality bar:** every claim grounded in the cited corpus context (no invention beyond it; general-knowledge fallback only when the corpus is empty); drafts evidence-backed and authority-weighted; the autonomous gap-detection → generate → auto-publish *pipeline phases* are specified in §6.5 (as amended downstream).
+
 ### Prompt management
 
-All seven prompts live in version control alongside the application code. Each prompt has a version identifier; the version used for any AI call is recorded against the resulting entity for traceability. Prompt changes are reviewed like code changes. v1 does not expose prompt editing to admins.
+All nine **canonical** operation prompts (v1.9) live in version control alongside the application code (built-state: seven exist today; the `pill_generation` prompt lands at B1 execution and the `content_self_review` prompt completes in PR-C). Each prompt has a version identifier; the version used for any AI call is recorded against the resulting entity for traceability. Prompt changes are reviewed like code changes. v1 does not expose prompt editing to admins.
 
 ### Cost tracking
 
@@ -396,11 +408,11 @@ Acumen v1 standalone runs against four external services (Anthropic, OpenAI, web
 
 ### 7.1 Anthropic API
 
-The primary AI provider for five of seven operations per §6 (generation, grading, weakness identification, learning material, pill proposal). Authentication via API key held in server-side environment configuration; key is never sent to the browser. Calls use the `/v1/messages` endpoint with the appropriate model per AC-D12 and recorded cost metadata. The integration handles retry-with-backoff for transient errors and surfaces persistent failures per §6 error handling. The API version pin and the model identifiers are configuration values, not hard-coded — when Anthropic releases new model versions, configuration is updated without code change.
+The primary AI provider for six of the nine operations per §6 (generation, grading, weakness identification, learning material, pill proposal, pill generation per AC-D29). Authentication via API key held in server-side environment configuration; key is never sent to the browser. Calls use the `/v1/messages` endpoint with the appropriate model per AC-D12 and recorded cost metadata. The integration handles retry-with-backoff for transient errors and surfaces persistent failures per §6 error handling. The API version pin and the model identifiers are configuration values, not hard-coded — when Anthropic releases new model versions, configuration is updated without code change.
 
 ### 7.2 OpenAI API
 
-Per amended AC-D19, the secondary AI provider for the two cross-family operations: grade review (§6.6) and anchor self-review (§6.7). Authentication via separate API key held in server-side environment configuration. Calls use OpenAI's chat completions endpoint with the configured model and recorded cost metadata. Cross-family review failure handling per §6 above — fail-soft for grade review (preliminary display with retry on cron), fail-recoverable for anchor self-review (bootstrap can be re-run).
+Per amended AC-D19, the secondary AI provider for the three cross-family operations (v1.9): grade review (§6.6), anchor self-review (§6.7), and **content self-review** (the generated-content review floor; its protocol AC-D + wiring land in PR-C). Authentication via separate API key held in server-side environment configuration. Calls use OpenAI's chat completions endpoint with the configured model and recorded cost metadata. Cross-family review failure handling per §6 above — fail-soft for grade review (preliminary display with retry on cron), fail-recoverable for anchor self-review (bootstrap can be re-run); content self-review degrades-not-gates per NS-7 (PR-C).
 
 ### 7.3 Reference corpus acquisition (replaces Google Drive RAG ingestion — v1.9)
 
@@ -442,7 +454,7 @@ All deployment-specific values held in environment variables: **Anthropic API ke
 
 Four operator actions on first run:
 
-1. Run the database migration — creates the schema (including pgvector extension and tables for anchor pools, the reference corpus (`CorpusChunk`, per AC-CD25), realism feedback) and seeds system defaults (AI prompts at v1.1 versions for all seven operations, default model and provider selections, default difficulty band definitions per AC-D9, default safety keyword list per AC-D21, default reminder schedules per AC-D26, default decay half-life per amended AC-D9).
+1. Run the database migration — creates the schema (including pgvector extension and tables for anchor pools, the reference corpus (`CorpusChunk`, per AC-CD25), realism feedback) and seeds system defaults (AI prompts at their pinned versions for all nine operations — `content_self_review` wiring completes in PR-C, default model and provider selections, default difficulty band definitions per AC-D9, default safety keyword list per AC-D21, default reminder schedules per AC-D26, default decay half-life per amended AC-D9).
 2. Create the initial Administrator user via a one-shot command (which sends the setup email).
 3. Administrator logs in and seeds the initial pill catalogue (Subjects and Pills for KBC) — typically a half-day exercise with Jay and Gys per AC-D7.
 4. **Initiate the autonomous bootstrap run per AC-D23** — generates anchor pools per band per pill with cross-family self-review, fetches curated external link sets for safety-tagged pills, and **builds the initial reference corpus per AC-CD25** (replacing the retired Drive-folder embed step, v1.9). Operator initiates with a single command and the run proceeds in background. Completion notification surfaces in the admin dashboard. One-time cost ~$50–60 per amended AC-D18.
@@ -526,7 +538,7 @@ Per TF-D64, Doc Renderer handles formatted document output and e-signatures. Acu
 
 Per TF-D82, two AI surfaces coexist post-port — both real, neither replacing the other.
 
-**Module-bundled AI (lives inside Acumen).** Acumen's **seven AI operations** — test generation, grading, weakness identification, learning material generation, pill proposal, grade review, anchor self-review — continue to run as direct provider API calls owned and executed by Acumen, exactly as in the standalone phase. The cross-family pattern (Anthropic primary, OpenAI review) per amended AC-D19 carries forward. Per CH-D36, Acumen owns its module-specific state and rules; the AI logic is core to what Acumen does and does not get moved to a shared platform layer at port time.
+**Module-bundled AI (lives inside Acumen).** Acumen's **nine AI operations** (v1.9) — test generation, grading, weakness identification, learning material generation, pill proposal, grade review, anchor self-review, pill generation per AC-D29, and content self-review (PR-C) — continue to run as direct provider API calls owned and executed by Acumen, exactly as in the standalone phase. The cross-family pattern (Anthropic primary, OpenAI review) per amended AC-D19 carries forward. Per CH-D36, Acumen owns its module-specific state and rules; the AI logic is core to what Acumen does and does not get moved to a shared platform layer at port time.
 
 **Mesh Intelligence add-on (lives alongside Acumen).** MI is a separate co-resident capability that reads Acumen's substrate face for higher-level orchestration. MI handles things Acumen doesn't: natural-language queries spanning modules, cross-module triggers, and personal platform-wide AI assistants. MI does not execute Acumen's internal AI work.
 
@@ -592,4 +604,4 @@ Items deferred to v1.x are tracked separately. None block v1 build.
 
 ---
 
-*End of Acumen specification. Status: v1.9. Paired with `DECISIONS.md` v1.9 (28 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27, + the v1.9 autonomous-content cycle PR-A: AC-D28 minted + AC-D21/AC-D22/AC-D23 amended; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate; v1.9 mints AC-CD25).*
+*End of Acumen specification. Status: v1.9. Paired with `DECISIONS.md` v1.9 (29 decisions; 6 v1.1 + 3 v1.2 + 1 v1.3 + 1 v1.4 + 1 v1.5 + 6 v1.6 + 1 v1.7 + 1 v1.8 amendments plus new AC-D27, + the v1.9 autonomous-content cycle PR-A: AC-D28 minted + AC-D21/AC-D22/AC-D23 amended, AC-CD25 minted; + the v1.9 autonomous-content cycle PR-B: AC-D29 minted + the AI-operation count amended seven→nine; v1.7 closed the AC-CD11 P6 gate; v1.8 closes the AC-CD10 P10 build gate).*
