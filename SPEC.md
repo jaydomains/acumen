@@ -62,7 +62,7 @@ Roles are stored as a single field on the user record. User creation is admin-dr
 
 **Pill catalogue (per AC-D7, AC-D8, AC-D21)**
 - Admin seeds the initial Subject and Pill taxonomy at deployment
-- AI proposes new pills surfaced to admin for review
+- AI generates and **auto-publishes** new pills (AC-D31) with retroactive admin oversight — no pre-publish review queue
 - Pills carry metadata: description, available difficulty range, discoverable flag, related pills, **safety_relevant flag** (auto-tagged per AC-D21), **anchor question pool per supported band** (per AC-D20)
 - Admin groups pills into named Learning Paths for repeatable bundling
 - Testees browse and self-select discoverable pills
@@ -177,7 +177,7 @@ Pill catalogue seeding is a real piece of v1 setup, not a development task. Half
 
 ### 4.1 Catalogue lifecycle
 
-Admin seeds Subjects and the initial Pill taxonomy at deployment. AI proposes new pills on a continuous basis as test generation surfaces coverage gaps and Testee discovery behaviour reveals interest in untracked areas. Proposed pills queue for admin review with rationale ("seen 14 generated questions touching this concept with no existing tag fit"). Admin approves, renames, merges into existing pills, or rejects. Admin separately defines each pill's `available_difficulty_range`, `discoverable` flag, and optional grouping into named Learning Paths. **Safety relevance is auto-tagged at pill creation per AC-D21** — admin can override the tag in either direction. **When a new pill is approved, an incremental bootstrap auto-runs to generate anchor pools, run self-review, and (if safety-tagged) curate external link sets.** Pills can be manually retired by admin at any time; retired pills are hidden from Testees and from new generation but remain in the database for historical reference per AC-D14.
+Admin seeds Subjects and the initial Pill taxonomy at deployment. AI generates new pills **autonomously** as the gap-detection sweep surfaces coverage gaps (§6.5) — corpus-grounded (AC-D29), self-reviewed cross-model (AC-D30), and **auto-published** via the AC-D31 gate (publish, or publish-with-warning below the confidence threshold); there is **no human pre-publish review queue** for generated pills. Admin governance is **retroactive** (§4.11 / the oversight dashboard): admin renames, merges, retires, or rolls back published pills and can override the safety tag. The `pill_proposal` refiner (admin supplies a name + description, AI polishes) is the **optional manual** entry point (G7a); its drafts route through the same gate. Admin separately defines each pill's `available_difficulty_range`, `discoverable` flag, and optional grouping into named Learning Paths. **Safety relevance is auto-tagged at pill creation per AC-D21** (re-adjudicated by the AC-D30 self-review) — admin can override the tag in either direction retroactively. **When a generated pill auto-publishes, an incremental bootstrap auto-runs** to generate anchor pools, run self-review, and (if safety-tagged) curate external link sets (AC-D23, bootstrap-on-publish). Pills can be manually retired by admin at any time; retired pills are hidden from Testees and from new generation but remain in the database for historical reference per AC-D14.
 
 ### 4.2 User management
 
@@ -267,7 +267,7 @@ The application's domain consists of the entities below. Each is described conce
 
 **Subject** — A top-level catalogue category (Paint QA, Quantity Surveying, Marine Coatings, NACE Prep, etc.). Admin-defined per AC-D7. Mostly organisational — pills live within subjects.
 
-**Pill** — A content unit within a Subject. The unit against which questions, learning material, assignments, and competency are tagged. Carries description, available difficulty range (min and max integer per AC-D9), discoverable flag, related-pill references, parent Subject, optional retired flag, **`safety_relevant` boolean (auto-tagged per AC-D21)**, **`safety_links` collection (cached external URLs with title, source, last-verified timestamp, content hash) for safety-tagged pills**, and **anchor question pools per supported band (frozen question collections generated at pill creation per AC-D20)**. Created by admin or AI per AC-D7; AI-proposed pills enter via review queue.
+**Pill** — A content unit within a Subject. The unit against which questions, learning material, assignments, and competency are tagged. Carries description, available difficulty range (min and max integer per AC-D9), discoverable flag, related-pill references, parent Subject, optional retired flag, **`safety_relevant` boolean (auto-tagged per AC-D21)**, **`safety_links` collection (cached external URLs with title, source, last-verified timestamp, content hash) for safety-tagged pills**, and **anchor question pools per supported band (frozen question collections generated at pill creation per AC-D20)**. Created by admin (seeded directly) or AI per AC-D7; AI-generated pills **auto-publish** via the AC-D31 gate under retroactive oversight (no admin review queue); the `pill_proposal` refiner is the optional manual path.
 
 **Learning Path** — Named collection of pills grouped by admin for repeatable curriculum bundling (e.g. "Junior QA Tech Path"). Personal paths created by Testees are stored similarly but flagged private to the Testee per AC-D8.
 
