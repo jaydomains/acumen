@@ -383,7 +383,7 @@ Per AC-D29, the autonomous **generator** operation (`pill_generation`, v1.10) â€
 
 ### Prompt management
 
-All nine operation prompts (v1.10) live in version control alongside the application code. Each prompt has a version identifier; the version used for any AI call is recorded against the resulting entity for traceability. Prompt changes are reviewed like code changes. v1 does not expose prompt editing to admins.
+All nine **canonical** operation prompts (v1.10) live in version control alongside the application code (built-state: seven exist today; the `pill_generation` prompt lands at B1 execution and the `content_self_review` prompt completes in PR-C). Each prompt has a version identifier; the version used for any AI call is recorded against the resulting entity for traceability. Prompt changes are reviewed like code changes. v1 does not expose prompt editing to admins.
 
 ### Cost tracking
 
