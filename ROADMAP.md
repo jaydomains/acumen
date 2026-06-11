@@ -226,9 +226,9 @@ exports to PDF; reminder/escalation emails send per AC-D26.
 
 ## Anchor coverage
 
-Every AC-D1–AC-D29 and every AC-CD1–AC-CD25 is referenced by at least one
+Every AC-D1–AC-D31 and every AC-CD1–AC-CD25 is referenced by at least one
 phase or workstream above and one CHECKLIST row (AC-D28 + AC-CD25 minted in
-v1.9, AC-D29 minted in v1.9, are owned by the autonomous-content-generation workstream). AC-CD11's pre-build gate at P6 was
+v1.9, AC-D29 minted in v1.9 (PR-B), AC-D30 + AC-D31 minted in v1.9 (PR-C), are owned by the autonomous-content-generation workstream). AC-CD11's pre-build gate at P6 was
 **closed at v1.7**; AC-CD10's residual §10 ambiguity surfaced at the
 P10 plan-mode gate and was **closed at v1.8**; no anchor now carries
 an unresolved pre-build gate.
