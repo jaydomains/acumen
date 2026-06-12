@@ -3,9 +3,9 @@
 Defines the four protocol methods (``generate``/``grade``/``review``/
 ``embed``), the ``Operation`` enum that drives per-operation model +
 prompt_version resolution and provenance persistence (the canonical
-operation count is nine, v1.9 — plus the internal ``embed``; built-state
-grows per slice as ``pill_generation`` (B1) / ``content_self_review`` (C1)
-wire in), the ``AIResult`` / ``EmbedResult`` structs the methods return,
+operation count is nine, v1.9 — plus the internal ``embed``; the count
+completed once ``pill_generation`` (B1) and ``content_self_review`` (C1)
+wired in), the ``AIResult`` / ``EmbedResult`` structs the methods return,
 and the Test-override → ``provider_by_operation`` →
 ``review_provider`` → coded-default resolution order (AC-CD8 v1.6).
 
@@ -167,6 +167,49 @@ def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
     return {"drafts": drafts}
 
 
+def _stub_content_self_review_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic per-variant verdict for ``content_self_review`` (AC-CD15,
+    C1). Reads the ``_prompt_variant`` + the ``draft`` the protocol injected so
+    the three passes are exercisable offline without a network call:
+
+    * **grounding** → pass with no unsupported claims (the stub trusts the
+      cited grounding);
+    * **provenance** → orphan = any draft claim whose ``source_doc_refs`` is
+      empty (structural check; ``fail`` when orphans exist);
+    * **safety** → re-adjudicates ``safety_relevant`` from the stub cue list —
+      a cue-bearing draft mistagged ``False`` deterministically flips to
+      ``True`` (the false-negative catch, AC-D21), ``fail`` on the flip.
+    """
+    variant = str(payload.get("_prompt_variant", "default"))
+    draft = payload.get("draft") or {}
+    if variant == "safety":
+        name = str(draft.get("name", ""))
+        description = str(draft.get("description", ""))
+        topic = str(draft.get("topic", ""))
+        haystack = f"{name} {description} {topic}".lower()
+        self_tag = bool(draft.get("safety_relevant", False))
+        readjudicated = self_tag or any(c in haystack for c in _STUB_SAFETY_CUES)
+        flipped = readjudicated != self_tag
+        return {
+            "verdict": "fail" if flipped else "pass",
+            "safety_relevant": readjudicated,
+            "reasoning": (
+                "Stub re-adjudicated a safety cue the draft mistagged."
+                if flipped
+                else "stub"
+            ),
+        }
+    if variant == "provenance":
+        orphans = [
+            str(claim.get("claim", ""))
+            for claim in draft.get("grounding_refs", [])
+            if not claim.get("source_doc_refs")
+        ]
+        return {"verdict": "fail" if orphans else "pass", "orphan_claims": orphans}
+    # grounding (and the default lookup) — stub trusts the cited grounding.
+    return {"verdict": "pass", "unsupported_claims": []}
+
+
 def _stub_result(content: dict[str, Any]) -> AIResult:
     """Build an :class:`AIResult` carrying the stub's fixed metadata.
     Cost is 0.0 and tokens are 0 — the stub never makes a network call
@@ -186,10 +229,9 @@ class Operation(str, enum.Enum):
     """The AI operations of AC-CD8 plus ``embed`` for the reference corpus.
 
     The canonical AI-operation count is **nine** (AC-CD8 / SPEC §6, v1.9 —
-    excludes the internal ``embed``); built-state grows per slice as the
-    generator (``pill_generation``, B1) and the cross-model reviewer
-    (``content_self_review``, C1) wire in. This enum carries **eight**
-    operations + ``embed`` after B1 (``content_self_review`` joins at C1).
+    excludes the internal ``embed``); the generator (``pill_generation``, B1)
+    and the cross-model reviewer (``content_self_review``, C1) completed it.
+    This enum carries the **nine** named operations + ``embed`` (ten members).
 
     The enum (not the method) drives per-operation model + prompt_version
     resolution and cost/provenance persistence. Routing to the four
@@ -198,7 +240,7 @@ class Operation(str, enum.Enum):
     * ``generation`` / ``weakness`` / ``learning_material`` /
       ``pill_proposal`` / ``pill_generation`` → :meth:`AIProvider.generate`
     * ``grading`` → :meth:`AIProvider.grade`
-    * ``grade_review`` / ``anchor_self_review`` →
+    * ``grade_review`` / ``anchor_self_review`` / ``content_self_review`` →
       :meth:`AIProvider.review`
     * ``embed`` (reference corpus only) → :meth:`AIProvider.embed`
     """
@@ -211,6 +253,7 @@ class Operation(str, enum.Enum):
     pill_generation = "pill_generation"
     grade_review = "grade_review"
     anchor_self_review = "anchor_self_review"
+    content_self_review = "content_self_review"
     embed = "embed"
 
 
@@ -230,9 +273,16 @@ _ANTHROPIC_DEFAULT_OPS: frozenset[Operation] = frozenset(
 
 # Operations that fall under ``system_settings.review_provider`` as a
 # convenience default per AC-CD8 v1.6 ("``review_provider`` is the
-# convenience default for grade_review / anchor_self_review").
+# convenience default for grade_review / anchor_self_review"). C1 (AC-D30)
+# adds ``content_self_review`` — the cross-model generated-content review
+# floor routes to the review provider (OpenAI, cross-family from the
+# Anthropic generator).
 _REVIEW_DEFAULT_OPS: frozenset[Operation] = frozenset(
-    {Operation.grade_review, Operation.anchor_self_review}
+    {
+        Operation.grade_review,
+        Operation.anchor_self_review,
+        Operation.content_self_review,
+    }
 )
 
 
@@ -342,6 +392,8 @@ class StubAIProvider:
         )
 
     async def review(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
+        if operation == Operation.content_self_review:
+            return _stub_result(_stub_content_self_review_content(payload))
         return _stub_result({"verdict": "confirmed", "reasoning": "stub"})
 
     async def embed(self, operation: Operation, text: str) -> EmbedResult:
@@ -498,6 +550,7 @@ def resolve_model(
         Operation.pill_generation: "anthropic_model_pill_generation",
         Operation.grade_review: "openai_model_review",
         Operation.anchor_self_review: "openai_model_review",
+        Operation.content_self_review: "openai_model_review",
         Operation.embed: "openai_embedding_model",
     }[operation]
     return getattr(settings, coded_default_attr)

@@ -24,6 +24,9 @@ from __future__ import annotations
 
 from app.ai.prompts import (
     anchor_self_review,
+    content_self_review_grounding,
+    content_self_review_provenance,
+    content_self_review_safety,
     generation,
     grade_review,
     grading,
@@ -55,6 +58,14 @@ _REGISTRY: dict[Operation, tuple[str, str]] = {
         anchor_self_review.TEMPLATE,
         anchor_self_review.VERSION,
     ),
+    # content_self_review (C1, AC-D30) carries three prompt-variant passes;
+    # its default points at the grounding pass — the primary factual-support
+    # review (AC-D30's first pass) — so the op is a registered_operations()
+    # member while each pass is invoked by its explicit named variant below.
+    Operation.content_self_review: (
+        content_self_review_grounding.TEMPLATE,
+        content_self_review_grounding.VERSION,
+    ),
 }
 
 # Named non-default variants of a registered op. AC-D8 self-initiated
@@ -66,6 +77,22 @@ _VARIANT_REGISTRY: dict[tuple[Operation, str], tuple[str, str]] = {
     (Operation.learning_material, "self_initiated"): (
         learning_material_self_initiated.TEMPLATE,
         learning_material_self_initiated.VERSION,
+    ),
+    # AC-D30 (C1): one ``content_self_review`` op, three cross-model passes —
+    # each a distinct prompt-variant contract (NS-2 ruled one-op-three-variants).
+    # ``self_review_draft`` invokes each by name; the gate (C2) consumes the
+    # three verdicts + the re-adjudicated ``safety_relevant``.
+    (Operation.content_self_review, "grounding"): (
+        content_self_review_grounding.TEMPLATE,
+        content_self_review_grounding.VERSION,
+    ),
+    (Operation.content_self_review, "safety"): (
+        content_self_review_safety.TEMPLATE,
+        content_self_review_safety.VERSION,
+    ),
+    (Operation.content_self_review, "provenance"): (
+        content_self_review_provenance.TEMPLATE,
+        content_self_review_provenance.VERSION,
     ),
 }
 

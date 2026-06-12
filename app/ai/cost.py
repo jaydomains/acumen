@@ -138,6 +138,7 @@ OP_TO_METHOD: dict[Operation, str] = {
     Operation.pill_generation: "generate",
     Operation.grade_review: "review",
     Operation.anchor_self_review: "review",
+    Operation.content_self_review: "review",
     Operation.embed: "embed",
 }
 
