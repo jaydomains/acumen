@@ -68,24 +68,35 @@ async def _live_pill_topics(db: AsyncSession) -> set[str]:
     }
 
 
-async def _has_generation_batch_for(db: AsyncSession, gap_signal: str) -> bool:
-    """Has a ``pill_generation`` batch ever been opened for this ``gap_signal``
-    (ANY status)? The **thin-band** arm uses this as a generate-once guard: a
-    structurally-thin pill cannot be fattened by generation (``enqueue_generated_
-    drafts`` mints *new* pills for the topic, it does not add anchor bands to the
-    existing pill), so without this it would re-trigger every sweep once a batch
-    leaves ``pending`` (B3's pending-only dedup no longer blocks it) — unbounded
-    duplicate content + spend. Once a band-filling mechanism exists, this becomes
-    a cooldown."""
+async def _suppressed_topics(db: AsyncSession) -> set[str]:
+    """Normalized names of **all** pills (live OR retired) — the topics the
+    gap-signal arm must not regenerate. A live pill means the demand is already
+    met; a **retired** pill was deliberately removed by an admin and must stay
+    "hidden from new generation" (AC-D14), so a discovery-miss on its topic must
+    not resurrect it (otherwise retirement never sticks)."""
+    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
+    return {_normalize(p.name) for p in result.scalars().all()}
+
+
+async def _generated_gap_signals(db: AsyncSession) -> set[str]:
+    """Every ``gap_signal`` that already has a ``pill_generation`` batch (ANY
+    status) — the **thin-band** generate-once guard set. A structurally-thin pill
+    cannot be fattened by generation (``enqueue_generated_drafts`` mints *new*
+    pills for the topic, it does not add anchor bands to the existing pill), so
+    without this it would re-trigger every sweep once a batch leaves ``pending``
+    (B3's pending-only dedup no longer blocks it) — unbounded duplicate content +
+    spend. Fetched **once** per sweep (not per pill — no N+1)."""
     result = await db.execute(
         select(ProcessingTask).where(
             ProcessingTask.tenant_id == SEED_TENANT_ID,
             ProcessingTask.task_name == GENERATION_TASK_NAME,
         )
     )
-    return any(
-        (t.payload or {}).get("gap_signal") == gap_signal for t in result.scalars().all()
-    )
+    return {
+        gs
+        for t in result.scalars().all()
+        if (gs := (t.payload or {}).get("gap_signal")) is not None
+    }
 
 
 async def gap_detection_sweep(db: AsyncSession) -> list[GenerationTrigger]:
@@ -116,14 +127,14 @@ async def gap_detection_sweep(db: AsyncSession) -> list[GenerationTrigger]:
         if signal.consumed_at is None:
             clusters.setdefault(signal.dedup_key, []).append(signal)
 
-    covered = await _live_pill_topics(db)
+    suppressed = await _suppressed_topics(db)
     now = now_utc()
     triggers: list[GenerationTrigger] = []
     for dedup_key, cluster in clusters.items():
         weight = sum(s.occurrence_count for s in cluster)
         if weight < GAP_WEIGHT_THRESHOLD:
             continue  # below threshold — leave unconsumed to accrue more weight
-        if dedup_key not in covered:
+        if dedup_key not in suppressed:
             batch_id = str(uuid.uuid4())
             await enqueue_generated_drafts(
                 db, topic=dedup_key, batch_id=batch_id, gap_signal=dedup_key
@@ -198,13 +209,14 @@ async def catalogue_health_check(db: AsyncSession) -> list[GenerationTrigger]:
 
     # Thin-band pills: a live pill whose anchor pool covers < MIN_BAND_COVERAGE
     # distinct bands. The pill exists by definition, so the live-pill skip does
-    # NOT apply here — instead a generate-once guard (`_has_generation_batch_for`)
-    # stops a structurally-thin pill from re-triggering every sweep, since
-    # generation mints new pills rather than fattening this one.
+    # NOT apply here — instead the generate-once guard set (fetched ONCE, not
+    # per pill — no N+1) stops a structurally-thin pill from re-triggering every
+    # sweep, since generation mints new pills rather than fattening this one.
+    generated = await _generated_gap_signals(db)
     for pill in pills:
         if len(bands_by_pill.get(pill.id, set())) < MIN_BAND_COVERAGE:
             gap_signal = f"thin_band:{pill.id}"
-            if await _has_generation_batch_for(db, gap_signal):
+            if gap_signal in generated:
                 continue  # already generated for this thin pill — don't loop
             batch_id = str(uuid.uuid4())
             await enqueue_generated_drafts(

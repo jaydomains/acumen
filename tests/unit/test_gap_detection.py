@@ -23,7 +23,14 @@ from app.domain.gap_detection import (
     catalogue_health_check,
     gap_detection_sweep,
 )
-from app.models import AnchorQuestion, GapSignal, Pill, ProcessingTask, Subject
+from app.models import (
+    AnchorQuestion,
+    GapSignal,
+    GapSignalType,
+    Pill,
+    ProcessingTask,
+    Subject,
+)
 from app.permissions import now_utc
 
 
@@ -64,11 +71,18 @@ def _install(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     return calls
 
 
-def _gap(dedup_key: str, *, count: int = 1, consumed: bool = False) -> SimpleNamespace:
+def _gap(
+    dedup_key: str,
+    *,
+    count: int = 1,
+    consumed: bool = False,
+    signal_type=GapSignalType.discovery_miss,
+) -> SimpleNamespace:
     return SimpleNamespace(
         dedup_key=dedup_key,
         occurrence_count=count,
         consumed_at=now_utc() if consumed else None,
+        signal_type=signal_type,
     )
 
 
@@ -126,6 +140,49 @@ async def test_third_arm_dedup_live_pill_covers(monkeypatch: pytest.MonkeyPatch)
     triggers = await gap_detection_sweep(session)
     assert calls == [] and triggers == []
     assert sigs[0].consumed_at is not None  # consumed without generating
+
+
+@pytest.mark.asyncio
+async def test_retired_pill_topic_not_regenerated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A gap cluster on a RETIRED pill's topic is NOT regenerated (AC-D14 — a
+    deliberately-retired pill stays hidden from new generation); the cluster is
+    consumed without resurrecting it."""
+    calls = _install(monkeypatch)
+    sigs = [_gap("welding", count=5)]
+    retired = _pill("Welding", retired=True)
+    triggers = await gap_detection_sweep(_SweepSession(signals=sigs, pills=[retired]))
+    assert calls == [] and triggers == []
+    assert sigs[0].consumed_at is not None  # consumed, not resurrected
+
+
+@pytest.mark.asyncio
+async def test_sweep_idempotent_across_two_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second sweep over the same signals (now consumed by the first) triggers
+    nothing — the consumed mark is the gap-detection-layer dedup."""
+    calls = _install(monkeypatch)
+    sigs = [_gap("welding", count=5)]
+    session = _SweepSession(signals=sigs)
+    first = await gap_detection_sweep(session)
+    second = await gap_detection_sweep(session)
+    assert len(first) == 1 and second == []
+    assert len(calls) == 1  # only the first sweep generated
+
+
+@pytest.mark.asyncio
+async def test_cross_type_cluster_sums_weight(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Signals of DIFFERENT types sharing a dedup_key cluster across types into
+    one topic; their occurrence_counts sum toward the weight threshold."""
+    calls = _install(monkeypatch)
+    sigs = [
+        _gap("welding", count=2, signal_type=GapSignalType.discovery_miss),
+        _gap("welding", count=1, signal_type=GapSignalType.question_tag),
+    ]  # cross-type, weight 3 == threshold
+    await gap_detection_sweep(_SweepSession(signals=sigs))
+    assert [c["topic"] for c in calls] == ["welding"]
 
 
 @pytest.mark.asyncio
