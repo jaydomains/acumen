@@ -6,8 +6,10 @@ cross-model self-review (AC-D30), computes a **confidence score**, and
 → publish live**; **< threshold → publish-with-warning** (live + a
 ``low_confidence`` flag); **nothing is held pre-publish**, including
 safety-relevant content (subject to the AC-D30 **NS-7 degrade** rule). It
-**replaces the `approve_pill_proposal` human gate** for generated drafts (the
-refiner path is unchanged — detail §8.6 / OV-C2-8).
+**replaces the `approve_pill_proposal` human gate entirely** — **both**
+autonomously-generated drafts (AC-D29) **and** refiner-polished proposals (G7a)
+route through this **one publication path** (AC-D31 / AC-D7, no per-source gate
+exception; ratified ruling, this conversation 2026-06-12).
 
 Scope (C2): the gate — `compute_confidence` + `auto_publish_draft` + the
 `PublishRecord`. NOT here: the self-review protocol (C1 owns it; C2 consumes the
@@ -33,7 +35,7 @@ from app.models import (
     PublishRecord,
     SystemSettings,
 )
-from app.permissions import now_utc
+from app.permissions import APIError, now_utc
 
 # General-knowledge fallback base (no grounding chunks): a moderate score so an
 # ungrounded-but-self-review-passing draft lands mid-band, not auto-confident.
@@ -82,10 +84,12 @@ async def _publish_threshold(db: AsyncSession) -> float:
     result = await db.execute(
         select(SystemSettings).where(SystemSettings.tenant_id == SEED_TENANT_ID)
     )
-    settings = result.scalars().first()
-    if settings is None:
-        return 0.70
-    return float(settings.pill_publish_confidence_threshold)
+    settings = result.scalar_one_or_none()
+    threshold = getattr(settings, "pill_publish_confidence_threshold", None)
+    # ``None`` covers both a missing settings row and a row predating the C2
+    # column (the server default only applies on a DB insert, not a Python-
+    # constructed instance) — fall back to the ratified 0.70 default.
+    return float(threshold) if threshold is not None else 0.70
 
 
 async def auto_publish_draft(db: AsyncSession, task: ProcessingTask) -> PublishRecord:
@@ -99,7 +103,12 @@ async def auto_publish_draft(db: AsyncSession, task: ProcessingTask) -> PublishR
     (Stage-E / per-batch-rollback surface) and marks the task ``done``.
     """
     payload = task.payload or {}
-    draft: dict[str, Any] = payload.get("draft", {})
+    # One publication path, two origins (AC-D31 / AC-D7): a B3 generated draft
+    # rides ``payload["draft"]`` (with a ``batch_id`` + a corpus provenance
+    # chain); a G7a refiner-polished proposal rides ``payload["proposal"]`` (no
+    # corpus grounding → no ``batch_id`` / authority → the general-knowledge
+    # confidence base → typically publish-with-warning).
+    draft: dict[str, Any] = payload.get("draft") or payload.get("proposal") or {}
     batch_id = payload.get("batch_id")
     draft_ref = draft.get("draft_ref")
 
@@ -142,10 +151,22 @@ async def auto_publish_draft(db: AsyncSession, task: ProcessingTask) -> PublishR
     safety_failed = review.safety.verdict == "fail"
     low_confidence = confidence < threshold or ns7_degrade or safety_failed
 
+    # A refiner-polished proposal (G7a) reaches this same gate; its persisted
+    # JSON payload could be malformed (missing subject/name). Fail with a clean
+    # 422 rather than an unhandled 500 (matches the removed approve path).
+    try:
+        subject_id = uuid.UUID(str(draft["subject_id"]))
+        name = str(draft["name"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise APIError(
+            422,
+            "malformed_proposal",
+            "This draft's payload is malformed and cannot be published.",
+        ) from exc
     pill = await create_pill(
         db,
-        subject_id=uuid.UUID(str(draft["subject_id"])),
-        name=str(draft["name"]),
+        subject_id=subject_id,
+        name=name,
         description=draft.get("description"),
         available_difficulty_min=int(draft.get("available_difficulty_min", 1)),
         available_difficulty_max=int(draft.get("available_difficulty_max", 10)),

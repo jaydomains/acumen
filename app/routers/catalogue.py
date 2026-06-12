@@ -15,7 +15,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain import catalogue, learning_material
+from app.domain import catalogue, learning_material, publish
 from app.models import AppUser, LearningMaterialSource, get_db
 from app.permissions import (
     ROLE_ADMINISTRATOR,
@@ -378,16 +378,26 @@ async def list_pill_proposals(
 @router.post("/pill-proposals/{proposal_id}/approve", status_code=201)
 async def approve_pill_proposal(
     proposal_id: uuid.UUID,
-    admin: AppUser = Depends(_require_admin),
+    _admin: AppUser = Depends(_require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> PillResponse:
+    """Publish a refiner-polished proposal through the **AC-D31 auto-publish
+    gate** — the one publication path generated drafts also take (AC-D7: the
+    human approve *gate* is removed; refiner drafts route through the same gate,
+    no per-source exception; ratified ruling, this conversation 2026-06-12). The
+    gate self-reviews, scores, and publishes (live or with-warning, never held);
+    the admin no longer makes a publish/reject *judgement*. The path is retained
+    for backend compatibility — the FE proposals-tab catch-up is a follow-up PR."""
     task = await catalogue.get_pill_proposal(db, proposal_id)
     if task is None:
         raise _not_found("Pill proposal")
     if task.status.value != "pending":
         raise APIError(409, "proposal_not_pending", "This proposal is already resolved.")
-    pill = await catalogue.approve_pill_proposal(db, task, actor_id=admin.id)
+    record = await publish.auto_publish_draft(db, task)
     await db.commit()
+    pill = await catalogue.get_pill(db, record.pill_id)
+    if pill is None:  # pragma: no cover - just-published row is always present
+        raise _not_found("Pill")
     return PillResponse.model_validate(pill)
 
 

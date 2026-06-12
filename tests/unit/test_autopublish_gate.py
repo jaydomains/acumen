@@ -278,5 +278,36 @@ async def test_safety_fail_flags_even_multi_provider_high_confidence(
     assert len(_pills(session)) == 1  # still live — nothing held
 
 
+@pytest.mark.asyncio
+async def test_refiner_proposal_routes_through_same_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A G7a refiner proposal (``payload['proposal']``, no corpus grounding)
+    routes through the SAME auto-publish gate as generated drafts (AC-D31 /
+    AC-D7 one publication path, ruled this conversation): no authority → the
+    general-knowledge confidence base → publish-with-warning; no batch_id."""
+    monkeypatch.setattr(pub, "self_review_draft", lambda *a, **k: _async(_review()))
+    proposal = {
+        "subject_id": str(uuid.uuid4()),
+        "name": "Refiner-polished pill",
+        "description": "Admin drafted, AI polished.",
+        "available_difficulty_min": 1,
+        "available_difficulty_max": 5,
+    }
+    task = ProcessingTask(
+        tenant_id=SEED_TENANT_ID,
+        task_name="pill_proposal",
+        status=ProcessingTaskStatus.pending,
+        payload={"proposal": proposal, "provenance": {}},
+    )
+    session = _GateSession(settings=_settings(), provenance=[])
+    record = await auto_publish_draft(session, task)
+    assert record.batch_id is None  # refiner has no generation batch
+    assert record.confidence == pytest.approx(0.5)  # no corpus → general-knowledge base
+    assert record.low_confidence is True  # < 0.70 → publish-with-warning
+    assert len(_pills(session)) == 1  # published through the one gate
+    assert task.status == ProcessingTaskStatus.done
+
+
 async def _async(value: object) -> object:
     return value
