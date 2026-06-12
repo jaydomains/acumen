@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import enum
 from collections.abc import Iterable
+from functools import lru_cache
 
 from app.config import Settings, get_settings
 from app.domain.web_search import WebSearchResult, _host_of
@@ -108,22 +109,23 @@ def _normalise(value: str) -> str:
     return host
 
 
-def _load_allowlist(settings: Settings | None = None) -> dict[str, Tier]:
-    """Build the effective allowlist: the coded seed merged with the
-    operator's per-tier env extensions (AC-CD18 pattern, AC-D28).
+@lru_cache(maxsize=16)
+def _build_allowlist(t1_extra: str, t2_extra: str, t3_extra: str) -> dict[str, Tier]:
+    """Merge the coded seed with the operator's per-tier env extensions
+    (AC-CD18 pattern, AC-D28). Cached on the three env strings (constant
+    for a given config) so :func:`filter_to_allowlist` does not rebuild
+    the map once per result row (Gitar PR #114 finding 2); ``get_settings``
+    is itself cached, so the keys are stable. The returned dict is treated
+    **read-only** by every caller.
 
-    Conflict rule (AC-D28): an env entry may **add** a host but never
-    silently re-tier a seed host — a host appearing at two tiers resolves
-    to the **stronger** tier (higher ``Tier`` ordinal) deterministically.
+    Same-key conflict rule (AC-D28): an env entry may **add** a host but
+    never silently re-tier a seed host — a host appearing at two tiers
+    resolves to the **stronger** tier (higher ``Tier`` ordinal). The
+    exact-vs-covering-wildcard cross case is resolved in
+    :func:`authority_tier` (strongest of exact + matching wildcard).
     """
-    settings = settings or get_settings()
     merged: dict[str, Tier] = dict(_SEED_ALLOWLIST)
-    env_by_tier = (
-        (Tier.T1, settings.source_authority_t1_extra),
-        (Tier.T2, settings.source_authority_t2_extra),
-        (Tier.T3, settings.source_authority_t3_extra),
-    )
-    for tier, raw in env_by_tier:
+    for tier, raw in ((Tier.T1, t1_extra), (Tier.T2, t2_extra), (Tier.T3, t3_extra)):
         for pattern in _split_csv(raw):
             host = _normalise(pattern)
             existing = merged.get(host)
@@ -132,28 +134,42 @@ def _load_allowlist(settings: Settings | None = None) -> dict[str, Tier]:
     return merged
 
 
+def _load_allowlist(settings: Settings | None = None) -> dict[str, Tier]:
+    """Return the effective allowlist for the active settings (AC-D28),
+    via the memoised :func:`_build_allowlist`."""
+    settings = settings or get_settings()
+    return _build_allowlist(
+        settings.source_authority_t1_extra,
+        settings.source_authority_t2_extra,
+        settings.source_authority_t3_extra,
+    )
+
+
 def authority_tier(url_or_host: str, *, settings: Settings | None = None) -> Tier | None:
     """Resolve a URL or host to its authority :class:`Tier`, or ``None``
     if the host is not on the allowlist (AC-D28).
 
-    Matching: **exact host** first (after lowercasing and stripping a
-    leading ``www.``), then **suffix-wildcard** for ``*.<suffix>``
-    patterns (so ``*.gov.za`` matches ``dol.gov.za`` and the apex
-    ``gov.za``). An exact entry wins over a wildcard on tie; among
-    multiple matching wildcards the **stronger** tier wins. Pure — no I/O.
+    Matching: a host resolves to the **strongest** applicable tier
+    (AC-D28 — never silently downgraded). Both an **exact host** entry
+    (after lowercasing and stripping a leading ``www.``) and any
+    **suffix-wildcard** ``*.<suffix>`` pattern that covers it are
+    considered (so ``*.gov.za`` matches ``dol.gov.za`` and the apex
+    ``gov.za``); the strongest matching tier wins, an exact entry winning
+    over a wildcard only on an exact tie. Returns ``None`` if no entry
+    matches. Pure — no I/O.
     """
     host = _normalise(url_or_host)
     if not host:
         return None
     allowlist = _load_allowlist(settings)
 
-    # Exact host match wins over any wildcard.
-    exact = allowlist.get(host)
-    if exact is not None:
-        return exact
-
-    # Suffix-wildcard match: strongest matching wildcard tier.
-    best: Tier | None = None
+    # Strongest of the exact-host tier and any matching suffix-wildcard
+    # tier (AC-D28: a host resolves to the STRONGER tier — an env exact
+    # entry can never silently downgrade a host a seed wildcard ranks
+    # higher; OV-A1-4r / Gitar PR #114 finding 1). "Exact wins on tie" is
+    # preserved: the exact tier seeds ``best`` and a wildcard overrides
+    # only on a strictly-stronger tier.
+    best: Tier | None = allowlist.get(host)
     for pattern, tier in allowlist.items():
         if not pattern.startswith("*."):
             continue

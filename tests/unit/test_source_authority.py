@@ -146,6 +146,31 @@ def test_env_conflict_resolves_to_stronger_tier() -> None:
     assert authority_tier("iso.org", settings=s) is Tier.T1
 
 
+def test_env_exact_does_not_downgrade_seed_wildcard() -> None:
+    """An env **exact** entry at a weaker tier must not silently downgrade
+    a host a seed **wildcard** ranks higher: ``data.gov.za`` is covered by
+    the seed ``*.gov.za`` (T1), so a T3 env exact still resolves to T1
+    (AC-D28 "resolves to the stronger tier"; OV-A1-4r / Gitar PR #114
+    finding 1 regression — the exact branch must not short-circuit past a
+    stronger covering wildcard)."""
+    s = Settings(source_authority_t3_extra="data.gov.za")
+    assert authority_tier("data.gov.za", settings=s) is Tier.T1
+
+
+def test_strongest_wildcard_wins_among_multiple() -> None:
+    """Among multiple overlapping wildcards matching the same host, the
+    stronger tier wins (AC-D28; Gitar PR #114 finding 3 coverage gap).
+    ``*.foo.example`` (T2) and ``*.example`` (T3) both cover
+    ``x.foo.example`` → T2; a host matched only by the weaker wildcard
+    stays T3."""
+    s = Settings(
+        source_authority_t2_extra="*.foo.example",
+        source_authority_t3_extra="*.example",
+    )
+    assert authority_tier("x.foo.example", settings=s) is Tier.T2
+    assert authority_tier("y.example", settings=s) is Tier.T3
+
+
 # --- 5. Zero-network + purity (AC-CD15) -------------------------------
 
 
