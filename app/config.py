@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     # --- Web search (safety-link curation, AC-D21) ---
     web_search_api_key: str = ""
 
+    # --- Source-authority allowlist (corpus acquisition, AC-D28) ---
+    # Per-tier comma-separated host patterns the operator appends to the
+    # coded seed allowlist in ``app/domain/source_authority.py`` (the
+    # AC-CD18 env-default pattern). A pattern may be an exact host
+    # (``acme-pro.example``) or a suffix-wildcard (``*.example.org``). An
+    # env entry may add a host but never silently re-tier a seed host — a
+    # host appearing at two tiers resolves to the stronger tier (AC-D28).
+    source_authority_t1_extra: str = ""
+    source_authority_t2_extra: str = ""
+    source_authority_t3_extra: str = ""
+
     # --- SMTP (AC-D10 / AC-D26) ---
     smtp_host: str = ""
     smtp_port: int = 587
