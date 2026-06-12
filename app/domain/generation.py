@@ -97,9 +97,15 @@ async def generate_grounded_drafts(
     for draft in drafts:
         draft_ref = str(uuid.uuid4())
         draft["draft_ref"] = draft_ref
-        for claim_index, claim in enumerate(draft.get("grounding_refs", [])):
+        grounding_refs = draft.get("grounding_refs", [])
+        rows_written = 0
+        for claim_index, claim in enumerate(grounding_refs):
             claim_ref = f"{draft_ref}:{claim_index}"
-            for source_doc_ref in claim.get("source_doc_refs", []):
+            # De-dupe the claim's refs (LLM output is not guaranteed unique;
+            # a repeated source_doc_ref must not inflate the per-source
+            # rollback row count E2 relies on — Gitar B2-2). One doc still
+            # legitimately fans out to its several grounding chunks below.
+            for source_doc_ref in dict.fromkeys(claim.get("source_doc_refs", [])):
                 for hit in hits_by_ref.get(str(source_doc_ref), []):
                     db.add(
                         GenerationProvenance(
@@ -112,4 +118,18 @@ async def generate_grounded_drafts(
                             authority_score=float(str(hit["authority_score"])),
                         )
                     )
+                    rows_written += 1
+        # Observability for the silent grounding-mismatch (Gitar B2-1): a draft
+        # that claimed to ground (non-empty grounding_refs) but whose refs
+        # byte-matched no retrieved hit (trailing slash / fragment / paraphrase)
+        # records zero provenance rows — it would look ungrounded to the E2
+        # per-source rollback. WARN so the mismatch is observable, not invisible.
+        if grounding_refs and rows_written == 0:
+            logger.warning(
+                "grounded generation: draft %s emitted %d grounding_refs but "
+                "produced 0 provenance rows — no ref byte-matched a retrieved "
+                "corpus hit (grounding-mismatch)",
+                draft_ref,
+                len(grounding_refs),
+            )
     return GroundedGenerationResult(drafts=drafts, ai_result=result)

@@ -135,6 +135,100 @@ async def test_grounded_generation_deterministic(
     assert _strip(r1.drafts) == _strip(r2.drafts)
 
 
+@pytest.mark.asyncio
+async def test_grounding_mismatch_warns_and_writes_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A draft that claims to ground (non-empty grounding_refs) but whose refs
+    byte-match no retrieved hit records zero provenance rows and emits a WARN
+    so the silent grounding-mismatch is observable (Gitar B2-1)."""
+    c1 = _chunk([1.0, 0.0, 0.0], Tier.T1, "iso.org", "https://iso.org/a")
+    _install(monkeypatch)
+    session = _GenSession([c1])
+
+    async def _mismatched(operation: Operation, payload: dict) -> object:
+        # Provider grounds against a ref that does NOT byte-match the hit's
+        # source_doc_ref (trailing slash) — the realistic mismatch case.
+        return SimpleNamespace(
+            content={
+                "drafts": [
+                    {
+                        "name": "p",
+                        "grounding_refs": [
+                            {"claim": "x", "source_doc_refs": ["https://iso.org/a/"]}
+                        ],
+                    }
+                ]
+            },
+            provider="stub",
+            model="stub",
+            prompt_version="1.1.0",
+            prompt_tokens=0,
+            completion_tokens=0,
+            cost_usd=0.0,
+        )
+
+    monkeypatch.setattr(
+        gen, "resolve_provider", lambda op: SimpleNamespace(generate=_mismatched)
+    )
+
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        result = await gen.generate_grounded_drafts(session, topic="welding")
+
+    assert result.drafts[0]["grounding_refs"]  # claimed to ground
+    assert _provenance(session) == []  # but matched nothing
+    assert "grounding-mismatch" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_duplicate_source_doc_refs_deduped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claim that lists the same source_doc_ref twice writes one provenance
+    row per (claim, grounding-chunk), not two — duplicates must not inflate the
+    per-source rollback counts E2 relies on (Gitar B2-2)."""
+    c1 = _chunk([1.0, 0.0, 0.0], Tier.T1, "iso.org", "https://iso.org/a")
+    _install(monkeypatch)
+    session = _GenSession([c1])
+
+    async def _dup(operation: Operation, payload: dict) -> object:
+        return SimpleNamespace(
+            content={
+                "drafts": [
+                    {
+                        "name": "p",
+                        "grounding_refs": [
+                            {
+                                "claim": "x",
+                                "source_doc_refs": [
+                                    "https://iso.org/a",
+                                    "https://iso.org/a",
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+            provider="stub",
+            model="stub",
+            prompt_version="1.1.0",
+            prompt_tokens=0,
+            completion_tokens=0,
+            cost_usd=0.0,
+        )
+
+    monkeypatch.setattr(
+        gen, "resolve_provider", lambda op: SimpleNamespace(generate=_dup)
+    )
+    await gen.generate_grounded_drafts(session, topic="welding")
+    prov = _provenance(session)
+    assert len(prov) == 1  # de-duped, not 2
+    assert prov[0].source_host == "iso.org"
+
+
 def test_pill_generation_prompt_bumped_to_v1_1_0() -> None:
     """G7b: the corpus-grounding contract bump lands at B2."""
     _template, version = get_prompt(Operation.pill_generation)
