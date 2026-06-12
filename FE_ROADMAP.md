@@ -195,6 +195,17 @@ finer-grained statuses not yet in the API.
 
 ---
 
+## FE-10 — Admin oversight: autonomous-content dashboard + rollback (deferred)
+
+> **Deferred phase — spec authored, build gated.** Surface spec authored in the autonomous-content-generation cycle (PR-D, v1.9 — `fe-specs/FE-10-admin-oversight.md`); the build is **not** scheduled here. Gated on (a) the **AC-CD26** backend (`app/routers/oversight.py` read + rollback API behind E1/E2 execution) merging, and (b) FE-1..FE-9 builds landing first. Couples NS-5 (the FE-phase home for the autonomous-content workstream's admin surface).
+
+**Deliverables:** the retroactive content-oversight admin surface (`/admin/oversight`) — read dashboard (recent publishes over `PublishRecord`, per-item provenance claim→source→tier, confidence + self-review verdicts, source-authority breakdown, low-confidence spot-check) + the rollback matrix actions (per pill / per question / per batch / per source, with the `demoted_sources` source-demotion on per-source rollback) + the relocated AC-D21 safety-tag override.
+**Done-when (build phase):** Admin can open `/admin/oversight` → review recent autonomous publishes + provenance + confidence → spot-check a low-confidence sample → roll back a pill / question / batch / source (with reason) → demote a discredited source → retoggle a safety tag.
+**Anchors:** AC-CD26 (oversight read + rollback + source-override), AC-D31 (`PublishRecord`), AC-D30 (self-review verdicts), AC-D29 (`GenerationProvenance`), AC-D28 (`demoted_sources`, DS13-a), AC-D21 (safety-tag override), AC-D14 (retract-not-delete), AC-CD5/20/21/23 (admin gate + FE conventions).
+**Risks:** build deferred — the read/rollback response shapes need a spot-check against the AC-CD26 backend once executed; no SSE (poll/read surface).
+
+---
+
 ## Non-goals (v1 frontend)
 
 - Dedicated Learning Center (progress tracking, lesson sequences,
