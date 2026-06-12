@@ -146,10 +146,31 @@ def test_reconcile_grade_reviews_task_returns_counts_on_empty_store(
 ) -> None:
     """The pre-existing P6 wrapper still works under the same
     fake-factory monkeypatch — proves the Slice 2 changes don't
-    regress the seventh cron's wrapper contract."""
+    regress the grade-review cron's wrapper contract."""
     from app.worker import reconcile_grade_reviews_task
 
     result = reconcile_grade_reviews_task()
     assert isinstance(result, dict)
     assert "attempts_processed" in result
     assert result["attempts_processed"] == 0
+
+
+def test_corpus_refresh_task_shapes_counts(
+    fake_session_factory: CatalogueFakeSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``corpus.refresh`` (A3 weekly backstop) wrapper imports cleanly, opens
+    a session, runs ``refresh_corpus_all``, and shapes its ``{topic: count}``
+    into ``{topics_refreshed, chunks_added}``. ``refresh_corpus_all`` is
+    stubbed (the active-pill acquisition is unit-tested directly in
+    ``test_corpus_retrieval.py``); this pins the wrapper contract."""
+    import app.domain.corpus_builder as cbmod
+
+    async def _fake_refresh_all(db: Any, *, http_client: Any = None) -> dict[str, int]:
+        return {"welding": 2, "rigging": 3}
+
+    monkeypatch.setattr(cbmod, "refresh_corpus_all", _fake_refresh_all)
+    from app.worker import corpus_refresh_task
+
+    result = corpus_refresh_task()
+    assert result == {"topics_refreshed": 2, "chunks_added": 5}

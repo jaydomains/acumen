@@ -1,6 +1,6 @@
 """Celery task-failure surfacing (audit-4 S3-H / WS4 pre-deploy, Decision D6).
 
-The seven §8.9 cron wrappers carry no ``autoretry`` and write no audit row,
+The §8.9 cron wrappers carry no ``autoretry`` and write no audit row,
 so a task failing every run is otherwise invisible — only downstream symptoms
 show. ``app/worker.py`` registers ``task_failure`` / ``task_retry`` signal
 handlers that emit a loud structured log on any failure / retry. These tests

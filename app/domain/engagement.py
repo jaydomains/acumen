@@ -16,7 +16,7 @@ notification to the assigning admin, capped via
 
 P4 ships the sweep as a callable (here) + an admin-only trigger
 endpoint (``POST /v1/admin/engagement/sweep``); P11 wires it into the
-seventh cron in ``beat_schedule.py``. Emails route through the P2
+engagement cron in ``beat_schedule.py``. Emails route through the P2
 ``SMTPClient`` seam — fail-soft, captured in tests via
 ``captured_emails``.
 """
