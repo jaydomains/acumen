@@ -287,6 +287,13 @@ async def list_discoverable_pills(
             for p in rows
             if needle in p.name.lower() or (p.description or "").lower().find(needle) >= 0
         ]
+        # §6.5 discovery-miss signal (D1-D2): a non-empty search that returns no
+        # good match is a coverage gap — capture it for the D3 gap-detection
+        # sweep (deduped at the signal layer). Commits with the request.
+        if not rows:
+            from app.domain.signals import capture_discovery_miss
+
+            await capture_discovery_miss(db, search=search, result_count=0)
     return paginate(rows, cursor, limit)
 
 
