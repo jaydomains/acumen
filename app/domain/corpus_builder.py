@@ -16,9 +16,12 @@ double). It adds **no** new `Operation` enum value.
 **Safety cross-source corroboration (DS2-b — ruled option (ii)).**
 Content-hash dedup is the floor for all topics; for **safety-relevant**
 topics (per `auto_tag_safety`, AC-D21) the pipeline additionally stamps a
-`corroboration_count` — the number of distinct allowlisted sources that
-produced the same chunk text in this run — feeding the Stage-C confidence
-score + the B2 provenance chain (stronger grounding for safety content).
+`corroboration_count` — the number of distinct allowlisted sources whose
+chunk embeddings are within `_CORROBORATION_COSINE_THRESHOLD` (0.90) cosine
+similarity of the chunk, reusing the already-computed embeddings (AC-CD25,
+CA-A2-1 ratified Option-2, this conversation 2026-06-12 — semantic match,
+not byte-identical text). Feeds the Stage-C confidence score + the B2
+provenance chain (stronger grounding for safety content).
 
 Scope fence: this is **acquisition only**. The corpus retrieval helper +
 the refresh cron are A3; generation grounding + the per-draft provenance
@@ -30,6 +33,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 from dataclasses import dataclass
 
 import httpx
@@ -37,7 +41,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import record_provenance
-from app.ai.provider import Operation, resolve_provider
+from app.ai.provider import EmbedResult, Operation, resolve_provider
 from app.domain.drive_rag import chunk_document, content_hash
 from app.domain.safety_links import auto_tag_safety
 from app.domain.source_authority import (
@@ -56,6 +60,10 @@ logger = logging.getLogger(__name__)
 _HTTP_FETCH_TIMEOUT_SECONDS = 10.0
 _HTTP_FETCH_MAX_BYTES = 5_000_000  # 5 MB — bound a malicious/huge payload.
 _SEARCH_MAX_RESULTS = 8
+# DS2-b corroboration: cosine-similarity threshold for "same claim/fact"
+# (AC-CD25, ratified 2026-06-12). Set conservatively; tuned from telemetry
+# (the NS-6 confidence-threshold pattern).
+_CORROBORATION_COSINE_THRESHOLD = 0.90
 
 
 async def _fetch_body(
@@ -176,40 +184,39 @@ async def acquire_for_topic(
     if not candidates:
         return 0
 
-    # DS2-b (ii): cross-source corroboration for safety-relevant topics —
-    # count the DISTINCT allowlisted sources that produced each chunk text.
-    # v1 floor = **exact chunk text** (content_hash) agreement across sources.
-    # LIMITATION (CA-A2-1, surfaced to the spec author): exact-text agreement
-    # rarely fires across independent sources, so this is a conservative proxy
-    # for AC-CD25's "same claim/fact across >=2 sources"; semantic (embedding-
-    # similarity) claim-matching is deferred pending the spec-author ruling on
-    # whether exact-text is the intended v1 floor.
-    corroboration: dict[str, int] = {}
-    if safety_relevant:
-        hosts_by_hash: dict[str, set[str]] = {}
-        for cand in candidates:
-            hosts_by_hash.setdefault(cand.chunk_hash, set()).add(cand.source_host)
-        corroboration = {h: len(hosts) for h, hosts in hosts_by_hash.items()}
-
     existing = await _existing_keys(db, candidates)
     provider = resolve_provider(Operation.embed)
-    added = 0
+
+    # Embed each genuinely-new chunk once (skip in-run duplicates + keys
+    # already stored — idempotency: a re-run over an unchanged source adds
+    # nothing and spends nothing).
     seen_this_run: set[tuple[str, str]] = set()
+    new_chunks: list[tuple[_Candidate, EmbedResult]] = []
     for cand in candidates:
         key = (cand.source_host, cand.chunk_hash)
-        # Skip an in-run duplicate, or a key already stored (idempotency: a
-        # re-run over an unchanged source adds nothing).
         if key in seen_this_run or key in existing:
             continue
         seen_this_run.add(key)
         embed_result = await provider.embed(Operation.embed, cand.chunk_text)
+        new_chunks.append((cand, embed_result))
+
+    # DS2-b (ii): cross-source corroboration for safety-relevant topics
+    # (AC-CD25, ratified Option-2 — embedding cosine similarity, this
+    # conversation 2026-06-12). corroboration_count = the number of distinct
+    # source_hosts among the run's new chunks whose embedding is within
+    # _CORROBORATION_COSINE_THRESHOLD of the chunk (incl. its own source).
+    # Reuses the already-computed embeddings — essentially free.
+    corroboration = _corroboration_counts(new_chunks) if safety_relevant else {}
+
+    added = 0
+    for idx, (cand, embed_result) in enumerate(new_chunks):
         row = CorpusChunk(
             tenant_id=SEED_TENANT_ID,
             source_doc_ref=cand.source_doc_ref,
             source_host=cand.source_host,
             authority_tier=int(cand.tier),
             authority_score=authority_score(cand.tier),
-            corroboration_count=corroboration.get(cand.chunk_hash, 1),
+            corroboration_count=corroboration.get(idx, 1),
             chunk_index=cand.chunk_index,
             chunk_text=cand.chunk_text,
             content_hash=cand.chunk_hash,
@@ -220,6 +227,41 @@ async def acquire_for_topic(
         db.add(row)
         added += 1
     return added
+
+
+def _corroboration_counts(
+    new_chunks: list[tuple[_Candidate, EmbedResult]],
+) -> dict[int, int]:
+    """For each new chunk (by index), the number of **distinct source_hosts**
+    among the run's new chunks whose embedding is within
+    ``_CORROBORATION_COSINE_THRESHOLD`` cosine similarity of it — its own
+    source always counted (AC-CD25 DS2-b option (ii), ratified 2026-06-12).
+
+    Embeddings are pre-normalised once so each pairwise check is a dot
+    product; O(N²·D) over the (bounded) per-run chunk set, safety topics
+    only. A zero-norm embedding (degenerate) corroborates with nothing.
+    """
+    normalised: list[list[float] | None] = []
+    for _cand, result in new_chunks:
+        norm = math.sqrt(sum(x * x for x in result.embedding))
+        normalised.append([x / norm for x in result.embedding] if norm else None)
+
+    counts: dict[int, int] = {}
+    for i, (cand_i, _result_i) in enumerate(new_chunks):
+        hosts = {cand_i.source_host}
+        vec_i = normalised[i]
+        if vec_i is not None:
+            for j, (cand_j, _result_j) in enumerate(new_chunks):
+                if i == j or cand_j.source_host in hosts:
+                    continue
+                vec_j = normalised[j]
+                if vec_j is None:
+                    continue
+                dot = sum(a * b for a, b in zip(vec_i, vec_j, strict=True))
+                if dot >= _CORROBORATION_COSINE_THRESHOLD:
+                    hosts.add(cand_j.source_host)
+        counts[i] = len(hosts)
+    return counts
 
 
 async def _gather_candidates(
