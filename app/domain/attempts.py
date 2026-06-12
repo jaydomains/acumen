@@ -742,19 +742,6 @@ async def start_attempt(
     )
     attempt.shuffle_seed = seed_for(attempt.id)
 
-    # §6.5 question-tag signal (D1-D2): a per_testee attempt AI-generates
-    # questions tagged with the test's pill — capture that topic's assessment
-    # demand for the D3 gap-detection sweep (signal-layer deduped; the
-    # occurrence_count accumulates how frequently the topic is generated for).
-    # Only per_testee tests (AI-generated, not frozen/hand-authored) with a pill.
-    if test.mode == TestMode.per_testee and test.pill_id is not None:
-        from app.domain.catalogue import get_pill
-        from app.domain.signals import capture_question_tag
-
-        tag_pill = await get_pill(db, test.pill_id)
-        if tag_pill is not None:
-            await capture_question_tag(db, tag=tag_pill.name, source_ref=tag_pill.id)
-
     if test.mode in (TestMode.frozen, TestMode.hand_authored):
         result = await db.execute(
             select(Question).where(
@@ -789,6 +776,16 @@ async def start_attempt(
         # consistency across the attempt.
         target_difficulty = int(round(test.target_difficulty or 5))
         rag_pill = await _load_pill_for_assignment(db, assignment_id)
+        # §6.5 question-tag signal (D1-D2): per_testee questions are AI-generated
+        # grounded in ``rag_pill`` (the pill the questions are actually generated
+        # for — assignment pill if assignment-driven, else the test's pill).
+        # Capture that topic's assessment demand for the D3 gap-detection sweep
+        # (signal-layer deduped; occurrence_count accumulates the frequency).
+        # Skipped when no pill resolves (learning-path RAG-less generation).
+        if rag_pill is not None:
+            from app.domain.signals import capture_question_tag
+
+            await capture_question_tag(db, tag=rag_pill.name, source_ref=rag_pill.id)
         rag_hits = await retrieve_for_generation(
             db, pill=rag_pill, target_difficulty=target_difficulty
         )

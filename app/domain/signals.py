@@ -44,10 +44,22 @@ async def _upsert_signal(
     ``(signal_type, dedup_key)`` increments ``occurrence_count`` rather than
     inserting a duplicate; otherwise a fresh row is created. (A *consumed*
     signal — already clustered by a D3 sweep — does not absorb new occurrences;
-    a later miss starts a fresh signal.) Iterates in Python to match the
-    zero-DB test-session harness."""
+    a later miss starts a fresh signal.)
+
+    The dedup predicate is pushed into SQL on ``(tenant_id, signal_type,
+    dedup_key)`` so the ratified ``ix_gap_signal_type_dedup_key`` index bounds
+    the read to the dedup group (a handful of rows), not the whole append-heavy
+    table. The ``consumed_at IS NULL`` arm + the same ``signal_type``/
+    ``dedup_key`` predicates are re-asserted in Python so the unit-level zero-DB
+    fake (which does not model the WHERE) still dedups correctly; in production
+    the SQL already bounded the read, so the re-check is a no-op (the B3
+    ``_pending_batch_for`` pattern)."""
     result = await db.execute(
-        select(GapSignal).where(GapSignal.tenant_id == SEED_TENANT_ID)
+        select(GapSignal).where(
+            GapSignal.tenant_id == SEED_TENANT_ID,
+            GapSignal.signal_type == signal_type,
+            GapSignal.dedup_key == dedup_key,
+        )
     )
     for row in result.scalars().all():
         if (
@@ -96,11 +108,18 @@ async def capture_question_tag(
     source_ref: uuid.UUID | None = None,
 ) -> GapSignal:
     """Record an under-covered / frequently-tagged topic from recent generated
-    questions (§6.5 ``question_tag``) — deduped on the normalized tag."""
+    questions (§6.5 ``question_tag``) — deduped on the normalized topic ``tag``
+    (pill name) so distinct pills on the **same topic** cluster into one gap
+    signal (the intended topic-level clustering the D3 sweep weights). The
+    contributing ``pill_id`` is also recorded in ``detail`` so the sweep can
+    resolve a representative pill despite name-level dedup."""
+    detail: dict = {"tag": tag}
+    if source_ref is not None:
+        detail["pill_id"] = str(source_ref)
     return await _upsert_signal(
         db,
         signal_type=GapSignalType.question_tag,
         dedup_key=_normalize(tag),
-        detail={"tag": tag},
+        detail=detail,
         source_ref=source_ref,
     )

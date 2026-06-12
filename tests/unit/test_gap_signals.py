@@ -12,7 +12,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.domain.catalogue as catalogue
 from app.domain.signals import (
     capture_discovery_miss,
     capture_question_tag,
@@ -107,27 +106,8 @@ def test_scope_clarification_type_defined() -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_discovery_miss_wired_into_list_discoverable_pills(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``list_discoverable_pills`` captures a discovery_miss when a non-empty
-    search returns no good match (and none when it matches)."""
-    captured: list[dict] = []
-
-    async def _fake_capture(db, *, search, result_count, testee_ref=None):
-        captured.append({"search": search, "result_count": result_count})
-        return SimpleNamespace()
-
-    import app.domain.signals as signals
-
-    monkeypatch.setattr(signals, "capture_discovery_miss", _fake_capture)
-
-    async def _no_pills(db, model):
-        return []
-
-    monkeypatch.setattr(catalogue, "_tenant_rows", _no_pills)
-    await catalogue.list_discoverable_pills(
-        object(), cursor=None, limit=10, search="nonexistent topic"
-    )
-    assert captured == [{"search": "nonexistent topic", "result_count": 0}]
+# The discovery-miss WIRING (GET /catalogue/pills → list_discoverable_pills →
+# capture + commit) is exercised end-to-end against the real router in
+# tests/integration/test_p3_catalogue.py::test_discovery_miss_persists_gap_signal
+# — a real-path test (not a monkeypatched stub) that catches the GET-no-commit
+# class of bug the unit stub masked.

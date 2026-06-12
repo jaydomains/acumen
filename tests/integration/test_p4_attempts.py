@@ -233,14 +233,16 @@ def test_per_testee_attempt_generates_stub_questions(
     assert body["q1"]["id"] == questions[0]["id"]
 
 
-def test_per_testee_attempt_captures_question_tag_signal(
+def test_per_testee_assignment_attempt_captures_question_tag_signal(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:
-    """D1-D2 (§6.5): a per_testee attempt AI-generates questions tagged with the
-    test's pill — start_attempt captures a question_tag GapSignal keyed on the
-    pill name (the topic-demand signal the D3 sweep consumes). A pill-less test
-    captures none (verified by the other per_testee test staying green)."""
+    """D1-D2 (§6.5): an assignment-driven per_testee attempt AI-generates
+    questions for the assignment's pill (the actual generation topic) —
+    start_attempt captures a question_tag GapSignal keyed on that pill's name,
+    recording the contributing pill_id. A self-initiated per_testee attempt has
+    no generation pill (rag_pill None) and captures none."""
     seed_system_settings(cat_session)
+    admin, _ = _admin(cat_session)
     t = _testee(cat_session)
     pill = Pill(
         tenant_id=SEED_TENANT_ID,
@@ -254,17 +256,27 @@ def test_per_testee_attempt_captures_question_tag_signal(
     )
     cat_session.add(pill)
     test = _new_test(cat_session, mode=TestMode.per_testee, pill_id=pill.id)
-    r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
+    a = _assignment(cat_session, admin=admin, testees=[t], pill_id=pill.id)
+    r = cat_client.post(
+        "/v1/attempts",
+        headers=bearer(t),
+        json={
+            "test_id": str(test.id),
+            "origin": "assignment_driven",
+            "assignment_id": str(a.id),
+        },
+    )
     assert r.status_code == 201, r.text
 
     sigs = [
         s
-        for s in cat_session.store[GapSignal]
+        for s in cat_session.store.get(GapSignal, [])
         if s.signal_type == GapSignalType.question_tag
     ]
     assert len(sigs) == 1
-    assert sigs[0].dedup_key == "welding qa"  # normalized pill name
+    assert sigs[0].dedup_key == "welding qa"  # normalized generation-pill name
     assert sigs[0].source_ref == pill.id
+    assert sigs[0].detail["pill_id"] == str(pill.id)
 
 
 def test_benchmark_attempt_starts_with_empty_snapshot(

@@ -287,13 +287,18 @@ async def list_discoverable_pills(
             for p in rows
             if needle in p.name.lower() or (p.description or "").lower().find(needle) >= 0
         ]
-        # §6.5 discovery-miss signal (D1-D2): a non-empty search that returns no
-        # good match is a coverage gap — capture it for the D3 gap-detection
-        # sweep (deduped at the signal layer). Commits with the request.
-        if not rows:
+        # §6.5 discovery-miss signal (D1-D2): a search with non-whitespace
+        # content that returns no good match is a coverage gap — capture it for
+        # the D3 gap-detection sweep (deduped at the signal layer). The discovery
+        # endpoint is a read (GET) that does not otherwise commit, so this commits
+        # the captured signal explicitly — a discovery search is therefore no
+        # longer a pure read. Whitespace-only searches normalize to an empty
+        # dedup_key and are skipped (no clustering noise).
+        if not rows and search.strip():
             from app.domain.signals import capture_discovery_miss
 
             await capture_discovery_miss(db, search=search, result_count=0)
+            await db.commit()
     return paginate(rows, cursor, limit)
 
 
