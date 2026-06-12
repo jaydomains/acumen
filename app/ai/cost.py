@@ -255,7 +255,10 @@ async def _rag_retrieve_spend(
     by_provider: dict[str, float] = {}
     by_model: dict[str, float] = {}
     for row in result.scalars().all():
-        if row.action != "rag.retrieve":
+        # Both the Drive retrieve (``rag.retrieve``) and the reference-corpus
+        # retrieve (``corpus.retrieve``, AC-CD25 / A3) stamp the query-side
+        # embed cost on an audit row with no owning entity; fold both.
+        if row.action not in ("rag.retrieve", "corpus.retrieve"):
             continue
         created_at = getattr(row, "created_at", None)
         if created_at is None or created_at < since:

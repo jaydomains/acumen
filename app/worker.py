@@ -3,8 +3,9 @@
 P0 ships the factory + broker/backend wiring only. P6 Slice 3 adds the
 ``grade_review.reconcile`` task wrapper around
 :func:`app.domain.grade_review.reconcile_pending_grade_reviews`. P11
-Slice 2 fills out the remaining six §8.9 cron task wrappers and
-populates :mod:`app.beat_schedule` with the full seven-entry schedule.
+Slice 2 fills out the remaining §8.9 cron task wrappers and populates
+:mod:`app.beat_schedule`. Later execution slices add their crons (e.g.
+``corpus.refresh`` at A3); the canonical count is nine (AC-CD7 v1.9).
 
 Every wrapper follows the same shape:
 
@@ -39,7 +40,7 @@ from celery.signals import task_failure, task_retry
 
 from app.config import get_settings
 
-# Structured failure surfacing for the seven §8.9 crons (audit-4 S3-H /
+# Structured failure surfacing for the §8.9 crons (audit-4 S3-H /
 # WS4 pre-deploy subset). The cron wrappers carry no autoretry and write no
 # audit row, so a task that fails every run is otherwise invisible — only
 # its downstream symptoms show. These signal handlers emit a loud,
@@ -150,7 +151,7 @@ def reconcile_grade_reviews_task() -> dict[str, int]:
 @celery_app.task(name="engagement.sweep")
 def engagement_sweep_task() -> dict[str, int]:
     """Celery wrapper for the AC-D26 engagement reminder + escalation
-    sweep (one of the seven §8.9 crons). Calls
+    sweep (one of the §8.9 crons). Calls
     :func:`~app.domain.engagement.run_engagement_sweep` and commits."""
     from app.domain.engagement import run_engagement_sweep
     from app.models import worker_session
@@ -167,7 +168,7 @@ def engagement_sweep_task() -> dict[str, int]:
 @celery_app.task(name="calibration.run")
 def calibration_run_task() -> dict[str, object]:
     """Celery wrapper for the §12 / AC-D27 anchor calibration sweep
-    (one of the seven §8.9 crons). Calls
+    (one of the §8.9 crons). Calls
     :func:`~app.domain.calibration.run_calibration_sweep` and
     commits."""
     from app.domain.calibration import run_calibration_sweep
@@ -185,7 +186,7 @@ def calibration_run_task() -> dict[str, object]:
 @celery_app.task(name="drive_rag.ingest")
 def drive_rag_ingest_task() -> dict[str, object]:
     """Celery wrapper for the AC-D22 daily Drive RAG ingest (one of
-    the seven §8.9 crons). Calls
+    the §8.9 crons). Calls
     :func:`~app.domain.drive_rag.ingest_drive_folder` and commits."""
     from app.domain.drive_rag import ingest_drive_folder
     from app.models import worker_session
@@ -199,10 +200,31 @@ def drive_rag_ingest_task() -> dict[str, object]:
     return asyncio.run(_run())
 
 
+@celery_app.task(name="corpus.refresh")
+def corpus_refresh_task() -> dict[str, object]:
+    """Celery wrapper for the weekly reference-corpus refresh backstop
+    (AC-CD25 / AC-CD7, A3 — one of the canonical nine §8.9 crons; replaces
+    the retired ``drive_rag.ingest`` per NS-1). Calls
+    :func:`~app.domain.corpus_builder.refresh_corpus_all` and commits."""
+    from app.domain.corpus_builder import refresh_corpus_all
+    from app.models import worker_session
+
+    async def _run() -> dict[str, object]:
+        async with worker_session() as session:
+            added = await refresh_corpus_all(session)
+            await session.commit()
+        return {
+            "topics_refreshed": len(added),
+            "chunks_added": sum(added.values()),
+        }
+
+    return asyncio.run(_run())
+
+
 @celery_app.task(name="realism.aggregate")
 def realism_aggregate_task() -> dict[str, object]:
     """Celery wrapper for the AC-D22 nightly Testee-feedback
-    aggregation (one of the seven §8.9 crons). Calls
+    aggregation (one of the §8.9 crons). Calls
     :func:`~app.domain.drive_rag.aggregate_realism_flags` and
     commits."""
     from app.domain.drive_rag import aggregate_realism_flags
@@ -220,7 +242,7 @@ def realism_aggregate_task() -> dict[str, object]:
 @celery_app.task(name="safety_links.check")
 def safety_links_check_task() -> dict[str, int]:
     """Celery wrapper for the AC-D21 monthly safety-link verification
-    (one of the seven §8.9 crons). Calls
+    (one of the §8.9 crons). Calls
     :func:`~app.domain.safety_links.check_safety_links` and commits.
     The Slice 2 stub returns zeros; Slice 3 fills the body (web
     search + httpx + SHA-256 drift audit)."""
@@ -239,7 +261,7 @@ def safety_links_check_task() -> dict[str, int]:
 @celery_app.task(name="cost.budget_sweep")
 def cost_budget_sweep_task() -> dict[str, object]:
     """Celery wrapper for the AC-D18 v1.1 daily cost/budget poll (one
-    of the seven §8.9 crons). Calls
+    of the §8.9 crons). Calls
     :func:`~app.ai.cost.maybe_fire_budget_alert` (which is fail-soft
     by contract and never raises) and commits any audit-log rows the
     threshold crossings produced.

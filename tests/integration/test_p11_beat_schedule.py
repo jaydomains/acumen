@@ -1,4 +1,4 @@
-"""P11 Slice 2 — Celery beat schedule populated with the seven §8.9
+"""P11 Slice 2 — Celery beat schedule populated with the §8.9
 crons (CODE_SPEC §8 / AC-CD7).
 
 The beat-schedule module ships an explicit dict so tests can assert
@@ -30,13 +30,16 @@ _EXPECTED_ENTRIES: dict[str, str] = {
     "safety_links.check": "safety_links.check",
     "cost.budget_sweep": "cost.budget_sweep",
     "engagement.sweep": "engagement.sweep",
+    "corpus.refresh": "corpus.refresh",
 }
 
 
-def test_beat_schedule_has_exactly_seven_entries() -> None:
-    """CODE_SPEC §8 verbatim: ``app/beat_schedule.py registers the
-    seven crons (SPEC §8.9)``. The named-entry count is the gate."""
-    assert len(beat_schedule) == 7
+def test_beat_schedule_has_exactly_eight_entries() -> None:
+    """Built-state cron-count gate. A3 adds ``corpus.refresh`` → eight
+    registered (8 of the canonical nine, AC-CD7/§8.9 v1.9: the legacy
+    ``drive_rag.ingest`` it replaces is removed by the NS-1 slice, and the
+    two D4 crons land at D4). The named-entry count is the gate."""
+    assert len(beat_schedule) == 8
     assert set(beat_schedule.keys()) == set(_EXPECTED_ENTRIES.keys())
 
 
@@ -112,10 +115,21 @@ def test_beat_schedule_safety_links_check_is_monthly_day_1() -> None:
     assert schedule.minute == {0}
 
 
-def test_celery_app_registered_tasks_include_all_seven() -> None:
+def test_celery_app_registered_tasks_include_all_eight() -> None:
     """The Celery app's task registry must contain a real callable
     for every entry's ``task`` field — otherwise a beat tick produces
     ``KeyError`` at dispatch."""
     registered = set(celery_app.tasks.keys())
     for task_name in _EXPECTED_ENTRIES.values():
         assert task_name in registered, f"task not registered: {task_name}"
+
+
+def test_beat_schedule_corpus_refresh_is_weekly_monday() -> None:
+    """Ruling 6 weekly backstop (AC-CD25 / AC-CD7, A3): ``corpus.refresh``
+    runs weekly on Monday (``day_of_week=1``) at 08:00 UTC — extending the
+    sequential daily-offset convention past the 07:00 engagement sweep."""
+    schedule = beat_schedule["corpus.refresh"]["schedule"]
+    assert isinstance(schedule, crontab)
+    assert schedule.day_of_week == {1}
+    assert schedule.hour == {8}
+    assert schedule.minute == {0}

@@ -35,6 +35,7 @@ import io
 import ipaddress
 import logging
 import math
+import uuid
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
@@ -44,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.cost import record_provenance
 from app.ai.provider import EmbedResult, Operation, resolve_provider
-from app.domain.drive_rag import chunk_document, content_hash
+from app.domain.drive_rag import chunk_document, content_hash, cosine_top_k
 from app.domain.safety_links import auto_tag_safety
 from app.domain.source_authority import (
     Tier,
@@ -53,7 +54,7 @@ from app.domain.source_authority import (
     filter_to_allowlist,
 )
 from app.domain.web_search import WebSearchResult, get_web_search_source
-from app.models import SEED_TENANT_ID, CorpusChunk
+from app.models import SEED_TENANT_ID, CorpusChunk, Pill
 from app.permissions import now_utc
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ _HTTP_FETCH_TIMEOUT_SECONDS = 10.0
 _HTTP_FETCH_MAX_BYTES = 5_000_000  # 5 MB — bound a malicious/huge payload.
 _SEARCH_MAX_RESULTS = 8
 _MAX_REDIRECTS = 5  # bound manual redirect-following (SSRF guard).
+_DEFAULT_CORPUS_TOP_K = 5  # retrieval default (mirrors drive_rag _DEFAULT_TOP_K).
 # DS2-b corroboration: cosine-similarity threshold for "same claim/fact"
 # (merged AC-CD25). Set conservatively; tuned from telemetry (the NS-6
 # confidence-threshold pattern).
@@ -376,3 +378,143 @@ async def _existing_keys(
         )
     )
     return {(host, chunk_hash) for host, chunk_hash in result.all()}
+
+
+# --- A3: retrieval helper + hybrid refresh (AC-CD25 / AC-CD7, ruling 6) ---
+
+
+async def retrieve_corpus_for_topic(
+    db: AsyncSession,
+    *,
+    topic: str,
+    k: int = _DEFAULT_CORPUS_TOP_K,
+    min_tier: Tier | None = None,
+) -> list[dict[str, object]]:
+    """Top-k reference-corpus chunks for ``topic``, each tagged with its
+    source-authority tier + score (AC-CD25 retrieval helper) so Stage B (B2)
+    can ground generation **and** authority-weight it (ruling 3). The
+    ``CorpusChunk`` sibling of ``drive_rag.retrieve_for_generation``: embeds
+    the topic, ranks by cosine (reused ``cosine_top_k``), optionally restricts
+    to chunks at or above ``min_tier``.
+
+    Fail-soft (mirrors the Drive retrieve contract): blank topic → ``[]`` (no
+    embed); embed raises → ``[]`` (WARN, no audit); empty / filtered-empty
+    corpus → ``[]`` (one embed, cost-audited). The query-side embed has no
+    owning entity, so its cost is stamped on a ``corpus.retrieve`` audit row
+    and folded into ``current_month_spend`` (AC-CD8).
+    """
+    if not topic or not topic.strip():
+        return []
+
+    provider = resolve_provider(Operation.embed)
+    try:
+        embed_result = await provider.embed(Operation.embed, topic)
+    except Exception:
+        logger.warning(
+            "corpus retrieve: query-side embed failed for topic %r; "
+            "returning empty context",
+            topic,
+            exc_info=True,
+        )
+        return []
+
+    stmt = select(CorpusChunk).where(CorpusChunk.tenant_id == SEED_TENANT_ID)
+    if min_tier is not None:
+        stmt = stmt.where(CorpusChunk.authority_tier >= int(min_tier))
+    chunks = list((await db.execute(stmt)).scalars().all())
+
+    if not chunks:
+        await _record_corpus_retrieve_audit(
+            db, topic=topic, embed_result=embed_result, hits_returned=0, top_k=k
+        )
+        return []
+
+    candidates = [(chunk.id, chunk.embedding) for chunk in chunks]
+    top_ids = cosine_top_k(embed_result.embedding, candidates, k=k)
+    by_id = {chunk.id: chunk for chunk in chunks}
+    hits: list[dict[str, object]] = [
+        {
+            "source_doc_ref": by_id[cid].source_doc_ref,
+            "source_host": by_id[cid].source_host,
+            "chunk_text": by_id[cid].chunk_text,
+            "authority_tier": by_id[cid].authority_tier,
+            "authority_score": by_id[cid].authority_score,
+        }
+        for cid in top_ids
+        if cid in by_id
+    ]
+    await _record_corpus_retrieve_audit(
+        db, topic=topic, embed_result=embed_result, hits_returned=len(hits), top_k=k
+    )
+    return hits
+
+
+async def _record_corpus_retrieve_audit(
+    db: AsyncSession,
+    *,
+    topic: str,
+    embed_result: EmbedResult,
+    hits_returned: int,
+    top_k: int,
+) -> None:
+    """Stamp the query-side embed cost of a corpus retrieve on a
+    ``corpus.retrieve`` audit row (no owning entity, like the Drive retrieve),
+    folded into ``current_month_spend`` via ``_rag_retrieve_spend`` (AC-CD8)."""
+    from app.domain.catalogue import record_audit
+
+    await record_audit(
+        db,
+        actor_id=None,
+        action="corpus.retrieve",
+        target_entity="corpus_chunk",
+        target_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+        detail={
+            "provider": embed_result.provider,
+            "model": embed_result.model,
+            "prompt_tokens": embed_result.prompt_tokens,
+            "cost_usd": embed_result.cost_usd,
+            "top_k": top_k,
+            "hits_returned": hits_returned,
+            "topic": topic,
+        },
+    )
+
+
+async def refresh_corpus_for_topic(
+    db: AsyncSession, *, topic: str, http_client: httpx.AsyncClient | None = None
+) -> int:
+    """Per-topic on-demand corpus refresh (hybrid refresh, ruling 6) — a thin
+    wrapper over the idempotent :func:`acquire_for_topic` (re-acquisition
+    dedups by ``(source_host, content_hash)``, so a refresh adds only changed
+    chunks). The D3 gap-detection trigger and the admin manual-override path
+    both call this. Returns the count of new chunks added."""
+    return await acquire_for_topic(db, topic=topic, http_client=http_client)
+
+
+async def refresh_corpus_all(
+    db: AsyncSession, *, http_client: httpx.AsyncClient | None = None
+) -> dict[str, int]:
+    """Weekly backstop refresh (hybrid refresh, ruling 6 — the ``corpus.refresh``
+    cron, A3). Re-acquires the corpus for every **active (non-retired)
+    catalogue pill** — the natural "what the corpus should cover" set (DS3-a),
+    which also catches newly-added topics the corpus has never seen.
+    Idempotent per topic via :func:`acquire_for_topic`; fail-soft per source.
+    Returns ``{topic: chunks_added}``."""
+    pills = list(
+        (
+            await db.execute(
+                select(Pill).where(
+                    Pill.tenant_id == SEED_TENANT_ID,
+                    Pill.retired_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    added: dict[str, int] = {}
+    for pill in pills:
+        added[pill.name] = await acquire_for_topic(
+            db, topic=pill.name, http_client=http_client
+        )
+    return added
