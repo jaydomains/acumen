@@ -1306,8 +1306,19 @@ so Stage B can authority-weight grounding.
 dedup is the **floor** for all topics; for **safety-relevant** topics the
 pipeline additionally applies **cross-source corroboration**: it tracks when the
 same claim/fact appears across **≥ 2 authoritative sources** and stamps a
-corroboration signal on the chunk, feeding the Stage-C confidence score and the
+`corroboration_count` on the chunk, feeding the Stage-C confidence score and the
 B2 provenance chain (materially stronger grounding for safety content).
+**"Same claim/fact" is matched by embedding cosine similarity ≥ 0.90** over the
+already-computed corpus-chunk embeddings — *not* byte-identical text, since
+independent authoritative sources rarely emit byte-identical ~500-token chunks;
+`corroboration_count` is the number of distinct `source_host`s whose chunks meet
+that threshold for the chunk being evaluated (its own source always counted).
+The 0.90 threshold is **set conservatively and tuned from telemetry** (the same
+pattern as the NS-6 confidence threshold), and reusing the RAG embeddings makes
+the signal essentially free. *(Cosine-similarity matching + the 0.90 value
+ratified by the spec author through the authenticated in-session channel,
+2026-06-12 — the A2-execution CA-A2-1 ruling, refining this PR-A anchor's "same
+claim/fact" intent from the earlier exact-text reading; v1.9, no version bump.)*
 
 **Rationale.** Reuse over reinvention — the Drive-ingest path already ships the
 pure primitives (`chunk_document` / `content_hash` / `cosine_top_k` /
