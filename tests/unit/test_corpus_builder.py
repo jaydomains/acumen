@@ -245,9 +245,9 @@ async def test_redirect_off_allowlist_is_dropped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An allowlisted host that 3xx-redirects OFF the allowlist (SSRF /
-    allowlist-escape) is dropped — the body is never extracted/embedded/
-    persisted and is never mis-stamped with the original host's authority
-    (OV-A2-17 / Gitar PR #115 finding 1; AC-D28 allowlist bound)."""
+    allowlist-escape) is dropped AND the off-allowlist request **never
+    fires** — redirects are followed manually, validating each hop's host
+    *before* issuing it (OV-A2-18 / CA-A2-2r — bound the *requests*, AC-D28)."""
     _install(monkeypatch, results=[_row("iso.org")])
     fetched: list[str] = []
     bodies = {"evil.example": _html("Poisoned content posing as authoritative.")}
@@ -255,19 +255,40 @@ async def test_redirect_off_allowlist_is_dropped(
         bodies, fetched=fetched, redirects={"iso.org": "https://evil.example/x"}
     )
     session = _FakeSession()
-    async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
+    async with httpx.AsyncClient(transport=transport) as client:
         added = await cb.acquire_for_topic(session, topic="x", http_client=client)
-    assert "evil.example" in fetched  # the redirect was followed by httpx
-    assert added == 0  # but nothing persisted — final host is off-allowlist
+    assert "evil.example" not in fetched  # the SSRF request never fired
+    assert added == 0
     assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_redirect_to_internal_ip_not_fetched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An allowlisted host redirecting to an internal/metadata IP literal
+    (e.g. 169.254.169.254) never fires the request — the internal-IP guard
+    runs before the hop (OV-A2-18 blind-SSRF)."""
+    _install(monkeypatch, results=[_row("iso.org")])
+    fetched: list[str] = []
+    transport = _transport(
+        {},
+        fetched=fetched,
+        redirects={"iso.org": "http://169.254.169.254/latest/meta-data"},
+    )
+    session = _FakeSession()
+    async with httpx.AsyncClient(transport=transport) as client:
+        added = await cb.acquire_for_topic(session, topic="x", http_client=client)
+    assert "169.254.169.254" not in fetched  # internal request never fired
+    assert added == 0
 
 
 @pytest.mark.asyncio
 async def test_redirect_within_allowlist_restamps_final_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A redirect to another allowlisted host stamps the FINAL host + its
-    re-resolved tier (iso.org T1 → nace.org T2), not the search-time host
+    """A redirect to another allowlisted host IS followed and stamps the
+    FINAL host + its re-resolved tier (iso.org T1 → nace.org T2)
     (OV-A2-17 — authority reflects where the bytes came from)."""
     _install(monkeypatch, results=[_row("iso.org")])
     fetched: list[str] = []
@@ -276,12 +297,24 @@ async def test_redirect_within_allowlist_restamps_final_host(
         bodies, fetched=fetched, redirects={"iso.org": "https://nace.org/x"}
     )
     session = _FakeSession()
-    async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
+    async with httpx.AsyncClient(transport=transport) as client:
         added = await cb.acquire_for_topic(session, topic="x", http_client=client)
+    assert "nace.org" in fetched  # the within-allowlist redirect WAS followed
     assert added >= 1
     assert all(r.source_host == "nace.org" for r in session.added)
     assert all(r.authority_tier == int(Tier.T2) for r in session.added)
     assert all(r.authority_score == 0.6 for r in session.added)
+
+
+def test_is_blocked_host() -> None:
+    """Internal/reserved IP literals are blocked; public IPs + hostnames pass
+    (the latter are allowlist-bounded separately)."""
+    assert cb._is_blocked_host("169.254.169.254") is True  # link-local metadata
+    assert cb._is_blocked_host("127.0.0.1") is True  # loopback
+    assert cb._is_blocked_host("10.0.0.5") is True  # RFC1918
+    assert cb._is_blocked_host("192.168.1.1") is True  # RFC1918
+    assert cb._is_blocked_host("8.8.8.8") is False  # public IP (allowlist-bounded)
+    assert cb._is_blocked_host("iso.org") is False  # hostname (allowlist-bounded)
 
 
 def test_html_extraction_strips_markup() -> None:

@@ -32,9 +32,11 @@ chain are B2; the NS-1 Drive-code retirement is a separate step (A2 reuses
 from __future__ import annotations
 
 import io
+import ipaddress
 import logging
 import math
 from dataclasses import dataclass
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from sqlalchemy import select
@@ -60,10 +62,40 @@ logger = logging.getLogger(__name__)
 _HTTP_FETCH_TIMEOUT_SECONDS = 10.0
 _HTTP_FETCH_MAX_BYTES = 5_000_000  # 5 MB — bound a malicious/huge payload.
 _SEARCH_MAX_RESULTS = 8
+_MAX_REDIRECTS = 5  # bound manual redirect-following (SSRF guard).
 # DS2-b corroboration: cosine-similarity threshold for "same claim/fact"
 # (AC-CD25, ratified 2026-06-12). Set conservatively; tuned from telemetry
 # (the NS-6 confidence-threshold pattern).
 _CORROBORATION_COSINE_THRESHOLD = 0.90
+
+
+def _is_blocked_host(host: str) -> bool:
+    """True if ``host`` is an IP literal in a private / loopback / link-local /
+    reserved / multicast / unspecified range — the SSRF guard against a
+    redirect (or an env-misconfigured allowlist entry) pointing the autonomous
+    builder at an internal/metadata address (e.g. ``169.254.169.254``,
+    RFC1918, ``127.0.0.1``). Non-IP hostnames pass this check — they are
+    bounded separately by the source-authority allowlist (AC-D28)."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False  # not an IP literal — allowlist-bounded instead.
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _host_allowed(host: str) -> bool:
+    """A host is fetchable iff it is **not** an internal IP literal **and** it
+    is on the source-authority allowlist (AC-D28). Both checks run **before**
+    any request is issued (OV-A2-18 / CA-A2-2r — bound the autonomous builder's
+    *requests*, not merely what it persists)."""
+    return not _is_blocked_host(host) and authority_tier(host) is not None
 
 
 async def _fetch_body(
@@ -72,38 +104,59 @@ async def _fetch_body(
     """GET ``url`` and return ``(status_code, body | None, content_type,
     final_host)``.
 
-    ``final_host`` is the host of the **final** response after any
-    redirects — the caller re-validates it against the allowlist (an
-    allowlisted host can 3xx-escape the allowlist; the persisted authority
-    must reflect where the bytes actually came from, AC-D28 / OV-A2-17).
+    **Redirects are followed manually**, re-validating **each hop's host
+    against the allowlist + the internal-IP guard *before* issuing that hop's
+    request** (OV-A2-18 / CA-A2-2r). Auto-following is disabled so the
+    autonomous builder never *fires* a request at an off-allowlist or
+    internal/metadata host — closing the blind-SSRF the post-hoc check left
+    open. ``final_host`` is the host of the final (allowlisted) response, so
+    the caller stamps authority from where the bytes actually came from.
 
-    Fail-soft: a network error or a >=400 status returns ``(_, None, "",
-    host)`` so the caller skips the source without failing the run (mirrors
-    :func:`app.domain.safety_links._fetch_body_hash`, extended to retain
-    the body — the corpus needs the text to extract + chunk). The body is
-    **streamed** and hard-capped at ``_HTTP_FETCH_MAX_BYTES`` so a hostile
-    or huge endpoint cannot balloon memory (the read stops at the cap, it
-    does not buffer the whole body first). ``client`` is the AC-CD15 test
-    seam (fake transport in tests, ``None`` → a real client in prod).
+    Fail-soft: a network error, a blocked/off-allowlist hop, a >=400 status,
+    or exceeding ``_MAX_REDIRECTS`` returns ``(_, None, "", host)`` so the
+    caller skips the source without failing the run. The body is **streamed**
+    and hard-capped at ``_HTTP_FETCH_MAX_BYTES`` so a hostile endpoint cannot
+    balloon memory. ``client`` is the AC-CD15 test seam; it must **not**
+    auto-follow redirects (the production client is built with
+    ``follow_redirects=False``; tests inject a transport on a default client).
     """
     own_client = client is None
     if client is None:
         client = httpx.AsyncClient(
-            timeout=_HTTP_FETCH_TIMEOUT_SECONDS, follow_redirects=True
+            timeout=_HTTP_FETCH_TIMEOUT_SECONDS, follow_redirects=False
         )
     try:
-        async with client.stream("GET", url) as response:
-            final_host = response.url.host or ""
-            if response.status_code >= 400:
-                return response.status_code, None, "", final_host
-            content_type = response.headers.get("content-type", "")
-            buffer = bytearray()
-            async for chunk in response.aiter_bytes():
-                buffer.extend(chunk)
-                if len(buffer) >= _HTTP_FETCH_MAX_BYTES:
-                    del buffer[_HTTP_FETCH_MAX_BYTES:]
-                    break
-            return response.status_code, bytes(buffer), content_type, final_host
+        current = url
+        for _hop in range(_MAX_REDIRECTS + 1):
+            host = urlparse(current).hostname or ""
+            # Guard BEFORE issuing the request — this is what prevents the
+            # SSRF request from firing at all.
+            if not _host_allowed(host):
+                logger.warning(
+                    "corpus fetch blocked (off-allowlist/internal host %r): %s",
+                    host,
+                    current,
+                )
+                return 0, None, "", host
+            async with client.stream("GET", current) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        return response.status_code, None, "", host
+                    current = urljoin(current, location)
+                    continue  # re-validate the next hop before following it.
+                if response.status_code >= 400:
+                    return response.status_code, None, "", host
+                content_type = response.headers.get("content-type", "")
+                buffer = bytearray()
+                async for chunk in response.aiter_bytes():
+                    buffer.extend(chunk)
+                    if len(buffer) >= _HTTP_FETCH_MAX_BYTES:
+                        del buffer[_HTTP_FETCH_MAX_BYTES:]
+                        break
+                return response.status_code, bytes(buffer), content_type, host
+        logger.warning("corpus fetch exceeded %d redirects: %s", _MAX_REDIRECTS, url)
+        return 0, None, "", ""
     except (httpx.HTTPError, OSError) as exc:
         logger.warning("corpus fetch failed for %s: %s", url, exc)
         return 0, None, "", ""
