@@ -231,6 +231,46 @@ async def _pill_proposal_spend(
     return total, by_provider, by_model
 
 
+async def _pill_generation_spend(
+    db: AsyncSession, *, tenant_id: uuid.UUID, since: datetime
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Sum the per-draft ``provenance.cost_share`` carried in
+    ``processing_tasks.payload`` for ``pill_generation`` rows in the current
+    month (AC-D29 / B3 fan-out). One generation call fans out to N draft rows,
+    each stamped with its 1/N cost share (``record_provenance_share``
+    semantics); summing the N shares reconstructs the call cost, so the monthly
+    total stays exact (AC-CD8 spend invariant). Mirrors
+    :func:`_pill_proposal_spend` — the drafts live in the JSON payload, not on
+    an :class:`AIProvenanceMixin` row, so the same payload-fold pattern reads
+    them (the share key is ``cost_share``, the proposal's is ``cost_usd``)."""
+    from app.models import ProcessingTask
+
+    GENERATION_TASK_NAME = "pill_generation"
+    result = await db.execute(
+        select(ProcessingTask).where(ProcessingTask.tenant_id == tenant_id)
+    )
+    total = 0.0
+    by_provider: dict[str, float] = {}
+    by_model: dict[str, float] = {}
+    for row in result.scalars().all():
+        if row.task_name != GENERATION_TASK_NAME:
+            continue
+        created_at = getattr(row, "created_at", None)
+        if created_at is None or created_at < since:
+            continue
+        payload = row.payload or {}
+        prov = payload.get("provenance") or {}
+        cost = prov.get("cost_share")
+        if cost is None:
+            continue
+        total += cost
+        provider = prov.get("provider") or "(unknown)"
+        model_name = prov.get("model") or "(unknown)"
+        by_provider[provider] = by_provider.get(provider, 0.0) + cost
+        by_model[model_name] = by_model.get(model_name, 0.0) + cost
+    return total, by_provider, by_model
+
+
 async def _rag_retrieve_spend(
     db: AsyncSession, *, tenant_id: uuid.UUID, since: datetime
 ) -> tuple[float, dict[str, float], dict[str, float]]:
@@ -289,7 +329,9 @@ async def current_month_spend(
     dict, "since": datetime}``. Tables included: Grade, GradeReview,
     Question, AnchorQuestion, WeaknessReport, LearningMaterial,
     DriveChunk, CorpusChunk (AC-CD25 corpus-embed spend); plus
-    ``processing_tasks.payload['provenance']`` for pill_proposal.
+    ``processing_tasks.payload['provenance']`` for pill_proposal
+    (``cost_usd``) and pill_generation (``cost_share``, the B3 N-draft
+    fan-out per AC-D29).
 
     ``DriveChunk`` joined the loop at P9 (AC-D22 / AC-CD8 v1.6): the
     OpenAI embedding spend now surfaces in ``by_provider["openai"]`` /
@@ -347,6 +389,17 @@ async def current_month_spend(
 
     # Pill proposals live in processing_tasks.payload, not on a mixin.
     sub_total, sub_provider, sub_model = await _pill_proposal_spend(
+        db, tenant_id=tenant_id, since=since
+    )
+    total += sub_total
+    for p, c in sub_provider.items():
+        by_provider[p] = by_provider.get(p, 0.0) + c
+    for m, c in sub_model.items():
+        by_model[m] = by_model.get(m, 0.0) + c
+
+    # Generated draft fan-out (B3): each pill_generation draft carries its
+    # 1/N cost share in processing_tasks.payload['provenance'] (AC-D29).
+    sub_total, sub_provider, sub_model = await _pill_generation_spend(
         db, tenant_id=tenant_id, since=since
     )
     total += sub_total
