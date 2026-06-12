@@ -32,7 +32,10 @@ from app.models import (
     Attempt,
     AttemptOrigin,
     AttemptPauseEvent,
+    GapSignal,
+    GapSignalType,
     LoopMode,
+    Pill,
     Question,
     Test,
     TestMode,
@@ -228,6 +231,40 @@ def test_per_testee_attempt_generates_stub_questions(
     assert body["q1"] is not None
     assert body["q1"]["attempt_position"] == 1
     assert body["q1"]["id"] == questions[0]["id"]
+
+
+def test_per_testee_attempt_captures_question_tag_signal(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """D1-D2 (§6.5): a per_testee attempt AI-generates questions tagged with the
+    test's pill — start_attempt captures a question_tag GapSignal keyed on the
+    pill name (the topic-demand signal the D3 sweep consumes). A pill-less test
+    captures none (verified by the other per_testee test staying green)."""
+    seed_system_settings(cat_session)
+    t = _testee(cat_session)
+    pill = Pill(
+        tenant_id=SEED_TENANT_ID,
+        subject_id=uuid.uuid4(),
+        name="Welding QA",
+        description="x",
+        available_difficulty_min=1,
+        available_difficulty_max=10,
+        discoverable=True,
+        safety_relevant=False,
+    )
+    cat_session.add(pill)
+    test = _new_test(cat_session, mode=TestMode.per_testee, pill_id=pill.id)
+    r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
+    assert r.status_code == 201, r.text
+
+    sigs = [
+        s
+        for s in cat_session.store[GapSignal]
+        if s.signal_type == GapSignalType.question_tag
+    ]
+    assert len(sigs) == 1
+    assert sigs[0].dedup_key == "welding qa"  # normalized pill name
+    assert sigs[0].source_ref == pill.id
 
 
 def test_benchmark_attempt_starts_with_empty_snapshot(

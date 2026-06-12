@@ -742,6 +742,19 @@ async def start_attempt(
     )
     attempt.shuffle_seed = seed_for(attempt.id)
 
+    # §6.5 question-tag signal (D1-D2): a per_testee attempt AI-generates
+    # questions tagged with the test's pill — capture that topic's assessment
+    # demand for the D3 gap-detection sweep (signal-layer deduped; the
+    # occurrence_count accumulates how frequently the topic is generated for).
+    # Only per_testee tests (AI-generated, not frozen/hand-authored) with a pill.
+    if test.mode == TestMode.per_testee and test.pill_id is not None:
+        from app.domain.catalogue import get_pill
+        from app.domain.signals import capture_question_tag
+
+        tag_pill = await get_pill(db, test.pill_id)
+        if tag_pill is not None:
+            await capture_question_tag(db, tag=tag_pill.name, source_ref=tag_pill.id)
+
     if test.mode in (TestMode.frozen, TestMode.hand_authored):
         result = await db.execute(
             select(Question).where(
