@@ -43,9 +43,10 @@ from app.domain.safety_links import auto_tag_safety
 from app.domain.source_authority import (
     Tier,
     authority_score,
+    authority_tier,
     filter_to_allowlist,
 )
-from app.domain.web_search import WebSearchResult, _host_of, get_web_search_source
+from app.domain.web_search import WebSearchResult, get_web_search_source
 from app.models import SEED_TENANT_ID, CorpusChunk
 from app.permissions import now_utc
 
@@ -59,35 +60,48 @@ _SEARCH_MAX_RESULTS = 8
 
 async def _fetch_body(
     url: str, *, client: httpx.AsyncClient | None = None
-) -> tuple[int, bytes | None, str]:
-    """GET ``url`` and return ``(status_code, body | None, content_type)``.
+) -> tuple[int, bytes | None, str, str]:
+    """GET ``url`` and return ``(status_code, body | None, content_type,
+    final_host)``.
 
-    Fail-soft: a network error or a >=400 status returns ``(_, None, "")``
-    so the caller skips the source without failing the run (mirrors
+    ``final_host`` is the host of the **final** response after any
+    redirects — the caller re-validates it against the allowlist (an
+    allowlisted host can 3xx-escape the allowlist; the persisted authority
+    must reflect where the bytes actually came from, AC-D28 / OV-A2-17).
+
+    Fail-soft: a network error or a >=400 status returns ``(_, None, "",
+    host)`` so the caller skips the source without failing the run (mirrors
     :func:`app.domain.safety_links._fetch_body_hash`, extended to retain
     the body — the corpus needs the text to extract + chunk). The body is
-    truncated at ``_HTTP_FETCH_MAX_BYTES``. ``client`` is the AC-CD15 test
+    **streamed** and hard-capped at ``_HTTP_FETCH_MAX_BYTES`` so a hostile
+    or huge endpoint cannot balloon memory (the read stops at the cap, it
+    does not buffer the whole body first). ``client`` is the AC-CD15 test
     seam (fake transport in tests, ``None`` → a real client in prod).
     """
     own_client = client is None
+    if client is None:
+        client = httpx.AsyncClient(
+            timeout=_HTTP_FETCH_TIMEOUT_SECONDS, follow_redirects=True
+        )
     try:
-        if client is None:
-            client = httpx.AsyncClient(
-                timeout=_HTTP_FETCH_TIMEOUT_SECONDS, follow_redirects=True
-            )
-        try:
-            response = await client.get(url)
+        async with client.stream("GET", url) as response:
+            final_host = response.url.host or ""
             if response.status_code >= 400:
-                return response.status_code, None, ""
-            body = response.content[:_HTTP_FETCH_MAX_BYTES]
+                return response.status_code, None, "", final_host
             content_type = response.headers.get("content-type", "")
-            return response.status_code, body, content_type
-        finally:
-            if own_client:
-                await client.aclose()
+            buffer = bytearray()
+            async for chunk in response.aiter_bytes():
+                buffer.extend(chunk)
+                if len(buffer) >= _HTTP_FETCH_MAX_BYTES:
+                    del buffer[_HTTP_FETCH_MAX_BYTES:]
+                    break
+            return response.status_code, bytes(buffer), content_type, final_host
     except (httpx.HTTPError, OSError) as exc:
         logger.warning("corpus fetch failed for %s: %s", url, exc)
-        return 0, None, ""
+        return 0, None, "", ""
+    finally:
+        if own_client:
+            await client.aclose()
 
 
 def _extract_html(body: bytes) -> str:
@@ -164,6 +178,12 @@ async def acquire_for_topic(
 
     # DS2-b (ii): cross-source corroboration for safety-relevant topics —
     # count the DISTINCT allowlisted sources that produced each chunk text.
+    # v1 floor = **exact chunk text** (content_hash) agreement across sources.
+    # LIMITATION (CA-A2-1, surfaced to the spec author): exact-text agreement
+    # rarely fires across independent sources, so this is a conservative proxy
+    # for AC-CD25's "same claim/fact across >=2 sources"; semantic (embedding-
+    # similarity) claim-matching is deferred pending the spec-author ruling on
+    # whether exact-text is the intended v1 floor.
     corroboration: dict[str, int] = {}
     if safety_relevant:
         hosts_by_hash: dict[str, set[str]] = {}
@@ -171,18 +191,17 @@ async def acquire_for_topic(
             hosts_by_hash.setdefault(cand.chunk_hash, set()).add(cand.source_host)
         corroboration = {h: len(hosts) for h, hosts in hosts_by_hash.items()}
 
+    existing = await _existing_keys(db, candidates)
     provider = resolve_provider(Operation.embed)
     added = 0
     seen_this_run: set[tuple[str, str]] = set()
     for cand in candidates:
         key = (cand.source_host, cand.chunk_hash)
-        if key in seen_this_run:
-            continue  # same (source, text) repeated in this run — one row.
+        # Skip an in-run duplicate, or a key already stored (idempotency: a
+        # re-run over an unchanged source adds nothing).
+        if key in seen_this_run or key in existing:
+            continue
         seen_this_run.add(key)
-        if await _already_stored(
-            db, source_host=cand.source_host, chunk_hash=cand.chunk_hash
-        ):
-            continue  # idempotency: a re-run over an unchanged source adds nothing.
         embed_result = await provider.embed(Operation.embed, cand.chunk_text)
         row = CorpusChunk(
             tenant_id=SEED_TENANT_ID,
@@ -210,16 +229,30 @@ async def _gather_candidates(
 ) -> list[_Candidate]:
     """Fetch + extract + chunk every allowlisted source, fail-soft per source."""
     candidates: list[_Candidate] = []
-    for result, tier in allowed:
-        host = result.source or _host_of(result.url)
-        _status, body, content_type = await _fetch_body(result.url, client=http_client)
+    for result, _search_tier in allowed:
+        _status, body, content_type, final_host = await _fetch_body(
+            result.url, client=http_client
+        )
         if not body:
             continue  # dead/blocked source — already WARN-logged on error.
+        # SSRF / allowlist-escape guard (OV-A2-17 / AC-D28): re-validate the
+        # FINAL host after any redirects and re-resolve the tier from it —
+        # never trust the pre-redirect host or stamp the search-time tier on
+        # redirected content. An allowlisted host that 3xx-redirects off the
+        # allowlist (or to an internal address) is dropped here, not stored.
+        tier = authority_tier(final_host)
+        if tier is None:
+            logger.warning(
+                "corpus fetch for %s landed off-allowlist (final host %r) — skipped",
+                result.url,
+                final_host,
+            )
+            continue
         text = _extract_text(body, content_type=content_type, url=result.url)
         for idx, chunk_text in enumerate(chunk_document(text)):
             candidates.append(
                 _Candidate(
-                    source_host=host,
+                    source_host=final_host,
                     tier=tier,
                     source_doc_ref=result.url,
                     chunk_index=idx,
@@ -230,13 +263,22 @@ async def _gather_candidates(
     return candidates
 
 
-async def _already_stored(db: AsyncSession, *, source_host: str, chunk_hash: str) -> bool:
-    """True iff a `CorpusChunk` with this `(source_host, content_hash)` exists."""
-    existing = await db.execute(
-        select(CorpusChunk.id).where(
+async def _existing_keys(
+    db: AsyncSession, candidates: list[_Candidate]
+) -> set[tuple[str, str]]:
+    """The already-stored ``(source_host, content_hash)`` keys among the
+    candidate set, in **one** query (avoids an N+1 per-chunk dedup lookup —
+    Gitar PR #115 finding 3). Scoped to the candidates' hosts + hashes so the
+    scan stays bounded."""
+    if not candidates:
+        return set()
+    hosts = {cand.source_host for cand in candidates}
+    hashes = {cand.chunk_hash for cand in candidates}
+    result = await db.execute(
+        select(CorpusChunk.source_host, CorpusChunk.content_hash).where(
             CorpusChunk.tenant_id == SEED_TENANT_ID,
-            CorpusChunk.source_host == source_host,
-            CorpusChunk.content_hash == chunk_hash,
+            CorpusChunk.source_host.in_(hosts),
+            CorpusChunk.content_hash.in_(hashes),
         )
     )
-    return existing.first() is not None
+    return {(host, chunk_hash) for host, chunk_hash in result.all()}

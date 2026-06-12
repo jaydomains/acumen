@@ -50,17 +50,18 @@ class _RecordingEmbed:
 
 
 class _FakeResult:
-    def __init__(self, rows: list[object]) -> None:
+    def __init__(self, rows: list[tuple[str, str]]) -> None:
         self._rows = rows
 
-    def first(self) -> object | None:
-        return self._rows[0] if self._rows else None
+    def all(self) -> list[tuple[str, str]]:
+        return list(self._rows)
 
 
 class _FakeSession:
-    """Minimal AsyncSession stand-in for the corpus dedup query + add().
-    ``execute`` matches a stored row by the (source_host, content_hash)
-    literal bind values in the statement (robust to param naming)."""
+    """Minimal AsyncSession stand-in for the batch corpus dedup query +
+    add(). ``execute`` returns the stored ``(source_host, content_hash)``
+    tuples whose values both appear in the statement's bind params (robust
+    to the ``in_()`` clause and param naming)."""
 
     def __init__(self) -> None:
         self.added: list[object] = []
@@ -69,14 +70,20 @@ class _FakeSession:
         self.added.append(row)
 
     async def execute(self, stmt: object) -> _FakeResult:
-        vals = set(stmt.compile().params.values())  # type: ignore[attr-defined]
-        match = [
-            r
+        vals: set[object] = set()
+        for v in stmt.compile().params.values():  # type: ignore[attr-defined]
+            # ``in_()`` renders an expanding list param — flatten it.
+            if isinstance(v, list | tuple | set):
+                vals.update(v)
+            else:
+                vals.add(v)
+        rows = [
+            (r.source_host, r.content_hash)
             for r in self.added
             if getattr(r, "source_host", None) in vals
             and getattr(r, "content_hash", None) in vals
         ]
-        return _FakeResult(match)
+        return _FakeResult(rows)
 
 
 def _row(host: str, *, url: str | None = None) -> WebSearchResult:
@@ -111,13 +118,22 @@ def _install(
     return embed
 
 
-def _transport(bodies: dict[str, bytes], *, fetched: list[str]) -> httpx.MockTransport:
+def _transport(
+    bodies: dict[str, bytes],
+    *,
+    fetched: list[str],
+    redirects: dict[str, str] | None = None,
+) -> httpx.MockTransport:
     """A MockTransport serving ``bodies`` keyed by host; records fetched
-    hosts. A host mapped to ``b""`` returns 500 (dead source)."""
+    hosts. A host mapped to ``b""`` returns 500 (dead source). ``redirects``
+    maps a host → a target URL it 307-redirects to (for the SSRF test)."""
+    redirects = redirects or {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         host = request.url.host
         fetched.append(host)
+        if host in redirects:
+            return httpx.Response(307, headers={"location": redirects[host]})
         body = bodies.get(host)
         if not body:
             return httpx.Response(500)
@@ -211,6 +227,50 @@ async def test_empty_after_filter_no_fetch(monkeypatch: pytest.MonkeyPatch) -> N
         added = await cb.acquire_for_topic(_FakeSession(), topic="x", http_client=client)
     assert added == 0
     assert fetched == []
+
+
+@pytest.mark.asyncio
+async def test_redirect_off_allowlist_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An allowlisted host that 3xx-redirects OFF the allowlist (SSRF /
+    allowlist-escape) is dropped — the body is never extracted/embedded/
+    persisted and is never mis-stamped with the original host's authority
+    (OV-A2-17 / Gitar PR #115 finding 1; AC-D28 allowlist bound)."""
+    _install(monkeypatch, results=[_row("iso.org")])
+    fetched: list[str] = []
+    bodies = {"evil.example": _html("Poisoned content posing as authoritative.")}
+    transport = _transport(
+        bodies, fetched=fetched, redirects={"iso.org": "https://evil.example/x"}
+    )
+    session = _FakeSession()
+    async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
+        added = await cb.acquire_for_topic(session, topic="x", http_client=client)
+    assert "evil.example" in fetched  # the redirect was followed by httpx
+    assert added == 0  # but nothing persisted — final host is off-allowlist
+    assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_redirect_within_allowlist_restamps_final_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redirect to another allowlisted host stamps the FINAL host + its
+    re-resolved tier (iso.org T1 → nace.org T2), not the search-time host
+    (OV-A2-17 — authority reflects where the bytes came from)."""
+    _install(monkeypatch, results=[_row("iso.org")])
+    fetched: list[str] = []
+    bodies = {"nace.org": _html("Final host body text.")}
+    transport = _transport(
+        bodies, fetched=fetched, redirects={"iso.org": "https://nace.org/x"}
+    )
+    session = _FakeSession()
+    async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
+        added = await cb.acquire_for_topic(session, topic="x", http_client=client)
+    assert added >= 1
+    assert all(r.source_host == "nace.org" for r in session.added)
+    assert all(r.authority_tier == int(Tier.T2) for r in session.added)
+    assert all(r.authority_score == 0.6 for r in session.added)
 
 
 def test_html_extraction_strips_markup() -> None:
