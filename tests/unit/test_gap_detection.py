@@ -199,6 +199,21 @@ async def test_catalogue_health_uncovered_subject(
 
 
 @pytest.mark.asyncio
+async def test_uncovered_subject_with_only_retired_pills_not_regenerated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC-D14: a subject whose pills are all retired is deliberately emptied, not
+    'uncovered' — no regeneration (a subject that never had a pill still is)."""
+    calls = _install(monkeypatch)
+    subj = _subject("Welding Safety")
+    retired = _pill("Old welding pill", retired=True, subject_id=subj.id)
+    triggers = await catalogue_health_check(
+        _SweepSession(subjects=[subj], pills=[retired])
+    )
+    assert calls == [] and triggers == []
+
+
+@pytest.mark.asyncio
 async def test_catalogue_health_thin_band(monkeypatch: pytest.MonkeyPatch) -> None:
     """A discoverable pill whose anchor pool covers too few bands is thin → a
     generation trigger; a pill covering enough bands is not."""

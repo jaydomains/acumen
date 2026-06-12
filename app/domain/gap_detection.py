@@ -164,13 +164,12 @@ async def catalogue_health_check(db: AsyncSession) -> list[GenerationTrigger]:
         .scalars()
         .all()
     )
-    pills = [
-        p
-        for p in (await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID)))
+    all_pills = list(
+        (await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID)))
         .scalars()
         .all()
-        if p.discoverable and p.retired_at is None
-    ]
+    )
+    pills = [p for p in all_pills if p.discoverable and p.retired_at is None]
     anchors = (
         (
             await db.execute(
@@ -182,17 +181,21 @@ async def catalogue_health_check(db: AsyncSession) -> list[GenerationTrigger]:
     )
 
     covered = {_normalize(p.name) for p in pills}
-    subjects_with_pills = {p.subject_id for p in pills}
+    # AC-D14: a subject that has ANY pill (live OR retired) is not "uncovered" —
+    # a subject whose pills were all deliberately retired must not be regenerated
+    # (retired content stays hidden from new generation). Only a subject that
+    # never had a pill at all is a genuine coverage gap.
+    subjects_with_any_pill = {p.subject_id for p in all_pills}
     bands_by_pill: dict[uuid.UUID, set[int]] = {}
     for anchor in anchors:
         bands_by_pill.setdefault(anchor.pill_id, set()).add(anchor.band)
 
     triggers: list[GenerationTrigger] = []
 
-    # Uncovered subjects: a subject with no discoverable pills (skip if a live
-    # pill already matches the subject name — the third dedup arm).
+    # Uncovered subjects: a subject that never had a pill (skip if any pill —
+    # live or retired — exists for it [AC-D14], or a live pill matches its name).
     for subject in subjects:
-        if subject.id in subjects_with_pills or _normalize(subject.name) in covered:
+        if subject.id in subjects_with_any_pill or _normalize(subject.name) in covered:
             continue
         batch_id = str(uuid.uuid4())
         await enqueue_generated_drafts(
