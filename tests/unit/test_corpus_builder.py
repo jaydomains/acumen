@@ -10,9 +10,7 @@ DS2-b cross-source corroboration for safety-relevant topics.
 
 from __future__ import annotations
 
-import hashlib
 import io
-import random
 
 import httpx
 import pytest
@@ -23,15 +21,6 @@ from app.domain.source_authority import Tier
 from app.domain.web_search import WebSearchResult
 
 # --- Fakes ------------------------------------------------------------
-
-
-def _text_vec(text: str) -> list[float]:
-    """Deterministic text→embedding: identical text → identical vector
-    (cosine 1.0); independent text → near-orthogonal (cosine ≈ 0). Lets the
-    cosine-similarity corroboration (≥0.90) be exercised offline."""
-    seed = int.from_bytes(hashlib.sha256(text.encode()).digest()[:8], "big")
-    rng = random.Random(seed)
-    return [rng.gauss(0.0, 1.0) for _ in range(1536)]
 
 
 class _FakeSearch:
@@ -52,7 +41,7 @@ class _RecordingEmbed:
     async def embed(self, operation: Operation, text: str) -> EmbedResult:
         self.calls += 1
         return EmbedResult(
-            embedding=_text_vec(text),
+            embedding=[0.0] * 1536,
             provider="stub",
             model="stub-embed-1",
             prompt_tokens=0,
@@ -343,15 +332,18 @@ def test_extract_dispatch_pdf_by_url_and_content_type() -> None:
 async def test_safety_corroboration_cross_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """For a safety-relevant topic, chunk text whose embeddings are within
-    the cosine threshold across two distinct allowlisted sources stamps
-    corroboration_count=2 (DS2-b option ii, ratified cosine ≥0.90 — identical
-    text embeds identically → cosine 1.0). A non-safety topic leaves it at 1."""
+    """For a safety-relevant topic, identical chunk text (same content_hash)
+    from two distinct allowlisted sources stamps corroboration_count=2 (DS2-b
+    option ii, exact-text v1 floor); a non-safety topic leaves it at 1.
+
+    (Embedding cosine-similarity matching is the ratified mechanism but lands
+    via a separate AC-CD25 amendment PR + re-implementation, per the 2026-06-12
+    procedural ruling — it is not exercised at the A2 exact-text floor.)"""
     shared = _html("Always isolate and lock out before servicing equipment.")
     results = [_row("iso.org"), _row("nace.org")]
     bodies = {"iso.org": shared, "nace.org": shared}
 
-    # Safety topic → corroboration_count = 2 on the corroborated chunk(s).
+    # Safety topic → corroboration_count = 2 on the shared chunk(s).
     _install(monkeypatch, results=results, safety=True)
     fetched: list[str] = []
     session = _FakeSession()
@@ -369,54 +361,3 @@ async def test_safety_corroboration_cross_source(
     ) as client:
         await cb.acquire_for_topic(session2, topic="math", http_client=client)
     assert all(r.corroboration_count == 1 for r in session2.added)
-
-
-@pytest.mark.asyncio
-async def test_safety_distinct_text_not_corroborated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Safety topic, two sources with DIFFERENT text → embeddings below the
-    cosine threshold → corroboration_count stays 1 (the realistic case the
-    exact-text floor would also have left at 1)."""
-    _install(monkeypatch, results=[_row("iso.org"), _row("nace.org")], safety=True)
-    bodies = {
-        "iso.org": _html("Arc-flash boundary calculation for switchgear."),
-        "nace.org": _html("Cathodic protection survey intervals for pipelines."),
-    }
-    fetched: list[str] = []
-    session = _FakeSession()
-    async with httpx.AsyncClient(transport=_transport(bodies, fetched=fetched)) as client:
-        await cb.acquire_for_topic(session, topic="welding", http_client=client)
-    assert all(r.corroboration_count == 1 for r in session.added)
-
-
-def test_corroboration_counts_threshold() -> None:
-    """`_corroboration_counts` counts distinct source_hosts within cosine
-    ≥0.90 (incl. self): a near-parallel pair from two hosts → 2; an
-    orthogonal third host → 1. Pins the 0.90 threshold precisely."""
-    from app.domain.corpus_builder import _Candidate, _corroboration_counts
-
-    def _cand(host: str) -> _Candidate:
-        return _Candidate(
-            source_host=host,
-            tier=Tier.T1,
-            source_doc_ref="u",
-            chunk_index=0,
-            chunk_text="t",
-            chunk_hash="h",
-        )
-
-    def _res(vec: list[float]) -> EmbedResult:
-        return EmbedResult(
-            embedding=vec, provider="stub", model="m", prompt_tokens=0, cost_usd=0.0
-        )
-
-    new_chunks = [
-        (_cand("iso.org"), _res([1.0, 0.0, 0.0])),
-        (_cand("nace.org"), _res([0.999, 0.001, 0.0])),  # cosine ≈ 1.0 with #0
-        (_cand("astm.org"), _res([0.0, 1.0, 0.0])),  # orthogonal (cosine 0)
-    ]
-    counts = _corroboration_counts(new_chunks)
-    assert counts[0] == 2  # iso corroborated by nace (above threshold)
-    assert counts[1] == 2  # nace corroborated by iso
-    assert counts[2] == 1  # astm — orthogonal to both, only itself
