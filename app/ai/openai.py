@@ -58,7 +58,11 @@ from app.config import get_settings
 # AC-CD8 v1.6 routing. Both ``grade_review`` (P6) and
 # ``anchor_self_review`` (P8) land here.
 _REVIEW_OPS: frozenset[Operation] = frozenset(
-    {Operation.grade_review, Operation.anchor_self_review}
+    {
+        Operation.grade_review,
+        Operation.anchor_self_review,
+        Operation.content_self_review,
+    }
 )
 
 # OpenAI handles embeddings on the ``embed()`` method per AC-CD8 v1.6
@@ -76,6 +80,7 @@ _EMBED_OPS: frozenset[Operation] = frozenset({Operation.embed})
 _MAX_OUTPUT_TOKENS: dict[Operation, int] = {
     Operation.grade_review: 2000,
     Operation.anchor_self_review: 2000,
+    Operation.content_self_review: 2000,
 }
 
 
@@ -179,7 +184,12 @@ class OpenAIProvider:
     # --- private --------------------------------------------------------
 
     async def _call(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
-        template, prompt_version = get_prompt(operation)
+        # ``_prompt_variant`` is metadata, not a prompt placeholder — pop it
+        # before render (mirrors anthropic.py). Default ``"default"`` keeps
+        # grade_review / anchor_self_review unchanged; content_self_review (C1)
+        # passes its grounding/safety/provenance variant per pass.
+        variant = payload.pop("_prompt_variant", "default")
+        template, prompt_version = get_prompt(operation, variant=variant)
         model = resolve_model(operation)
         # ``render_prompt`` wraps str.format() with a clear error
         # carrying the operation + missing key + available keys so a

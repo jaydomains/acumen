@@ -28,6 +28,7 @@ _REGISTERED_OPERATIONS: list[Operation] = [
     Operation.pill_generation,  # B1 — autonomous generator (AC-D29 / §6.8)
     Operation.grade_review,
     Operation.anchor_self_review,
+    Operation.content_self_review,  # C1 — cross-model review floor (AC-D30 / §6.9)
 ]
 
 # Operations whose prompts are deferred to a later phase.
