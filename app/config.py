@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     anthropic_model_weakness: str = "claude-sonnet-4-6"
     anthropic_model_material: str = "claude-sonnet-4-6"
     anthropic_model_pill_proposal: str = "claude-sonnet-4-6"
+    # Autonomous content generator (AC-D29 / §6.8, B1) — env-default per AC-CD18.
+    anthropic_model_pill_generation: str = "claude-sonnet-4-6"
 
     # --- OpenAI (cross-family review + embeddings, AC-D19 / AC-D22) ---
     openai_api_key: str = ""

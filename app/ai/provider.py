@@ -1,10 +1,12 @@
 """AIProvider protocol + per-operation resolution (AC-D12 / AC-CD8).
 
 Defines the four protocol methods (``generate``/``grade``/``review``/
-``embed``), the seven-value ``Operation`` enum that drives per-operation
-model + prompt_version resolution and provenance persistence (plus
-``embed`` for Drive RAG), the ``AIResult`` / ``EmbedResult`` structs the
-methods return, and the Test-override → ``provider_by_operation`` →
+``embed``), the ``Operation`` enum that drives per-operation model +
+prompt_version resolution and provenance persistence (the canonical
+operation count is nine, v1.9 — plus the internal ``embed``; built-state
+grows per slice as ``pill_generation`` (B1) / ``content_self_review`` (C1)
+wire in), the ``AIResult`` / ``EmbedResult`` structs the methods return,
+and the Test-override → ``provider_by_operation`` →
 ``review_provider`` → coded-default resolution order (AC-CD8 v1.6).
 
 The single swap point is :func:`resolve_provider`. Domain code never
@@ -103,6 +105,55 @@ def _stub_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic N-draft stub for ``pill_generation`` (B1, AC-CD15).
+
+    Seeded by ``topic`` + ``target_count`` (sha256, stable across runs) so the
+    same payload yields byte-identical drafts; ``target_count`` is clamped to
+    1-10; each draft carries the full v1.0.0 schema and is safety-classified
+    against the stub cue list. Grounding/provenance are absent at v1.0.0 (B2)."""
+    import hashlib as _hashlib
+    import random as _random
+
+    topic = str(payload.get("topic", "")).strip()
+    target_count = max(1, min(int(payload.get("target_count") or 1), 10))
+    dmin = max(1, min(int(payload.get("available_difficulty_min") or 1), 10))
+    dmax = max(dmin, min(int(payload.get("available_difficulty_max") or 10), 10))
+    subject_id = payload.get("subject_id")
+    gap_signal = str(payload.get("gap_signal") or "stub")
+    safety = any(cue in topic.lower() for cue in _STUB_SAFETY_CUES)
+
+    seed = int.from_bytes(
+        _hashlib.sha256(f"{topic}|{target_count}".encode()).digest()[:8], "big"
+    )
+    rng = _random.Random(seed)
+    drafts: list[dict[str, Any]] = []
+    for i in range(target_count):
+        lo = rng.randint(dmin, dmax)
+        hi = rng.randint(lo, dmax)
+        drafts.append(
+            {
+                "name": f"{topic or 'Generated pill'} — aspect {i + 1}",
+                "description": (
+                    f"Stub-generated competency draft for "
+                    f"{topic or 'the topic'} (aspect {i + 1})."
+                ),
+                "subject_id": str(subject_id) if subject_id else None,
+                "available_difficulty_min": lo,
+                "available_difficulty_max": hi,
+                "estimated_minutes": None,
+                "safety_relevant": safety,
+                "rationale": (
+                    "Stubbed generation: a real Anthropic provider key is "
+                    "required to generate grounded pill drafts."
+                ),
+                "evidence_count": 0,
+                "gap_signal": gap_signal,
+            }
+        )
+    return {"drafts": drafts}
+
+
 def _stub_result(content: dict[str, Any]) -> AIResult:
     """Build an :class:`AIResult` carrying the stub's fixed metadata.
     Cost is 0.0 and tokens are 0 — the stub never makes a network call
@@ -119,18 +170,24 @@ def _stub_result(content: dict[str, Any]) -> AIResult:
 
 
 class Operation(str, enum.Enum):
-    """The seven AI operations of AC-CD8 v1.6 plus ``embed`` for Drive RAG.
+    """The AI operations of AC-CD8 plus ``embed`` for the reference corpus.
+
+    The canonical AI-operation count is **nine** (AC-CD8 / SPEC §6, v1.9 —
+    excludes the internal ``embed``); built-state grows per slice as the
+    generator (``pill_generation``, B1) and the cross-model reviewer
+    (``content_self_review``, C1) wire in. This enum carries **eight**
+    operations + ``embed`` after B1 (``content_self_review`` joins at C1).
 
     The enum (not the method) drives per-operation model + prompt_version
     resolution and cost/provenance persistence. Routing to the four
     protocol methods (AC-CD8 v1.6):
 
     * ``generation`` / ``weakness`` / ``learning_material`` /
-      ``pill_proposal`` → :meth:`AIProvider.generate`
+      ``pill_proposal`` / ``pill_generation`` → :meth:`AIProvider.generate`
     * ``grading`` → :meth:`AIProvider.grade`
     * ``grade_review`` / ``anchor_self_review`` →
       :meth:`AIProvider.review`
-    * ``embed`` (Drive RAG only) → :meth:`AIProvider.embed`
+    * ``embed`` (reference corpus only) → :meth:`AIProvider.embed`
     """
 
     generation = "generation"
@@ -138,6 +195,7 @@ class Operation(str, enum.Enum):
     weakness = "weakness"
     learning_material = "learning_material"
     pill_proposal = "pill_proposal"
+    pill_generation = "pill_generation"
     grade_review = "grade_review"
     anchor_self_review = "anchor_self_review"
     embed = "embed"
@@ -153,6 +211,7 @@ _ANTHROPIC_DEFAULT_OPS: frozenset[Operation] = frozenset(
         Operation.weakness,
         Operation.learning_material,
         Operation.pill_proposal,
+        Operation.pill_generation,
     }
 )
 
@@ -236,6 +295,8 @@ class StubAIProvider:
     async def generate(self, operation: Operation, payload: dict[str, Any]) -> AIResult:
         if operation == Operation.pill_proposal:
             content = _stub_pill_proposal_content(payload)
+        elif operation == Operation.pill_generation:
+            content = _stub_pill_generation_content(payload)
         elif operation == Operation.generation:
             content = _stub_generation_content(payload)
         elif operation == Operation.weakness:
@@ -421,6 +482,7 @@ def resolve_model(
         Operation.weakness: "anthropic_model_weakness",
         Operation.learning_material: "anthropic_model_material",
         Operation.pill_proposal: "anthropic_model_pill_proposal",
+        Operation.pill_generation: "anthropic_model_pill_generation",
         Operation.grade_review: "openai_model_review",
         Operation.anchor_self_review: "openai_model_review",
         Operation.embed: "openai_embedding_model",
