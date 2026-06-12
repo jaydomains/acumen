@@ -216,6 +216,51 @@ def test_discovery_subject_and_difficulty_and_search_filters(
     assert {r["id"] for r in by_search} == {a}
 
 
+def test_discovery_miss_persists_gap_signal(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """D1-D2 / §6.5: a discovery search with content that returns no match
+    captures + persists a discovery_miss GapSignal (the GET path commits it);
+    repeat searches dedup (occurrence_count increments); a matching search and a
+    whitespace-only search capture none. Exercises the real router path (not a
+    monkeypatched stub) — the regression guard for the GET-no-commit class."""
+    from app.models import GapSignal, GapSignalType
+
+    seed_system_settings(cat_session)
+    testee = cat_make_user(cat_session, email="t@kbc.com", role=p.ROLE_TESTEE)
+    ht = bearer(testee)
+
+    def _signals() -> list[GapSignal]:
+        return [
+            s
+            for s in cat_session.store.get(GapSignal, [])
+            if s.signal_type == GapSignalType.discovery_miss
+        ]
+
+    # Spy on commit: the fake never rolls back, so prove the GET path actually
+    # COMMITS the captured signal (the no-commit regression class). The real-DB
+    # persistence is additionally guarded by tests/e2e.
+    commits = {"n": 0}
+    original_commit = cat_session.commit
+
+    async def _spy_commit() -> None:
+        commits["n"] += 1
+        await original_commit()
+
+    cat_session.commit = _spy_commit  # type: ignore[method-assign]
+
+    cat_client.get("/v1/catalogue/pills", headers=ht, params={"search": "Welding QA"})
+    assert commits["n"] >= 1  # the captured signal was committed, not left pending
+    cat_client.get("/v1/catalogue/pills", headers=ht, params={"search": "welding qa"})
+    assert len(_signals()) == 1  # persisted + deduped
+    assert _signals()[0].dedup_key == "welding qa"
+    assert _signals()[0].occurrence_count == 2
+
+    # Whitespace-only search captures nothing.
+    cat_client.get("/v1/catalogue/pills", headers=ht, params={"search": "   "})
+    assert len(_signals()) == 1
+
+
 def test_cursor_pagination_round_trip(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:

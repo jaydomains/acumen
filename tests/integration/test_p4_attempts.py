@@ -32,7 +32,10 @@ from app.models import (
     Attempt,
     AttemptOrigin,
     AttemptPauseEvent,
+    GapSignal,
+    GapSignalType,
     LoopMode,
+    Pill,
     Question,
     Test,
     TestMode,
@@ -228,6 +231,93 @@ def test_per_testee_attempt_generates_stub_questions(
     assert body["q1"] is not None
     assert body["q1"]["attempt_position"] == 1
     assert body["q1"]["id"] == questions[0]["id"]
+    # D1-D2 (§6.5): a pill-less per_testee test (no rag_pill, no test.pill_id)
+    # has no topic to tag — no question_tag signal is captured.
+    assert not [
+        s
+        for s in cat_session.store.get(GapSignal, [])
+        if s.signal_type == GapSignalType.question_tag
+    ]
+
+
+def test_per_testee_assignment_attempt_captures_question_tag_signal(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """D1-D2 (§6.5): an assignment-driven per_testee attempt AI-generates
+    questions for the assignment's pill (the actual generation topic) —
+    start_attempt captures a question_tag GapSignal keyed on that pill's name,
+    recording the contributing pill_id. (The self-initiated fallback to the
+    test's pill is covered by the next test.)"""
+    seed_system_settings(cat_session)
+    admin, _ = _admin(cat_session)
+    t = _testee(cat_session)
+    pill = Pill(
+        tenant_id=SEED_TENANT_ID,
+        subject_id=uuid.uuid4(),
+        name="Welding QA",
+        description="x",
+        available_difficulty_min=1,
+        available_difficulty_max=10,
+        discoverable=True,
+        safety_relevant=False,
+    )
+    cat_session.add(pill)
+    test = _new_test(cat_session, mode=TestMode.per_testee, pill_id=pill.id)
+    a = _assignment(cat_session, admin=admin, testees=[t], pill_id=pill.id)
+    r = cat_client.post(
+        "/v1/attempts",
+        headers=bearer(t),
+        json={
+            "test_id": str(test.id),
+            "origin": "assignment_driven",
+            "assignment_id": str(a.id),
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    sigs = [
+        s
+        for s in cat_session.store.get(GapSignal, [])
+        if s.signal_type == GapSignalType.question_tag
+    ]
+    assert len(sigs) == 1
+    assert sigs[0].dedup_key == "welding qa"  # normalized generation-pill name
+    assert sigs[0].source_ref == pill.id
+    assert sigs[0].detail["pill_id"] == str(pill.id)
+
+
+def test_per_testee_self_initiated_attempt_captures_question_tag_via_test_pill(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    """D1-D2 (§6.5, opt-(a) fallback): a self-initiated per_testee attempt has no
+    assignment RAG pill (``rag_pill`` None) but still generates for the test's
+    declared topic — the question_tag falls back to ``test.pill_id`` (not
+    skipped), keyed on that pill's name."""
+    seed_system_settings(cat_session)
+    t = _testee(cat_session)
+    pill = Pill(
+        tenant_id=SEED_TENANT_ID,
+        subject_id=uuid.uuid4(),
+        name="Rigging basics",
+        description="x",
+        available_difficulty_min=1,
+        available_difficulty_max=10,
+        discoverable=True,
+        safety_relevant=False,
+    )
+    cat_session.add(pill)
+    test = _new_test(cat_session, mode=TestMode.per_testee, pill_id=pill.id)
+    r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
+    assert r.status_code == 201, r.text
+
+    sigs = [
+        s
+        for s in cat_session.store.get(GapSignal, [])
+        if s.signal_type == GapSignalType.question_tag
+    ]
+    assert len(sigs) == 1  # fell back to test.pill_id (self-initiated, no rag_pill)
+    assert sigs[0].dedup_key == "rigging basics"
+    assert sigs[0].source_ref == pill.id
 
 
 def test_benchmark_attempt_starts_with_empty_snapshot(

@@ -42,6 +42,7 @@ EXPECTED_TABLES = {
     "corpus_chunk",  # AC-CD25 reference corpus builder (A2)
     "generation_provenance",  # AC-D29 per-assertion provenance chain (B2)
     "publish_record",  # AC-D31 autonomous auto-publish gate (C2)
+    "gap_signal",  # SPEC §5 GapSignal — coverage-gap signal spine (D1-D2)
     "realism_flag",
     "system_settings",
     "audit_log",
@@ -74,7 +75,7 @@ def _default(table_name: str, col: str) -> str:
 def test_table_set_is_exactly_p1() -> None:
     actual = {t.name for t in Base.metadata.tables.values()}
     assert actual == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 37
+    assert len(EXPECTED_TABLES) == 38
 
 
 def test_system_settings_v13_defaults() -> None:
@@ -206,18 +207,18 @@ def test_migration_offline_round_trip() -> None:
     up = _alembic("upgrade", "base:head", "--sql")
     assert up.returncode == 0, up.stderr
     # +corpus_chunk (A2) +generation_provenance (B2) +publish_record (C2).
-    assert up.stdout.count("CREATE TABLE") >= 37
+    assert up.stdout.count("CREATE TABLE") >= 38
     assert "USING ivfflat" in up.stdout
     # 34 P1 + corpus_chunk (A2) + generation_provenance (B2) + publish_record
     # (C2) carry the trigger.
-    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 37
+    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 38
     assert "TIMESTAMP WITH TIME ZONE" in up.stdout
     assert "INSERT INTO acumen.system_settings" in up.stdout
 
     down = _alembic("downgrade", "head:base", "--sql")
     assert down.returncode == 0, down.stderr
     assert down.stdout.count("DROP TABLE") >= 34
-    assert down.stdout.count("DROP TYPE") == 17
+    assert down.stdout.count("DROP TYPE") == 18
 
 
 def test_migration_0003_safety_override_round_trip() -> None:
@@ -293,6 +294,29 @@ def test_migration_0007_question_position_round_trip() -> None:
     assert "DROP COLUMN attempt_position" in down.stdout
     assert "DROP CONSTRAINT uq_question_attempt_position" in down.stdout
     assert "DROP COLUMN reason" in down.stdout
+
+
+def test_migration_0012_gap_signal_round_trip() -> None:
+    # D1-D2 (SPEC §5 GapSignal): the polymorphic signal store + its enum type.
+    # Reversible per AC-CD3.
+    up = _alembic(
+        "upgrade",
+        "0011_c2_publish_record:0012_d1_d2_gap_signal",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "CREATE TYPE acumen.gap_signal_type" in up.stdout
+    assert "CREATE TABLE acumen.gap_signal" in up.stdout
+    assert "ix_gap_signal_type_dedup_key" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0012_d1_d2_gap_signal:0011_c2_publish_record",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP TABLE acumen.gap_signal" in down.stdout
+    assert "DROP TYPE IF EXISTS acumen.gap_signal_type" in down.stdout
 
 
 def test_migration_0011_publish_record_round_trip() -> None:

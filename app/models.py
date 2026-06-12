@@ -161,6 +161,16 @@ class AssignmentReminderKind(str, enum.Enum):
     escalation = "escalation"
 
 
+class GapSignalType(str, enum.Enum):
+    """The three §6.5 coverage-gap signal types (SPEC §5 GapSignal, D1-D2).
+    ``scope_clarification`` exists from day one (forward-ready); its capture
+    wiring lands with the admin assignment-clarification feature (signal-3)."""
+
+    discovery_miss = "discovery_miss"
+    question_tag = "question_tag"
+    scope_clarification = "scope_clarification"
+
+
 class FocusEventKind(str, enum.Enum):
     blur = "blur"
     focus = "focus"
@@ -917,6 +927,43 @@ class PublishRecord(Base, TimestampMixin):
     # single-provider-degrade flag, so per-type outcomes are queryable.
     safety_relevant: Mapped[bool] = mapped_column(nullable=False, index=True)
     single_provider_verified: Mapped[bool] = mapped_column(nullable=False)
+
+
+class GapSignal(Base, TimestampMixin):
+    """A coverage-gap signal feeding the autonomous gap-detection sweep (SPEC §5
+    / §6.5, D1-D2) — a **single polymorphic store** (the Stage-D spine).
+
+    The gap-detection sweep (D3) clusters signals **across** types into candidate
+    topics and triggers generation; one polymorphic table keeps the cross-type
+    cluster query + the dedup uniform. ``signal_type`` discriminates the three
+    §6.5 inputs; ``dedup_key`` is the normalized signal-layer dedup + clustering
+    key (deduped by ``(signal_type, dedup_key)`` — the **first arm** of the
+    three-arm dedup); ``detail`` carries the type-specific payload;
+    ``occurrence_count`` increments on repeat signals so the sweep can weight a
+    topic by accumulated misses; ``consumed_at`` is set when the D3 sweep
+    clusters the signal (so the next sweep skips it — authored here nullable,
+    set by D3, **no second migration**). ``scope_clarification`` capture is
+    deferred to the admin feature (signal-3) — the *type* exists from day one.
+    """
+
+    __tablename__ = "gap_signal"
+    __table_args__ = (Index("ix_gap_signal_type_dedup_key", "signal_type", "dedup_key"),)
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    signal_type: Mapped[GapSignalType] = mapped_column(
+        _enum(GapSignalType, "gap_signal_type"), nullable=False
+    )
+    dedup_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+    source_ref: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    occurrence_count: Mapped[int] = mapped_column(
+        nullable=False, server_default=text("1")
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        nullable=False, server_default=text("now()")
+    )
+    consumed_at: Mapped[datetime | None]
 
 
 class RealismFlag(Base, TimestampMixin):
