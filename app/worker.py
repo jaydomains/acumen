@@ -185,8 +185,11 @@ def calibration_run_task() -> dict[str, object]:
 
 @celery_app.task(name="drive_rag.ingest")
 def drive_rag_ingest_task() -> dict[str, object]:
-    """Celery wrapper for the AC-D22 daily Drive RAG ingest (one of
-    the §8.9 crons). Calls
+    """Celery wrapper for the AC-D22 Drive RAG ingest. **Dormant from A3**:
+    its beat-schedule entry was swapped out for ``corpus.refresh`` (the net-0
+    cron swap, NS-1) so it is registered-but-unscheduled; the wrapper +
+    ``drive_rag.py`` module + ``drive_chunk`` table are removed by the
+    separate NS-1 code-removal slice (SPEC §7.3). Calls
     :func:`~app.domain.drive_rag.ingest_drive_folder` and commits."""
     from app.domain.drive_rag import ingest_drive_folder
     from app.models import worker_session

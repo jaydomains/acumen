@@ -1,13 +1,16 @@
 """Celery beat schedule — the SPEC §8.9 crons (CODE_SPEC §8 / AC-CD7).
 
-The canonical cron count is **nine** (AC-CD7 / §8.9 v1.9). Built state is
-**eight** here: this slice (A3) adds ``corpus.refresh``; the legacy
-``drive_rag.ingest`` it *replaces* (NS-1, net-0) is removed by the separate
-NS-1 execution slice, and the two D4 crons (``gap_detection.sweep`` +
-``catalogue_health.check``) land at D4 — at which point the registered set
-reaches the canonical nine.
+The canonical cron count is **nine** (AC-CD7 / §8.9 v1.9). This slice (A3)
+performs the **net-0 beat-entry swap** the spec assigns to A3: it removes the
+``drive_rag.ingest`` schedule entry and adds ``corpus.refresh`` (Drive ingest
+→ corpus refresh, NS-1) → **seven registered**. The two D4 crons
+(``gap_detection.sweep`` + ``catalogue_health.check``) add the last two →
+the canonical nine. The ``drive_rag.ingest`` *task wrapper* + ``drive_rag.py``
+module + ``drive_chunk`` table remain **dormant** (registered but unscheduled)
+until the separate NS-1 code-removal slice (SPEC §7.3) — A3 swaps the *cron
+entry*, NS-1 removes the *code*.
 
-The eight currently-registered crons cover every scheduled background
+The seven currently-registered crons cover every scheduled background
 process built so far:
 
 ==================== ====================== ==============================
@@ -15,7 +18,6 @@ Task name             Cadence (UTC)          Domain callable
 ==================== ====================== ==============================
 grade_review.reconcile every 5 minutes        reconcile_pending_grade_reviews
 realism.aggregate     nightly 02:00          aggregate_realism_flags
-drive_rag.ingest      daily 03:00            ingest_drive_folder (NS-1: retiring)
 calibration.run       daily 04:00            run_calibration_sweep
 safety_links.check    monthly (day 1 05:00)  check_safety_links
 cost.budget_sweep     daily 06:00            maybe_fire_budget_alert
@@ -23,7 +25,7 @@ engagement.sweep      daily 07:00            run_engagement_sweep
 corpus.refresh        weekly (Mon 08:00)     refresh_corpus_all
 ==================== ====================== ==============================
 
-The daily-hour offsets (02:00 → 07:00 UTC) keep the daily set
+The daily-hour offsets keep the daily set
 sequential to avoid concurrent DB-load spikes; these are operational
 defaults, not spec-locked. ``grade_review.reconcile`` cadence is
 ``GRADE_REVIEW_RECONCILE_INTERVAL_MINUTES = 5`` per AC-D19 v1.6 /
@@ -55,11 +57,6 @@ beat_schedule: dict[str, dict[str, Any]] = {
         # Nightly at 02:00 UTC — AC-D22 ("Feedback aggregation runs
         # nightly").
         "schedule": crontab(minute=0, hour=2),
-    },
-    "drive_rag.ingest": {
-        "task": "drive_rag.ingest",
-        # Daily at 03:00 UTC — AC-D22 ("Daily diff-based ingest").
-        "schedule": crontab(minute=0, hour=3),
     },
     "calibration.run": {
         "task": "calibration.run",

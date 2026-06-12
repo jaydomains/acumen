@@ -25,7 +25,6 @@ _EXPECTED_ENTRIES: dict[str, str] = {
     # scheduled`; the value's `task` is what the worker dispatches).
     "grade_review.reconcile": "grade_review.reconcile",
     "realism.aggregate": "realism.aggregate",
-    "drive_rag.ingest": "drive_rag.ingest",
     "calibration.run": "calibration.run",
     "safety_links.check": "safety_links.check",
     "cost.budget_sweep": "cost.budget_sweep",
@@ -34,13 +33,15 @@ _EXPECTED_ENTRIES: dict[str, str] = {
 }
 
 
-def test_beat_schedule_has_exactly_eight_entries() -> None:
-    """Built-state cron-count gate. A3 adds ``corpus.refresh`` → eight
-    registered (8 of the canonical nine, AC-CD7/§8.9 v1.9: the legacy
-    ``drive_rag.ingest`` it replaces is removed by the NS-1 slice, and the
-    two D4 crons land at D4). The named-entry count is the gate."""
-    assert len(beat_schedule) == 8
+def test_beat_schedule_has_exactly_seven_entries() -> None:
+    """Built-state cron-count gate after A3's net-0 beat-entry swap: A3
+    removes the ``drive_rag.ingest`` schedule entry and adds ``corpus.refresh``
+    → **seven registered** (7 of the canonical nine, AC-CD7/§8.9:525; the two
+    D4 crons land at D4 → nine). The ``drive_rag.ingest`` task wrapper stays
+    registered-but-dormant until the NS-1 code-removal slice (§7.3)."""
+    assert len(beat_schedule) == 7
     assert set(beat_schedule.keys()) == set(_EXPECTED_ENTRIES.keys())
+    assert "drive_rag.ingest" not in beat_schedule  # swapped out at A3 (net-0)
 
 
 def test_beat_schedule_each_entry_has_task_and_schedule() -> None:
@@ -82,15 +83,15 @@ def test_beat_schedule_grade_review_runs_every_five_minutes() -> None:
 
 
 def test_beat_schedule_daily_crons_have_distinct_hours() -> None:
-    """The five daily crons (realism, drive, calibration, cost,
-    engagement) run at 02:00, 03:00, 04:00, 06:00, 07:00 UTC
-    respectively — sequential offsets so the daily DB-load spikes
-    don't stack. Safety-link check is monthly; reconcile is every-5-
-    min; neither participates in the daily-hour offset."""
+    """The four daily crons (realism, calibration, cost, engagement) run at
+    02:00, 04:00, 06:00, 07:00 UTC respectively — sequential offsets so the
+    daily DB-load spikes don't stack. ``drive_rag.ingest`` (formerly daily
+    03:00) is swapped out at A3; ``corpus.refresh`` is weekly; safety-link
+    check is monthly; reconcile is every-5-min — none participate in the
+    daily-hour offset."""
     daily_hours: list[int] = []
     daily_entries = [
         "realism.aggregate",
-        "drive_rag.ingest",
         "calibration.run",
         "cost.budget_sweep",
         "engagement.sweep",
@@ -115,7 +116,7 @@ def test_beat_schedule_safety_links_check_is_monthly_day_1() -> None:
     assert schedule.minute == {0}
 
 
-def test_celery_app_registered_tasks_include_all_eight() -> None:
+def test_celery_app_registered_tasks_include_all_seven() -> None:
     """The Celery app's task registry must contain a real callable
     for every entry's ``task`` field — otherwise a beat tick produces
     ``KeyError`` at dispatch."""
