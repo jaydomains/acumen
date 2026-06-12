@@ -881,6 +881,44 @@ class GenerationProvenance(Base, TimestampMixin):
     batch_id: Mapped[str | None] = mapped_column(String(255), index=True)
 
 
+class PublishRecord(Base, TimestampMixin):
+    """One row per autonomous publish (AC-D31 / §6.5, C2) — the Stage-E read +
+    per-batch-rollback surface (DS8-a).
+
+    Records, for each AI-generated draft (AC-D29) the auto-publish gate
+    published: the resulting ``pill_id``, the generation ``batch_id`` (B3 — the
+    E2 per-batch rollback key, nullable for a non-batched publish), the
+    ``confidence`` score (AC-D31), the three AC-D30 self-review pass verdicts,
+    the ``low_confidence`` publish-with-warning flag (ruling 2), and per-type
+    telemetry (``safety_relevant`` — the re-adjudicated type — + the NS-7
+    ``single_provider_verified`` flag) so ruling 1's "re-evaluate to a per-type
+    threshold iff warranted" has the data from day one (NS-6). Consumed by the
+    Stage-E oversight dashboard + rollback (AC-CD26, E1/E2); kept off ``Pill``
+    so the oversight data stays in one place and ``Pill`` stays uncluttered.
+    """
+
+    __tablename__ = "publish_record"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    pill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.pill.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    batch_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    low_confidence: Mapped[bool] = mapped_column(nullable=False)
+    grounding_verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    safety_verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    provenance_verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Per-type telemetry (NS-6): the re-adjudicated safety type + the NS-7
+    # single-provider-degrade flag, so per-type outcomes are queryable.
+    safety_relevant: Mapped[bool] = mapped_column(nullable=False, index=True)
+    single_provider_verified: Mapped[bool] = mapped_column(nullable=False)
+
+
 class RealismFlag(Base, TimestampMixin):
     """Testee 'feels unrealistic' flag per question per Testee (AC-D22)."""
 
@@ -973,6 +1011,12 @@ class SystemSettings(Base, TimestampMixin):
     )
     anchor_calibration_prior_weight: Mapped[int] = mapped_column(
         nullable=False, server_default=text("20")
+    )
+    # AC-D31 / NS-6 (C2): the single global autonomous auto-publish confidence
+    # threshold — drafts scoring >= publish live, < publish-with-warning;
+    # per-tenant tunable, NOT per-type (ruling 1). Default 0.70.
+    pill_publish_confidence_threshold: Mapped[float] = mapped_column(
+        nullable=False, server_default=text("0.70")
     )
     drive_folder_id: Mapped[str | None] = mapped_column(String(255))
     embedding_model: Mapped[str] = mapped_column(

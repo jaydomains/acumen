@@ -41,6 +41,7 @@ EXPECTED_TABLES = {
     "drive_chunk",
     "corpus_chunk",  # AC-CD25 reference corpus builder (A2)
     "generation_provenance",  # AC-D29 per-assertion provenance chain (B2)
+    "publish_record",  # AC-D31 autonomous auto-publish gate (C2)
     "realism_flag",
     "system_settings",
     "audit_log",
@@ -73,7 +74,7 @@ def _default(table_name: str, col: str) -> str:
 def test_table_set_is_exactly_p1() -> None:
     actual = {t.name for t in Base.metadata.tables.values()}
     assert actual == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 36
+    assert len(EXPECTED_TABLES) == 37
 
 
 def test_system_settings_v13_defaults() -> None:
@@ -87,6 +88,7 @@ def test_system_settings_v13_defaults() -> None:
     assert _default("system_settings", "embedding_model") == "text-embedding-3-small"
     assert _default("system_settings", "pending_assignment_age_threshold_days") == "7"
     assert _default("system_settings", "escalation_enabled") == "true"
+    assert _default("system_settings", "pill_publish_confidence_threshold") == "0.70"
 
 
 def test_key_columns_present() -> None:
@@ -203,11 +205,12 @@ def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
 def test_migration_offline_round_trip() -> None:
     up = _alembic("upgrade", "base:head", "--sql")
     assert up.returncode == 0, up.stderr
-    # +corpus_chunk (A2) +generation_provenance (B2).
-    assert up.stdout.count("CREATE TABLE") >= 36
+    # +corpus_chunk (A2) +generation_provenance (B2) +publish_record (C2).
+    assert up.stdout.count("CREATE TABLE") >= 37
     assert "USING ivfflat" in up.stdout
-    # 34 P1 + corpus_chunk (A2) + generation_provenance (B2) carry the trigger.
-    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 36
+    # 34 P1 + corpus_chunk (A2) + generation_provenance (B2) + publish_record
+    # (C2) carry the trigger.
+    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 37
     assert "TIMESTAMP WITH TIME ZONE" in up.stdout
     assert "INSERT INTO acumen.system_settings" in up.stdout
 
@@ -290,6 +293,29 @@ def test_migration_0007_question_position_round_trip() -> None:
     assert "DROP COLUMN attempt_position" in down.stdout
     assert "DROP CONSTRAINT uq_question_attempt_position" in down.stdout
     assert "DROP COLUMN reason" in down.stdout
+
+
+def test_migration_0011_publish_record_round_trip() -> None:
+    # C2 (AC-D31): publish_record table + system_settings threshold column.
+    # Reversible per AC-CD3.
+    up = _alembic(
+        "upgrade",
+        "0010_b2_generation_provenance:0011_c2_publish_record",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "CREATE TABLE acumen.publish_record" in up.stdout
+    assert "ADD COLUMN pill_publish_confidence_threshold" in up.stdout
+    assert "CREATE TRIGGER trg_set_updated_at" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0011_c2_publish_record:0010_b2_generation_provenance",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP COLUMN pill_publish_confidence_threshold" in down.stdout
+    assert "DROP TABLE acumen.publish_record" in down.stdout
 
 
 def test_migration_0008_test_pill_id_round_trip() -> None:

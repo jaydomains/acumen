@@ -38,7 +38,7 @@ from app.models import (
     ProcessingTaskStatus,
     Subject,
 )
-from app.permissions import APIError, now_utc
+from app.permissions import now_utc
 
 DEFAULT_PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 200
@@ -562,55 +562,6 @@ async def get_pill_proposal(
     if task is None or task.task_name != PROPOSAL_TASK_NAME:
         return None
     return task
-
-
-async def approve_pill_proposal(
-    db: AsyncSession, task: ProcessingTask, *, actor_id: uuid.UUID
-) -> Pill:
-    """Materialize the proposed pill (re-running the keyword auto-tag and
-    honouring the proposing AI's self-classification per AC-D21), then
-    mark the task done with the decision recorded."""
-    proposal = (task.payload or {}).get("proposal", {})
-    # The payload is persisted JSON; once P5 wires real AI providers a
-    # malformed proposal could reach here. Fail with a clean 422 to the
-    # admin instead of an unhandled 500.
-    try:
-        subject_id = uuid.UUID(str(proposal["subject_id"]))
-        name = proposal["name"]
-    except (KeyError, ValueError, TypeError) as exc:
-        raise APIError(
-            422,
-            "malformed_proposal",
-            "This proposal's payload is malformed and cannot be approved.",
-        ) from exc
-    pill = await create_pill(
-        db,
-        subject_id=subject_id,
-        name=name,
-        description=proposal.get("description"),
-        available_difficulty_min=proposal.get("available_difficulty_min", 1),
-        available_difficulty_max=proposal.get("available_difficulty_max", 10),
-        discoverable=True,
-        estimated_minutes=proposal.get("estimated_minutes"),
-        ai_safety_classification=proposal.get("safety_relevant"),
-    )
-    task.status = ProcessingTaskStatus.done
-    task.finished_at = now_utc()
-    task.payload = {
-        **(task.payload or {}),
-        "decision": "approved",
-        "created_pill_id": str(pill.id),
-    }
-    await record_audit(
-        db,
-        actor_id=actor_id,
-        action="pill_proposal.approve",
-        target_entity="processing_tasks",
-        target_id=task.id,
-        detail={"created_pill_id": str(pill.id)},
-    )
-    await db.flush()
-    return pill
 
 
 async def reject_pill_proposal(
