@@ -5,10 +5,13 @@ clusters the captured ``GapSignal``s (D1-D2) into candidate topics, and a
 proactive **catalogue-health check** (NS-4) finds coverage gaps in the catalogue
 itself — both invoking the B3 generation fan-out (``enqueue_generated_drafts``)
 **directly** (a domain-fn trigger, no HTTP gate), which feeds the C auto-publish
-gate. This is the **third arm** of the three-arm dedup (signal-layer at D1-D2,
-persistence-layer at B3, **gap-detection-layer here**): a topic already covered
-by a live ``Pill`` (or already pending a B3 batch — B3's own
-``(topic, gap_signal)`` guard) does not open a new generation batch.
+gate. This is the **gap-detection-layer (third) arm** of the three-arm dedup
+(signal-layer at D1-D2, persistence-layer at B3 — B3's own
+``(topic, gap_signal)`` pending guard — and here). Its pill-state policy: a
+topic/subject backed by **any pill — live (demand met) or retired (AC-D14,
+hidden from new generation)** — does not open a new generation batch; the
+thin-band arm additionally uses a generate-once guard (generation mints new
+pills, it cannot enrich the thin pill's bands).
 
 Scope (D3): the trigger logic only. NOT here: the crons that schedule these
 (D4); the generation internals (Stage B); the auto-publish gate (Stage C);
@@ -141,8 +144,9 @@ async def catalogue_health_check(db: AsyncSession) -> list[GenerationTrigger]:
     """Proactive coverage sweep (NS-4) independent of Testee signals: **uncovered
     subjects** (no discoverable pills) and **thin-band pills** (anchor pool
     covering too few difficulty bands) → generation, via the **same**
-    ``enqueue_generated_drafts`` path + the same third dedup arm. The caller
-    commits.
+    ``enqueue_generated_drafts`` path. Dedup: a subject with **any** pill (live
+    or retired, AC-D14) is not uncovered; a thin pill that already has a
+    generation batch is not re-fired (generate-once). The caller commits.
 
     Distinct from A3's weekly corpus-refresh backstop (DS3-a): both read the
     catalogue, but A3 refreshes the **corpus** while this generates **pills** —
