@@ -498,8 +498,14 @@ async def refresh_corpus_all(
     cron, A3). Re-acquires the corpus for every **active (non-retired)
     catalogue pill** — the natural "what the corpus should cover" set (DS3-a),
     which also catches newly-added topics the corpus has never seen.
-    Idempotent per topic via :func:`acquire_for_topic`; fail-soft per source.
-    Returns ``{topic: chunks_added}``."""
+    Idempotent per topic via :func:`acquire_for_topic`.
+
+    **Per-pill fail-soft (CA-A3-2):** each pill's acquisition is isolated — an
+    uncaught error for one topic (embed / DB / unexpected) is logged and
+    skipped (count 0) so it never aborts the whole weekly backstop (the cron
+    has no autoretry). Keyed by ``pill.id`` (not name) so duplicate active pill
+    names don't collapse the telemetry (CA-A3-3). Returns
+    ``{pill_id: chunks_added}``."""
     pills = list(
         (
             await db.execute(
@@ -514,7 +520,16 @@ async def refresh_corpus_all(
     )
     added: dict[str, int] = {}
     for pill in pills:
-        added[pill.name] = await acquire_for_topic(
-            db, topic=pill.name, http_client=http_client
-        )
+        try:
+            added[str(pill.id)] = await acquire_for_topic(
+                db, topic=pill.name, http_client=http_client
+            )
+        except Exception:
+            logger.warning(
+                "corpus refresh failed for pill %s (%r); continuing",
+                pill.id,
+                pill.name,
+                exc_info=True,
+            )
+            added[str(pill.id)] = 0
     return added

@@ -182,12 +182,17 @@ class _PillSession:
         )
 
 
+def _pill(name: str) -> SimpleNamespace:
+    return SimpleNamespace(id=uuid.uuid4(), name=name)
+
+
 @pytest.mark.asyncio
 async def test_refresh_corpus_all_iterates_active_pills(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The weekly backstop re-acquires each active catalogue pill (DS3-a)."""
-    pills = [SimpleNamespace(name="welding"), SimpleNamespace(name="rigging")]
+    """The weekly backstop re-acquires each active catalogue pill (DS3-a),
+    keyed by pill.id (CA-A3-3 — dup names don't collapse telemetry)."""
+    p1, p2 = _pill("welding"), _pill("rigging")
     calls: list[str] = []
 
     async def _fake_acquire(db, *, topic, http_client=None):  # type: ignore[no-untyped-def]
@@ -195,6 +200,41 @@ async def test_refresh_corpus_all_iterates_active_pills(
         return 3
 
     monkeypatch.setattr(cb, "acquire_for_topic", _fake_acquire)
-    result = await cb.refresh_corpus_all(_PillSession(pills))
+    result = await cb.refresh_corpus_all(_PillSession([p1, p2]))
     assert calls == ["welding", "rigging"]
-    assert result == {"welding": 3, "rigging": 3}
+    assert result == {str(p1.id): 3, str(p2.id): 3}
+
+
+@pytest.mark.asyncio
+async def test_refresh_corpus_all_fail_soft_per_pill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One pill's acquisition error is logged + skipped (count 0); the other
+    pills are still refreshed — the weekly backstop never aborts (CA-A3-2)."""
+    bad, good = _pill("bad"), _pill("good")
+
+    async def _fake_acquire(db, *, topic, http_client=None):  # type: ignore[no-untyped-def]
+        if topic == "bad":
+            raise RuntimeError("acquire boom")
+        return 4
+
+    monkeypatch.setattr(cb, "acquire_for_topic", _fake_acquire)
+    result = await cb.refresh_corpus_all(_PillSession([bad, good]))
+    assert result[str(bad.id)] == 0  # failed pill isolated → 0
+    assert result[str(good.id)] == 4  # other pill still processed
+
+
+@pytest.mark.asyncio
+async def test_refresh_corpus_all_duplicate_names_distinct_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two active pills with the same name keep distinct telemetry entries
+    (keyed by id) — no overwrite/undercount (CA-A3-3)."""
+    p1, p2 = _pill("welding"), _pill("welding")
+
+    async def _fake_acquire(db, *, topic, http_client=None):  # type: ignore[no-untyped-def]
+        return 2
+
+    monkeypatch.setattr(cb, "acquire_for_topic", _fake_acquire)
+    result = await cb.refresh_corpus_all(_PillSession([p1, p2]))
+    assert len(result) == 2 and sum(result.values()) == 4
