@@ -231,6 +231,13 @@ def test_per_testee_attempt_generates_stub_questions(
     assert body["q1"] is not None
     assert body["q1"]["attempt_position"] == 1
     assert body["q1"]["id"] == questions[0]["id"]
+    # D1-D2 (§6.5): a pill-less per_testee test (no rag_pill, no test.pill_id)
+    # has no topic to tag — no question_tag signal is captured.
+    assert not [
+        s
+        for s in cat_session.store.get(GapSignal, [])
+        if s.signal_type == GapSignalType.question_tag
+    ]
 
 
 def test_per_testee_assignment_attempt_captures_question_tag_signal(
@@ -300,9 +307,7 @@ def test_per_testee_self_initiated_attempt_captures_question_tag_via_test_pill(
     )
     cat_session.add(pill)
     test = _new_test(cat_session, mode=TestMode.per_testee, pill_id=pill.id)
-    r = cat_client.post(
-        "/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)}
-    )
+    r = cat_client.post("/v1/attempts", headers=bearer(t), json={"test_id": str(test.id)})
     assert r.status_code == 201, r.text
 
     sigs = [
