@@ -23,7 +23,7 @@ from app.domain.gap_detection import (
     catalogue_health_check,
     gap_detection_sweep,
 )
-from app.models import AnchorQuestion, GapSignal, Pill, Subject
+from app.models import AnchorQuestion, GapSignal, Pill, ProcessingTask, Subject
 from app.permissions import now_utc
 
 
@@ -37,12 +37,14 @@ class _SweepSession:
         pills: list = (),
         subjects: list = (),
         anchors: list = (),
+        tasks: list = (),
     ) -> None:
         self._by_entity = {
             GapSignal: list(signals),
             Pill: list(pills),
             Subject: list(subjects),
             AnchorQuestion: list(anchors),
+            ProcessingTask: list(tasks),
         }
 
     async def execute(self, stmt: object) -> SimpleNamespace:
@@ -154,6 +156,25 @@ async def test_catalogue_health_thin_band(monkeypatch: pytest.MonkeyPatch) -> No
     )
     thin_triggers = [t for t in triggers if t.reason == "thin_band"]
     assert [t.topic for t in thin_triggers] == ["Thin pill"]
+
+
+@pytest.mark.asyncio
+async def test_thin_band_generate_once_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A thin pill that already has a pill_generation batch (any status) for its
+    thin_band gap_signal is NOT regenerated — generation mints new pills, not
+    anchor bands, so without the guard it would re-trigger every sweep."""
+    calls = _install(monkeypatch)
+    subj = _subject("S")
+    thin = _pill("Thin pill", subject_id=subj.id)
+    prior = SimpleNamespace(
+        task_name="pill_generation",
+        payload={"gap_signal": f"thin_band:{thin.id}"},
+    )
+    triggers = await catalogue_health_check(
+        _SweepSession(subjects=[subj], pills=[thin], anchors=[], tasks=[prior])
+    )
+    assert [t for t in triggers if t.reason == "thin_band"] == []
+    assert not [c for c in calls if str(c["gap_signal"]).startswith("thin_band")]
 
 
 @pytest.mark.asyncio

@@ -25,13 +25,14 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.generation import enqueue_generated_drafts
+from app.domain.generation import GENERATION_TASK_NAME, enqueue_generated_drafts
 from app.domain.signals import _normalize
 from app.models import (
     SEED_TENANT_ID,
     AnchorQuestion,
     GapSignal,
     Pill,
+    ProcessingTask,
     Subject,
 )
 from app.permissions import now_utc
@@ -67,6 +68,26 @@ async def _live_pill_topics(db: AsyncSession) -> set[str]:
     }
 
 
+async def _has_generation_batch_for(db: AsyncSession, gap_signal: str) -> bool:
+    """Has a ``pill_generation`` batch ever been opened for this ``gap_signal``
+    (ANY status)? The **thin-band** arm uses this as a generate-once guard: a
+    structurally-thin pill cannot be fattened by generation (``enqueue_generated_
+    drafts`` mints *new* pills for the topic, it does not add anchor bands to the
+    existing pill), so without this it would re-trigger every sweep once a batch
+    leaves ``pending`` (B3's pending-only dedup no longer blocks it) — unbounded
+    duplicate content + spend. Once a band-filling mechanism exists, this becomes
+    a cooldown."""
+    result = await db.execute(
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == GENERATION_TASK_NAME,
+        )
+    )
+    return any(
+        (t.payload or {}).get("gap_signal") == gap_signal for t in result.scalars().all()
+    )
+
+
 async def gap_detection_sweep(db: AsyncSession) -> list[GenerationTrigger]:
     """Cluster the unconsumed ``GapSignal``s into candidate topics and trigger
     generation for the under-covered ones (§6.5 signal-driven arm). The caller
@@ -79,8 +100,16 @@ async def gap_detection_sweep(db: AsyncSession) -> list[GenerationTrigger]:
     ``enqueue_generated_drafts``. Every clustered signal is marked ``consumed_at``
     (covered or generated) so the next sweep does not re-cluster it — idempotent.
     """
+    # Bound the read to the (small) UNCONSUMED working set in SQL — D3 only
+    # marks signals consumed, never deletes them, so the consumed history grows
+    # without bound; loading it all to discard in Python would be an unbounded
+    # scan on the D4 cron's hot path. The Python re-check keeps the WHERE-ignoring
+    # zero-DB test fake correct.
     result = await db.execute(
-        select(GapSignal).where(GapSignal.tenant_id == SEED_TENANT_ID)
+        select(GapSignal).where(
+            GapSignal.tenant_id == SEED_TENANT_ID,
+            GapSignal.consumed_at.is_(None),
+        )
     )
     clusters: dict[str, list[GapSignal]] = {}
     for signal in result.scalars().all():
@@ -169,15 +198,17 @@ async def catalogue_health_check(db: AsyncSession) -> list[GenerationTrigger]:
 
     # Thin-band pills: a live pill whose anchor pool covers < MIN_BAND_COVERAGE
     # distinct bands. The pill exists by definition, so the live-pill skip does
-    # NOT apply here (B3's pending-batch guard prevents re-triggering).
+    # NOT apply here — instead a generate-once guard (`_has_generation_batch_for`)
+    # stops a structurally-thin pill from re-triggering every sweep, since
+    # generation mints new pills rather than fattening this one.
     for pill in pills:
         if len(bands_by_pill.get(pill.id, set())) < MIN_BAND_COVERAGE:
+            gap_signal = f"thin_band:{pill.id}"
+            if await _has_generation_batch_for(db, gap_signal):
+                continue  # already generated for this thin pill — don't loop
             batch_id = str(uuid.uuid4())
             await enqueue_generated_drafts(
-                db,
-                topic=pill.name,
-                batch_id=batch_id,
-                gap_signal=f"thin_band:{pill.id}",
+                db, topic=pill.name, batch_id=batch_id, gap_signal=gap_signal
             )
             triggers.append(
                 GenerationTrigger(topic=pill.name, reason="thin_band", batch_id=batch_id)
