@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import enum
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,13 +132,31 @@ async def self_review_draft(
         )
 
     safety_detail = verdicts["safety"].detail
-    readjudicated_safety = bool(
-        safety_detail.get("safety_relevant", draft.get("safety_relevant", False))
-    )
+    self_tag = bool(draft.get("safety_relevant", False))
+    readjudicated_safety = bool(safety_detail.get("safety_relevant", self_tag))
+    # Fall safe: if the safety pass flagged a problem but returned no
+    # re-adjudicated tag, treat the draft as safety-relevant rather than
+    # reverting to the generator's (possibly false-negative) self-tag — the
+    # exact mis-tag AC-D21's autonomous catch exists to close.
+    if verdicts["safety"].verdict == "fail" and "safety_relevant" not in safety_detail:
+        readjudicated_safety = True
     unsupported = [
         str(c) for c in verdicts["grounding"].detail.get("unsupported_claims", [])
     ]
     orphans = [str(c) for c in verdicts["provenance"].detail.get("orphan_claims", [])]
+
+    # Fail-CLOSED verdict reconciliation (the safety floor, ruling 4): each
+    # pass's effective verdict is derived from the structured signal the
+    # ratified contract promises, NOT the model's free-form ``verdict`` string —
+    # a model that self-contradicts (``verdict="pass"`` alongside failing data)
+    # must not reach C2's hard floor as a pass. We only ever force ``fail`` (a
+    # genuine model ``fail`` is preserved); a clean pass is left untouched.
+    if unsupported:
+        verdicts["grounding"] = replace(verdicts["grounding"], verdict="fail")
+    if orphans:
+        verdicts["provenance"] = replace(verdicts["provenance"], verdict="fail")
+    if readjudicated_safety and not self_tag:
+        verdicts["safety"] = replace(verdicts["safety"], verdict="fail")
 
     # NS-7 cross-model floor: the review ran on a different provider from the
     # generator unless only one is configured (both resolve to the same name).

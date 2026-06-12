@@ -153,6 +153,57 @@ def test_op_wiring_and_sweep_floors() -> None:
         assert "JSON" in template and version == "1.0.0"
 
 
+class _ContradictoryProvider:
+    """A model that returns ``verdict="pass"`` alongside failing structured
+    data per variant — the self-contradiction the fail-closed reconciliation
+    must catch."""
+
+    name = "openai"
+
+    async def review(self, operation: Operation, payload: dict) -> AIResult:
+        variant = str(payload.get("_prompt_variant"))
+        content: dict = {"verdict": "pass"}
+        if variant == "grounding":
+            content["unsupported_claims"] = ["unsupported claim"]
+        elif variant == "provenance":
+            content["orphan_claims"] = ["orphan claim"]
+        elif variant == "safety":
+            content["safety_relevant"] = True  # flips up vs a False self-tag
+        return AIResult(
+            content=content,
+            provider="openai",
+            model="openai-review",
+            prompt_version="1.0.0",
+            prompt_tokens=1,
+            completion_tokens=1,
+            cost_usd=0.0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_verdict_reconciled_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A self-contradicting model (verdict=pass + failing data) is forced to
+    fail-closed from the structured signals — the safety floor (ruling 4) does
+    not trust the model's free-form verdict string over its own data."""
+
+    def _resolve(op: Operation) -> object:
+        if op == Operation.content_self_review:
+            return _ContradictoryProvider()
+        return SimpleNamespace(name="anthropic")
+
+    monkeypatch.setattr(sr, "resolve_provider", _resolve)
+    result = await self_review_draft(
+        None, draft=_draft(safety_relevant=False), provenance=_PROVENANCE
+    )
+    assert result.grounding.verdict == "fail"  # unsupported_claims non-empty
+    assert result.provenance.verdict == "fail"  # orphan_claims non-empty
+    assert result.safety.verdict == "fail"  # flipped up vs the False self-tag
+    assert result.passed is False
+    assert result.safety_relevant is True
+    assert result.unsupported_claims == ["unsupported claim"]
+    assert result.orphan_claims == ["orphan claim"]
+
+
 @pytest.mark.asyncio
 async def test_ns7_degrade_switch_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """NS-7 (ruled degrade-not-gate): the switch the C2 gate reads exists and
