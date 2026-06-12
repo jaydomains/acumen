@@ -237,7 +237,20 @@ def test_discovery_miss_persists_gap_signal(
             if s.signal_type == GapSignalType.discovery_miss
         ]
 
+    # Spy on commit: the fake never rolls back, so prove the GET path actually
+    # COMMITS the captured signal (the no-commit regression class). The real-DB
+    # persistence is additionally guarded by tests/e2e.
+    commits = {"n": 0}
+    original_commit = cat_session.commit
+
+    async def _spy_commit() -> None:
+        commits["n"] += 1
+        await original_commit()
+
+    cat_session.commit = _spy_commit  # type: ignore[method-assign]
+
     cat_client.get("/v1/catalogue/pills", headers=ht, params={"search": "Welding QA"})
+    assert commits["n"] >= 1  # the captured signal was committed, not left pending
     cat_client.get("/v1/catalogue/pills", headers=ht, params={"search": "welding qa"})
     assert len(_signals()) == 1  # persisted + deduped
     assert _signals()[0].dedup_key == "welding qa"

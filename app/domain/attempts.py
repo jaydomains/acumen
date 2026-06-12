@@ -776,16 +776,22 @@ async def start_attempt(
         # consistency across the attempt.
         target_difficulty = int(round(test.target_difficulty or 5))
         rag_pill = await _load_pill_for_assignment(db, assignment_id)
-        # §6.5 question-tag signal (D1-D2): per_testee questions are AI-generated
-        # grounded in ``rag_pill`` (the pill the questions are actually generated
-        # for — assignment pill if assignment-driven, else the test's pill).
-        # Capture that topic's assessment demand for the D3 gap-detection sweep
-        # (signal-layer deduped; occurrence_count accumulates the frequency).
-        # Skipped when no pill resolves (learning-path RAG-less generation).
-        if rag_pill is not None:
+        # §6.5 question-tag signal (D1-D2): capture the topic the per_testee
+        # questions are generated for. Prefer ``rag_pill`` (the assignment-scoped
+        # generation pill); for a self-initiated attempt (no assignment RAG pill)
+        # fall back to the test's declared ``pill_id`` so its topic demand is
+        # still captured. Skipped only when neither resolves (a learning-path /
+        # topic-less per_testee test). occurrence_count accumulates the frequency
+        # for the D3 gap-detection sweep (signal-layer deduped).
+        tag_pill = rag_pill
+        if tag_pill is None and test.pill_id is not None:
+            from app.domain.catalogue import get_pill
+
+            tag_pill = await get_pill(db, test.pill_id)
+        if tag_pill is not None:
             from app.domain.signals import capture_question_tag
 
-            await capture_question_tag(db, tag=rag_pill.name, source_ref=rag_pill.id)
+            await capture_question_tag(db, tag=tag_pill.name, source_ref=tag_pill.id)
         rag_hits = await retrieve_for_generation(
             db, pill=rag_pill, target_difficulty=target_difficulty
         )
