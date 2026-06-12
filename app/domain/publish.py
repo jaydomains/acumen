@@ -134,7 +134,13 @@ async def auto_publish_draft(db: AsyncSession, task: ProcessingTask) -> PublishR
         and review.single_provider_verified
         and review.degrade_mode == DegradeMode.degrade
     )
-    low_confidence = confidence < threshold or ns7_degrade
+    # A FAILED cross-model safety pass always degrades to publish-with-warning,
+    # regardless of provider count or score — C1 is the non-negotiable safety
+    # floor, so a draft that failed safety review must reach the Stage-E
+    # oversight surface flagged, not land live + silent (still published —
+    # ruling 2 "nothing held"; the floor flags, it does not hold).
+    safety_failed = review.safety.verdict == "fail"
+    low_confidence = confidence < threshold or ns7_degrade or safety_failed
 
     pill = await create_pill(
         db,

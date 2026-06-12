@@ -252,5 +252,31 @@ async def test_ns7_single_provider_safety_degrades(
     assert len(_pills(session)) == 1  # still live
 
 
+@pytest.mark.asyncio
+async def test_safety_fail_flags_even_multi_provider_high_confidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A draft that FAILS the cross-model safety pass publishes-with-warning
+    even multi-provider + high confidence — C1 is the non-negotiable safety
+    floor, so a safety-fail reaches Stage-E flagged, not live + silent (still
+    published; the floor flags, it does not hold)."""
+    monkeypatch.setattr(
+        pub,
+        "self_review_draft",
+        lambda *a, **k: _async(
+            _review(safety="fail", safety_relevant=True, single_provider=False)
+        ),
+    )
+    session = _GateSession(
+        settings=_settings(), provenance=[_prov(1.0, "iso.org", "draft-1")]
+    )
+    record = await auto_publish_draft(session, _task(_draft()))
+    assert record.confidence == pytest.approx(1.0)  # grounding/provenance pass
+    assert record.safety_verdict == "fail"
+    assert record.low_confidence is True  # flagged despite high confidence
+    assert _audits(session)[0].action == "pill_generation.publish_flagged"
+    assert len(_pills(session)) == 1  # still live — nothing held
+
+
 async def _async(value: object) -> object:
     return value
