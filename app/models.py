@@ -798,6 +798,50 @@ class DriveChunk(Base, TimestampMixin, AIProvenanceMixin):
     )
 
 
+class CorpusChunk(Base, TimestampMixin, AIProvenanceMixin):
+    """Reference-corpus index chunk (AC-CD25 / amended AC-D22 / AC-D28).
+
+    Sibling of :class:`DriveChunk` for the AI-built reference corpus: the
+    same pgvector + ``AIProvenanceMixin`` shape (``embedding``
+    ``Vector(1536)``, ``content_hash`` indexed, IVFFlat index
+    ``ix_corpus_chunk_embedding`` mirroring ``ix_drive_chunk_embedding``,
+    the 6 provenance columns carrying the embedding call's cost — summed
+    by :func:`app.ai.cost.current_month_spend`), **plus** the
+    source-authority columns ``source_host`` / ``authority_tier`` /
+    ``authority_score`` (AC-D28) the corpus builder stamps from the A1
+    registry, and a ``corroboration_count`` — the DS2-b option-(ii)
+    cross-source signal (how many distinct allowlisted sources produced
+    this chunk's text in a safety-relevant acquisition run; 1 = single
+    source). A **new table** (not ``DriveChunk`` reuse, DS2-a) so
+    per-source rollback (PR-D) stays clean, the NS-1 Drive retirement
+    doesn't entangle the corpus, and the authority columns stay
+    corpus-only. Idempotent by ``(source_host, content_hash)``."""
+
+    __tablename__ = "corpus_chunk"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_host", "content_hash", name="uq_corpus_chunk_source_hash"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    source_doc_ref: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_host: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    authority_tier: Mapped[int] = mapped_column(nullable=False)
+    authority_score: Mapped[float] = mapped_column(nullable=False)
+    corroboration_count: Mapped[int] = mapped_column(
+        nullable=False, server_default=text("1")
+    )
+    chunk_index: Mapped[int] = mapped_column(nullable=False)
+    chunk_text: Mapped[str] = mapped_column(nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+    indexed_at: Mapped[datetime] = mapped_column(
+        server_default=text("now()"), nullable=False
+    )
+
+
 class RealismFlag(Base, TimestampMixin):
     """Testee 'feels unrealistic' flag per question per Testee (AC-D22)."""
 
