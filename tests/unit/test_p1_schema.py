@@ -40,6 +40,7 @@ EXPECTED_TABLES = {
     "competency_profile",
     "drive_chunk",
     "corpus_chunk",  # AC-CD25 reference corpus builder (A2)
+    "generation_provenance",  # AC-D29 per-assertion provenance chain (B2)
     "realism_flag",
     "system_settings",
     "audit_log",
@@ -72,7 +73,7 @@ def _default(table_name: str, col: str) -> str:
 def test_table_set_is_exactly_p1() -> None:
     actual = {t.name for t in Base.metadata.tables.values()}
     assert actual == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 35
+    assert len(EXPECTED_TABLES) == 36
 
 
 def test_system_settings_v13_defaults() -> None:
@@ -202,10 +203,11 @@ def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
 def test_migration_offline_round_trip() -> None:
     up = _alembic("upgrade", "base:head", "--sql")
     assert up.returncode == 0, up.stderr
-    assert up.stdout.count("CREATE TABLE") >= 35  # +corpus_chunk (A2 / AC-CD25)
+    # +corpus_chunk (A2) +generation_provenance (B2).
+    assert up.stdout.count("CREATE TABLE") >= 36
     assert "USING ivfflat" in up.stdout
-    # 34 P1 tables + corpus_chunk (A2) each carry the updated_at trigger.
-    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 35
+    # 34 P1 + corpus_chunk (A2) + generation_provenance (B2) carry the trigger.
+    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 36
     assert "TIMESTAMP WITH TIME ZONE" in up.stdout
     assert "INSERT INTO acumen.system_settings" in up.stdout
 
