@@ -57,17 +57,6 @@ class GenerationTrigger:
     batch_id: str
 
 
-async def _live_pill_topics(db: AsyncSession) -> set[str]:
-    """Normalized names of live (discoverable, non-retired) pills — the catalogue
-    coverage D3's third dedup arm checks before opening a generation batch."""
-    result = await db.execute(select(Pill).where(Pill.tenant_id == SEED_TENANT_ID))
-    return {
-        _normalize(p.name)
-        for p in result.scalars().all()
-        if p.discoverable and p.retired_at is None
-    }
-
-
 async def _suppressed_topics(db: AsyncSession) -> set[str]:
     """Normalized names of **all** pills (live OR retired) — the topics the
     gap-signal arm must not regenerate. A live pill means the demand is already
