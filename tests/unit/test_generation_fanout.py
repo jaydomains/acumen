@@ -251,3 +251,74 @@ async def test_g3_min_max_only_no_per_band_field(
         lo, hi = draft["available_difficulty_min"], draft["available_difficulty_max"]
         assert 1 <= lo <= hi <= 10
         assert "difficulty_bands" not in draft and "band_distribution" not in draft
+
+
+@pytest.mark.asyncio
+async def test_no_dedup_without_gap_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dedup is gap-keyed: two direct (no ``gap_signal``) calls for the same
+    topic do NOT collapse — each gets its own fresh batch (a non-gap
+    regeneration must not be suppressed by a pending null-gap batch)."""
+    c1 = _chunk([1.0, 0.0, 0.0], Tier.T1, "iso.org", "https://iso.org/a")
+    session = _FanoutSession([c1])
+    _install_stub(monkeypatch)
+
+    first = await gen.enqueue_generated_drafts(session, topic="welding", target_count=2)
+    second = await gen.enqueue_generated_drafts(session, topic="welding", target_count=2)
+
+    assert len(_tasks(session)) == 4  # both generated, no collapse
+    assert first[0].payload["batch_id"] != second[0].payload["batch_id"]
+
+
+@pytest.mark.asyncio
+async def test_dedup_excludes_done_and_other_task_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pending-batch probe excludes ``done`` generation rows and other
+    task names even when topic/gap_signal match — only a *pending*
+    ``pill_generation`` batch dedups (§6.2d)."""
+    session = _FanoutSession([])
+    _install_stub(monkeypatch)
+    # A finished generation batch + a pending pill_proposal, both matching.
+    session.add(
+        ProcessingTask(
+            tenant_id=SEED_TENANT_ID,
+            task_name=gen.GENERATION_TASK_NAME,
+            status=ProcessingTaskStatus.done,
+            payload={"topic": "welding", "gap_signal": "gap-9"},
+        )
+    )
+    session.add(
+        ProcessingTask(
+            tenant_id=SEED_TENANT_ID,
+            task_name="pill_proposal",
+            status=ProcessingTaskStatus.pending,
+            payload={"topic": "welding", "gap_signal": "gap-9"},
+        )
+    )
+
+    tasks = await gen.enqueue_generated_drafts(
+        session, topic="welding", target_count=2, gap_signal="gap-9"
+    )
+    # Neither pre-seeded row dedups → a fresh pending generation batch is made.
+    assert len(tasks) == 2
+    assert all(t.status == ProcessingTaskStatus.pending for t in tasks)
+
+
+@pytest.mark.asyncio
+async def test_empty_draft_generation_warns_and_persists_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A generator that returns zero drafts → WARN (the call cost can't ride a
+    draft row, so it leaks from the spend aggregate) and no rows persisted."""
+    import logging
+
+    session = _FanoutSession([])
+    _install_fixed_cost(monkeypatch, drafts=[], cost_usd=0.004)
+
+    with caplog.at_level(logging.WARNING):
+        tasks = await gen.enqueue_generated_drafts(session, topic="welding")
+
+    assert tasks == []
+    assert _tasks(session) == []
+    assert "produced no drafts" in caplog.text

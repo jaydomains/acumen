@@ -165,10 +165,21 @@ async def _pending_batch_for(
     already-pending ``pill_generation`` draft rows for this exact
     ``(topic, gap_signal)``. Non-empty → a batch for this gap is already
     awaiting the C auto-publish gate, so a re-trigger must not duplicate it.
-    (D-stage gap-detection owns the signal-layer arm.) Iterates in Python to
-    match the cost-aggregator harness shape (no JSONB SQL in the fake)."""
+    (D-stage gap-detection owns the signal-layer arm.)
+
+    The cheap, **indexed** predicates (``task_name``, ``status`` — both real
+    columns) are pushed into SQL so this D3 hot-path probe scans only pending
+    generation rows, not the tenant's whole ``processing_tasks`` history. The
+    ``(topic, gap_signal)`` match lives in the JSONB ``payload`` and stays in
+    Python; ``task_name``/``status`` are re-asserted there too so the AC-CD15
+    zero-network fake — which can't model the WHERE clause — still exercises the
+    exclusion (the SQL bounds the scan, the Python re-check keeps it correct)."""
     rows = await db.execute(
-        select(ProcessingTask).where(ProcessingTask.tenant_id == SEED_TENANT_ID)
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == GENERATION_TASK_NAME,
+            ProcessingTask.status == ProcessingTaskStatus.pending,
+        )
     )
     return [
         r
@@ -200,16 +211,23 @@ async def enqueue_generated_drafts(
     summing the N shares reconstructs the call cost, AC-CD8). Each row is a
     candidate awaiting the **autonomous** auto-publish gate (C1–C2), not a human
     approve queue. **Idempotent** on ``(topic, gap_signal)`` for pending rows
-    (§6.2d). Returns the N (or pre-existing) ``ProcessingTask`` rows.
+    when a ``gap_signal`` is present (§6.2d). Returns the N (or pre-existing)
+    ``ProcessingTask`` rows.
 
     Scope (B3): fan-out + persistence + cost-share + ``batch_id``. NOT here:
     self-review / confidence / publish / ``Pill`` creation (C1–C2 consume these
     rows); the gap-detection trigger that calls this (D3); the E2 rollback that
     queries the ``batch_id`` + provenance.
     """
-    existing = await _pending_batch_for(db, topic=topic, gap_signal=gap_signal)
-    if existing:
-        return existing
+    # Dedup is **gap-keyed** (§6.2d — "a batch for the same gap already
+    # pending"): the gap_signal IS the key. A direct/non-gap call (gap_signal
+    # None) has no gap to dedup against, so it must NOT collapse onto another
+    # null-gap batch for the same topic — generate a fresh batch. D3 always
+    # supplies a signal, so the autonomous pipeline path is unchanged.
+    if gap_signal is not None:
+        existing = await _pending_batch_for(db, topic=topic, gap_signal=gap_signal)
+        if existing:
+            return existing
 
     batch_id = batch_id or str(uuid.uuid4())
     generated = await generate_grounded_drafts(
@@ -217,11 +235,22 @@ async def enqueue_generated_drafts(
     )
     drafts = generated.drafts
     ai = generated.ai_result
+    if not drafts:
+        # Pathological: the generator returned no drafts. No draft row carries
+        # the call cost, so ``_pill_generation_spend`` can't reconstruct it —
+        # surface the (rare) spend leak rather than let it vanish silently from
+        # current_month_spend (AC-CD8). No rows to persist.
+        logger.warning(
+            "generation batch %s produced no drafts; call cost %.6f not "
+            "persisted (cost leaks from the monthly spend aggregate)",
+            batch_id,
+            ai.cost_usd,
+        )
+        return []
     # 1/N cost-share of the single generation call (mirrors
     # ``record_provenance_share``: tokens floor-divide, cost divides evenly,
-    # the sub-N remainder dropped). ``share_count`` floors at 1 so an
-    # empty-draft return can't divide by zero.
-    share_count = max(len(drafts), 1)
+    # the sub-N remainder dropped). ``len(drafts)`` is ≥1 (empty guarded above).
+    share_count = len(drafts)
     provenance_share = {
         "provider": ai.provider,
         "model": ai.model,
