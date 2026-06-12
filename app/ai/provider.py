@@ -106,12 +106,15 @@ def _stub_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
-    """Deterministic N-draft stub for ``pill_generation`` (B1, AC-CD15).
+    """Deterministic N-draft stub for ``pill_generation`` (AC-CD15).
 
     Seeded by ``topic`` + ``target_count`` (sha256, stable across runs) so the
     same payload yields byte-identical drafts; ``target_count`` is clamped to
-    1-10; each draft carries the full v1.0.0 schema and is safety-classified
-    against the stub cue list. Grounding/provenance are absent at v1.0.0 (B2)."""
+    1-10; each draft carries the full schema and is safety-classified against
+    the stub cue list. **v1.1.0 (B2):** each draft emits a structured
+    ``grounding_refs`` (per-assertion ``{claim, source_doc_refs}``) echoing the
+    ``corpus_refs`` the caller injected from the retrieved corpus; an empty
+    corpus → ``grounding_refs: []`` (general-knowledge fallback)."""
     import hashlib as _hashlib
     import random as _random
 
@@ -122,6 +125,7 @@ def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
     subject_id = payload.get("subject_id")
     gap_signal = str(payload.get("gap_signal") or "stub")
     safety = any(cue in topic.lower() for cue in _STUB_SAFETY_CUES)
+    corpus_refs = [str(r) for r in (payload.get("corpus_refs") or [])]
 
     seed = int.from_bytes(
         _hashlib.sha256(f"{topic}|{target_count}".encode()).digest()[:8], "big"
@@ -131,9 +135,17 @@ def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
     for i in range(target_count):
         lo = rng.randint(dmin, dmax)
         hi = rng.randint(lo, dmax)
+        name = f"{topic or 'Generated pill'} — aspect {i + 1}"
+        # v1.1.0 grounding: one assertion per draft, grounded in the
+        # injected corpus refs (deterministic); empty corpus → no grounding.
+        grounding_refs = (
+            [{"claim": f"{name}: key assertion", "source_doc_refs": list(corpus_refs)}]
+            if corpus_refs
+            else []
+        )
         drafts.append(
             {
-                "name": f"{topic or 'Generated pill'} — aspect {i + 1}",
+                "name": name,
                 "description": (
                     f"Stub-generated competency draft for "
                     f"{topic or 'the topic'} (aspect {i + 1})."
@@ -149,6 +161,7 @@ def _stub_pill_generation_content(payload: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "evidence_count": 0,
                 "gap_signal": gap_signal,
+                "grounding_refs": grounding_refs,
             }
         )
     return {"drafts": drafts}

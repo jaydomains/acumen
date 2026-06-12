@@ -434,6 +434,7 @@ async def retrieve_corpus_for_topic(
     by_id = {chunk.id: chunk for chunk in chunks}
     hits: list[dict[str, object]] = [
         {
+            "corpus_chunk_id": str(by_id[cid].id),
             "source_doc_ref": by_id[cid].source_doc_ref,
             "source_host": by_id[cid].source_host,
             "chunk_text": by_id[cid].chunk_text,

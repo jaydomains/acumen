@@ -842,6 +842,45 @@ class CorpusChunk(Base, TimestampMixin, AIProvenanceMixin):
     )
 
 
+class GenerationProvenance(Base, TimestampMixin):
+    """Per-assertion claim→corpus-source provenance for an autonomously
+    generated pill draft (AC-D29 / §6.8 — ratified per-assertion, NS-3).
+
+    **One row per (assertion, grounding-chunk):** for each factual claim in a
+    generated draft, which reference-corpus chunk(s)/source(s) grounded it,
+    stamped with the grounding source's authority tier + score (AC-D28). A
+    **relational** store (not a JSONB blob on the draft) because the E2
+    per-source rollback must query *"every claim grounded on this
+    source/chunk"* by ``source_host`` / ``corpus_chunk_id`` and retract them
+    claim-precisely (ruling 5). Distinct from :class:`AIProvenanceMixin` (per-
+    row *call cost*) — this is *claim lineage*.
+
+    ``draft_ref`` is the generated draft the claim belongs to (a stable id
+    minted at generation; B3 links the persisted ``ProcessingTask``/pill to
+    it). ``claim_ref`` is the per-assertion identifier. ``batch_id`` is
+    stamped by the B3 N-draft fan-out for per-batch rollback (nullable until
+    then). Written by ``app.domain.generation.generate_grounded_drafts`` (B2);
+    no independent AI cost (the generation call's cost rides the draft).
+    """
+
+    __tablename__ = "generation_provenance"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    draft_ref: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    claim_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    corpus_chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(f"{_SCHEMA}.corpus_chunk.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_host: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    authority_tier: Mapped[int] = mapped_column(nullable=False)
+    authority_score: Mapped[float] = mapped_column(nullable=False)
+    batch_id: Mapped[str | None] = mapped_column(String(255), index=True)
+
+
 class RealismFlag(Base, TimestampMixin):
     """Testee 'feels unrealistic' flag per question per Testee (AC-D22)."""
 

@@ -55,7 +55,8 @@ async def test_stub_pill_generation_schema_and_determinism() -> None:
         assert required <= set(d)
         assert 1 <= d["available_difficulty_min"] <= d["available_difficulty_max"] <= 10
         assert d["gap_signal"] == "uncovered_subject"
-        assert "grounding_refs" not in d  # v1.0.0: grounding lands at B2
+        # v1.1.0: grounding_refs present; empty here (no corpus_refs injected).
+        assert d["grounding_refs"] == []
     assert r1.content == r2.content  # deterministic — byte-identical on re-call
     assert all(d["safety_relevant"] for d in drafts)  # "confined" cue
     # Provenance / zero-spend (AC-CD15).
