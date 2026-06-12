@@ -147,10 +147,11 @@ OP_TO_METHOD: dict[Operation, str] = {
 # the pill-proposal provenance dict in ``processing_tasks.payload``.
 # The dashboard endpoint in :mod:`app.routers.cost` consumes these.
 
-# The 6 entity tables that carry ``AIProvenanceMixin`` columns are
-# enumerated explicitly in :func:`current_month_spend` so an
-# added/removed mixin user is caught at lint time (no clever metaclass
-# discovery).
+# The provenance-bearing entity tables (6 message-op: Grade, GradeReview,
+# Question, AnchorQuestion, WeaknessReport, LearningMaterial; 2 embed:
+# DriveChunk, and CorpusChunk from AC-CD25 / A2) are enumerated explicitly
+# in :func:`current_month_spend` so an added/removed mixin user is caught
+# at lint time (no clever metaclass discovery).
 
 
 def _start_of_current_month(now: datetime) -> datetime:
@@ -283,8 +284,8 @@ async def current_month_spend(
     Returns ``{"total_usd": float, "by_provider": dict, "by_model":
     dict, "since": datetime}``. Tables included: Grade, GradeReview,
     Question, AnchorQuestion, WeaknessReport, LearningMaterial,
-    DriveChunk; plus ``processing_tasks.payload['provenance']`` for
-    pill_proposal.
+    DriveChunk, CorpusChunk (AC-CD25 corpus-embed spend); plus
+    ``processing_tasks.payload['provenance']`` for pill_proposal.
 
     ``DriveChunk`` joined the loop at P9 (AC-D22 / AC-CD8 v1.6): the
     OpenAI embedding spend now surfaces in ``by_provider["openai"]`` /
@@ -305,6 +306,7 @@ async def current_month_spend(
     """
     from app.models import (
         AnchorQuestion,
+        CorpusChunk,
         DriveChunk,
         Grade,
         GradeReview,
@@ -328,6 +330,7 @@ async def current_month_spend(
         WeaknessReport,
         LearningMaterial,
         DriveChunk,
+        CorpusChunk,
     ):
         sub_total, sub_provider, sub_model = await _spend_for_table(
             db, model, tenant_id=tenant_id, since=since
