@@ -135,6 +135,7 @@ OP_TO_METHOD: dict[Operation, str] = {
     Operation.weakness: "generate",
     Operation.learning_material: "generate",
     Operation.pill_proposal: "generate",
+    Operation.pill_generation: "generate",
     Operation.grade_review: "review",
     Operation.anchor_self_review: "review",
     Operation.embed: "embed",

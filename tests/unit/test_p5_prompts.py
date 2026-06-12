@@ -25,6 +25,7 @@ _REGISTERED_OPERATIONS: list[Operation] = [
     Operation.weakness,
     Operation.learning_material,
     Operation.pill_proposal,
+    Operation.pill_generation,  # B1 — autonomous generator (AC-D29 / §6.8)
     Operation.grade_review,
     Operation.anchor_self_review,
 ]

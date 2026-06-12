@@ -49,6 +49,7 @@ _GENERATE_OPS: frozenset[Operation] = frozenset(
         Operation.weakness,
         Operation.learning_material,
         Operation.pill_proposal,
+        Operation.pill_generation,
     }
 )
 _GRADE_OPS: frozenset[Operation] = frozenset({Operation.grading})
@@ -56,14 +57,16 @@ _GRADE_OPS: frozenset[Operation] = frozenset({Operation.grading})
 
 # Conservative cap on the structured JSON each op returns — generation
 # can be large (e.g. 15-question per-Testee mode); grading / weakness /
-# material / pill_proposal are small. The cap exists so a runaway model
-# response cannot pin output spend.
+# material / pill_proposal are small; pill_generation returns N drafts so
+# it gets a larger cap. The cap exists so a runaway model response cannot
+# pin output spend.
 _MAX_OUTPUT_TOKENS: dict[Operation, int] = {
     Operation.generation: 8000,
     Operation.grading: 1000,
     Operation.weakness: 2000,
     Operation.learning_material: 2000,
     Operation.pill_proposal: 1000,
+    Operation.pill_generation: 4000,
 }
 
 

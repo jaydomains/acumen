@@ -1,10 +1,12 @@
 """Versioned prompt registry (CODE_SPEC §7 / AC-CD8).
 
-The seven AI operation prompts (SPEC §6) live in version control, not in
-the database. Each prompt is a module exporting ``TEMPLATE`` (the prompt
-text) and ``VERSION`` (a semver string). The version used on any AI call
-is persisted on the producing entity's
-:class:`app.models.AIProvenanceMixin` columns — never global.
+The AI operation prompts (SPEC §6) live in version control, not in the
+database. Each prompt is a module exporting ``TEMPLATE`` (the prompt text)
+and ``VERSION`` (a semver string). The version used on any AI call is
+persisted on the producing entity's
+:class:`app.models.AIProvenanceMixin` columns — never global. The canonical
+operation count is nine (v1.9); built-state grows per slice — the
+``pill_generation`` prompt lands at B1, ``content_self_review`` at C1.
 
 P5 ships the five Anthropic-side prompts (generation / grading /
 weakness / learning_material / pill_proposal). P6 adds the cross-family
@@ -27,6 +29,7 @@ from app.ai.prompts import (
     grading,
     learning_material,
     learning_material_self_initiated,
+    pill_generation,
     pill_proposal,
     weakness,
 )
@@ -43,6 +46,10 @@ _REGISTRY: dict[Operation, tuple[str, str]] = {
         learning_material.VERSION,
     ),
     Operation.pill_proposal: (pill_proposal.TEMPLATE, pill_proposal.VERSION),
+    Operation.pill_generation: (
+        pill_generation.TEMPLATE,
+        pill_generation.VERSION,
+    ),
     Operation.grade_review: (grade_review.TEMPLATE, grade_review.VERSION),
     Operation.anchor_self_review: (
         anchor_self_review.TEMPLATE,
