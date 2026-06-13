@@ -18,7 +18,7 @@
 
 - Files added: `app/domain/oversight.py`, `app/routers/oversight.py`, `tests/unit/test_oversight.py`, `tests/integration/test_oversight_api.py`. Modified: `app/main.py` (router wiring).
 - **Five read facets** (AC-CD26 read half, admin-role-gated AC-CD5, thin-router→domain AC-CD2):
-  - `recent_publishes(db, *, limit, offset, low_confidence, since, subject_id)` — newest-first, paginated, filtered; each row embeds confidence + the three AC-D30 verdicts + per-type telemetry + the retired (rolled-back) flag, plus `total` for the pager.
+  - `recent_publishes(db, *, limit, offset, low_confidence, since, subject_id)` — newest-first, paginated, filtered; each row embeds confidence + the three AC-D30 verdicts + per-type telemetry + the retired (rolled-back) flag, plus a `has_more` sentinel for the pager. **CA-E1-2a:** the prod fetch is SQL-bounded (`ORDER BY created_at DESC` + `LIMIT offset+limit+1`) on the unfiltered hot path; the Python filter/sort/window stays as the WHERE-blind-fake re-check (B3/CA-D3-2). The three filters stay Python-side (range/join/`bool`-literal all break the fake), so the SQL `LIMIT` is skipped when any is active. `total` is intentionally a `has_more` boolean (exact count ⟂ a bounded fetch).
   - `item_provenance(db, *, pill_id)` — the claim→source→authority-tier chain, resolved via the generation task's `draft_ref` (per-assertion precision); empty for an ungrounded refiner publish.
   - `source_authority_breakdown(db)` — claims aggregated by `authority_tier` + `source_host` (the rein-in radar), `by_source` ordered by claim count desc.
   - `sample_for_spotcheck(db, *, n, bias, seed)` — deterministic, low-confidence-weighted (Efraimidis–Spirakis weighted reservoir, weight 4× on low-confidence under `bias="low_confidence"`).
@@ -47,7 +47,8 @@
 ## Test coverage and CI results
 
 - `tests/unit/test_oversight.py` — 10 zero-network domain tests (newest-first pagination, confidence/verdicts/subject embed, low_confidence + subject filters, provenance chain + empty-refiner case, breakdown by tier+host, spot-check determinism-under-seed + low-confidence over-sampling + empty/non-positive-n guards).
-- `tests/integration/test_oversight_api.py` — 5 router tests (admin authz → Testee 403; paginated page + low_confidence filter; provenance chain; source-authority breakdown; seeded spot-check determinism + authz).
+- `tests/integration/test_oversight_api.py` — 6 router tests (admin authz → Testee 403 on all 4 endpoints; paginated page + low_confidence filter; provenance chain; source-authority breakdown; seeded spot-check determinism + authz).
+- `tests/e2e/test_oversight_pagination.py` — real-Postgres guard for CA-E1-2a (the WHERE-blind fake can't model the SQL `ORDER`/`LIMIT`/range/join): newest-first + `LIMIT/OFFSET` + `has_more` + `since`-range + `subject`-join, future-dated rows for isolation. Runs in the migration-chain CI job (`--ignore=tests/e2e` for the default run).
 - Full unit+integration suite **1041 passed**; ruff / ruff-format / mypy / structure-gate / unpinned-deps all green; anchor diff (SPEC/CODE_SPEC/DECISIONS) empty.
 
 ## Post-merge validation considerations
