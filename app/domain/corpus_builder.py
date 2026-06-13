@@ -51,6 +51,7 @@ from app.domain.source_authority import (
     Tier,
     authority_score,
     authority_tier,
+    filter_demoted,
     filter_to_allowlist,
 )
 from app.domain.web_search import WebSearchResult, get_web_search_source
@@ -228,7 +229,10 @@ async def acquire_for_topic(
     """
     source = get_web_search_source()
     results = await source.search(topic, max_results=_SEARCH_MAX_RESULTS)
-    allowed = filter_to_allowlist(results)
+    # DS13-a (AC-CD26): the code-seed allowlist minus the ``denied``
+    # demotions a per-source rollback wrote — so a discredited host isn't
+    # re-acquired on the next refresh.
+    allowed = await filter_demoted(db, filter_to_allowlist(results))
     if not allowed:
         logger.info("corpus acquire: no allowlisted sources for topic %r", topic)
         return 0

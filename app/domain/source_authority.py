@@ -37,8 +37,12 @@ import enum
 from collections.abc import Iterable
 from functools import lru_cache
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import Settings, get_settings
 from app.domain.web_search import WebSearchResult, _host_of
+from app.models import SEED_TENANT_ID, DemotedSource
 
 
 class Tier(enum.IntEnum):
@@ -211,3 +215,81 @@ def filter_to_allowlist(
         if tier is not None:
             tagged.append((row, tier))
     return tagged
+
+
+# --- DS13-a DB source-override layer (AC-CD26 / AC-D28, E2) ------------
+# The code-VCS seed above answers "what tier does the registry assign?".
+# These db-aware variants layer the operator/rollback ``demoted_sources``
+# overrides on top of that seed (AC-CD26): a ``denied`` row removes the host
+# from the effective allowlist; a ``tier_override`` re-ranks it. ``rollback_
+# source`` (E2) writes a ``denied`` row so the corpus builder skips the host.
+
+
+async def _override_for(db: AsyncSession, host: str) -> DemotedSource | None:
+    """The ``demoted_sources`` row for a normalised host, or ``None``."""
+    result = await db.execute(
+        select(DemotedSource).where(
+            DemotedSource.tenant_id == SEED_TENANT_ID,
+            DemotedSource.source_host == host,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def effective_authority_tier(
+    db: AsyncSession, url_or_host: str, *, settings: Settings | None = None
+) -> Tier | None:
+    """The host's authority tier with the DB override applied on top of the
+    code seed (AC-CD26 / DS13-a): a ``denied`` demotion returns ``None``; a
+    ``tier_override`` returns that tier; otherwise the seed tier."""
+    host = _normalise(url_or_host)
+    if not host:
+        return None
+    seed = authority_tier(host, settings=settings)
+    override = await _override_for(db, host)
+    if override is None:
+        return seed
+    if override.denied:
+        return None
+    if override.tier_override is not None:
+        return Tier(override.tier_override)
+    return seed
+
+
+async def effective_is_allowlisted(
+    db: AsyncSession, url_or_host: str, *, settings: Settings | None = None
+) -> bool:
+    """``True`` iff the host is on the effective allowlist — the code seed
+    minus the ``denied`` DB demotions (AC-CD26 / DS13-a)."""
+    return (
+        await effective_authority_tier(db, url_or_host, settings=settings)
+    ) is not None
+
+
+async def denied_hosts(db: AsyncSession) -> set[str]:
+    """The set of normalised hosts demoted with ``denied=True`` — the bulk
+    skip-set the corpus builder consults so it stops re-acquiring a host a
+    per-source rollback discredited (AC-CD26 / AC-CD25)."""
+    # Filter ``denied`` in Python (the override table is small / operator-scale)
+    # — a ``.is_(True)`` SQL predicate would render a literal the AC-CD15 fake's
+    # WHERE-parser can't read, and the tenant scan is cheap here.
+    result = await db.execute(
+        select(DemotedSource).where(DemotedSource.tenant_id == SEED_TENANT_ID)
+    )
+    return {row.source_host for row in result.scalars().all() if row.denied}
+
+
+async def filter_demoted(
+    db: AsyncSession, tagged: list[tuple[WebSearchResult, Tier]]
+) -> list[tuple[WebSearchResult, Tier]]:
+    """Drop allowlisted rows whose host is ``denied`` in ``demoted_sources``
+    (AC-CD26 / DS13-a) — the durable per-source rollback skip the corpus
+    builder applies after :func:`filter_to_allowlist`."""
+    denied = await denied_hosts(db)
+    if not denied:
+        return list(tagged)
+    return [
+        (row, tier)
+        for row, tier in tagged
+        if _normalise(row.source or row.url) not in denied
+    ]
