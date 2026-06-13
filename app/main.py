@@ -29,6 +29,7 @@ from app.routers import (
     competency,
     cost,
     groups,
+    oversight,
     paths,
     rag,
     tests,
@@ -160,6 +161,9 @@ def create_app() -> FastAPI:
     # P9 — Drive RAG admin surface (Slice 2) + realism feedback
     # endpoints (Slice 4). AC-D22.
     app.include_router(rag.router)
+
+    # E1 — retroactive content-oversight dashboard read API (AC-CD26).
+    app.include_router(oversight.router)
 
     return app
 
