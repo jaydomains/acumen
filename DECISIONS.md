@@ -783,7 +783,7 @@ The tier→score map (**T1=1.0 / T2=0.6 / T3=0.3**) is the single authority sign
 
 **Spec reference:** §6.9, §6.5.
 
-**Related:** AC-D19, AC-D21, AC-D23, AC-D29, AC-D31.
+**Related:** AC-D19, AC-D21, AC-D23, AC-D29, AC-D31, AC-D32, AC-CD27.
 
 ---
 
@@ -805,7 +805,7 @@ The tier→score map (**T1=1.0 / T2=0.6 / T3=0.3**) is the single authority sign
 
 **Spec reference:** §6.5, §6.9, §4.11.
 
-**Related:** AC-D7, AC-D21, AC-D28, AC-D29, AC-D30.
+**Related:** AC-D7, AC-D21, AC-D28, AC-D29, AC-D30, AC-D32, AC-CD26, AC-CD27.
 
 ---
 
