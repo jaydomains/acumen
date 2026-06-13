@@ -174,3 +174,67 @@ def test_corpus_refresh_task_shapes_counts(
 
     result = corpus_refresh_task()
     assert result == {"topics_refreshed": 2, "chunks_added": 5}
+
+
+def test_gap_detection_sweep_task_dispatches_and_commits(
+    fake_session_factory: CatalogueFakeSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``gap_detection.sweep`` (D4) wrapper dispatches ``gap_detection_sweep`` and
+    **commits** — the D4 caller-commits forward-watch (the sweep's
+    ``consumed_at`` marks + generation batches must persist). The sweep fn is
+    stubbed (its logic is unit-tested in ``test_gap_detection.py``)."""
+    import app.domain.gap_detection as gdmod
+
+    called: dict[str, Any] = {}
+
+    async def _fake_sweep(db: Any) -> list[object]:
+        called["db"] = db
+        return [object(), object()]  # 2 triggers
+
+    monkeypatch.setattr(gdmod, "gap_detection_sweep", _fake_sweep)
+    commits = {"n": 0}
+    original_commit = fake_session_factory.commit
+
+    async def _spy_commit() -> None:
+        commits["n"] += 1
+        await original_commit()
+
+    fake_session_factory.commit = _spy_commit  # type: ignore[method-assign]
+    from app.worker import gap_detection_sweep_task
+
+    result = gap_detection_sweep_task()
+    assert result == {"generated": 2}
+    assert "db" in called  # dispatched the D3 fn
+    assert commits["n"] >= 1  # committed (consumed_at persists)
+
+
+def test_catalogue_health_check_task_dispatches_and_commits(
+    fake_session_factory: CatalogueFakeSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``catalogue_health.check`` (D4) wrapper dispatches ``catalogue_health_
+    check`` and commits. The check fn is stubbed (logic in
+    ``test_gap_detection.py``)."""
+    import app.domain.gap_detection as gdmod
+
+    called: dict[str, Any] = {}
+
+    async def _fake_check(db: Any) -> list[object]:
+        called["db"] = db
+        return [object()]  # 1 trigger
+
+    monkeypatch.setattr(gdmod, "catalogue_health_check", _fake_check)
+    commits = {"n": 0}
+    original_commit = fake_session_factory.commit
+
+    async def _spy_commit() -> None:
+        commits["n"] += 1
+        await original_commit()
+
+    fake_session_factory.commit = _spy_commit  # type: ignore[method-assign]
+    from app.worker import catalogue_health_check_task
+
+    result = catalogue_health_check_task()
+    assert result == {"generated": 1}
+    assert "db" in called and commits["n"] >= 1

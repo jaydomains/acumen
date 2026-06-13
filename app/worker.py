@@ -224,6 +224,43 @@ def corpus_refresh_task() -> dict[str, object]:
     return asyncio.run(_run())
 
 
+@celery_app.task(name="gap_detection.sweep")
+def gap_detection_sweep_task() -> dict[str, int]:
+    """Celery wrapper for the §6.5 autonomous gap-detection sweep (D4 — one of
+    the canonical nine §8.9 crons). Calls
+    :func:`~app.domain.gap_detection.gap_detection_sweep` and **commits** so the
+    ``GapSignal.consumed_at`` marks the sweep set (and the generation batches it
+    opened) persist."""
+    from app.domain.gap_detection import gap_detection_sweep
+    from app.models import worker_session
+
+    async def _run() -> dict[str, int]:
+        async with worker_session() as session:
+            triggers = await gap_detection_sweep(session)
+            await session.commit()
+        return {"generated": len(triggers)}
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="catalogue_health.check")
+def catalogue_health_check_task() -> dict[str, int]:
+    """Celery wrapper for the NS-4 proactive catalogue-health check (D4 — one of
+    the canonical nine §8.9 crons). Calls
+    :func:`~app.domain.gap_detection.catalogue_health_check` and **commits** so
+    the generation batches it opened persist."""
+    from app.domain.gap_detection import catalogue_health_check
+    from app.models import worker_session
+
+    async def _run() -> dict[str, int]:
+        async with worker_session() as session:
+            triggers = await catalogue_health_check(session)
+            await session.commit()
+        return {"generated": len(triggers)}
+
+    return asyncio.run(_run())
+
+
 @celery_app.task(name="realism.aggregate")
 def realism_aggregate_task() -> dict[str, object]:
     """Celery wrapper for the AC-D22 nightly Testee-feedback
