@@ -543,7 +543,10 @@ async def rollback_source(
         actor_id=actor_id,
         action="pill_generation.rollback_source",
         target_entity="demoted_sources",
-        target_id=pill_ids and next(iter(pill_ids)) or SEED_TENANT_ID,
+        # The source-level summary audit; the retracted pills carry their own
+        # per-pill rollback_source audits. No single entity id, so the tenant
+        # anchors the summary — the source lives in target_entity + detail.
+        target_id=SEED_TENANT_ID,
         detail={
             "source_host": norm_host,
             "reason": reason,
