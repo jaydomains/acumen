@@ -220,9 +220,35 @@ async def test_process_pending_bootstraps_drains_and_marks_done(
         await enqueue_pill_bootstrap(session, pill_id=pid)
 
     result = await process_pending_bootstraps(session)
-    assert result == {"bootstrapped": 2}
+    assert result == {"bootstrapped": 2, "failed": 0}
     assert set(seen) == {pid1, pid2}
     assert all(t.status == ProcessingTaskStatus.done for t in _bootstrap_tasks(session))
+
+
+async def test_process_pending_bootstraps_isolates_a_failing_pill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One pill whose bootstrap raises is marked ``failed`` and the batch
+    continues — the persistently-failing pill can't block the others, and the
+    successful work isn't rolled back (Gitar #1 / poison-task isolation)."""
+    bad = uuid.uuid4()
+
+    async def _stub(db: object, *, pill_id: uuid.UUID, **_k: object) -> dict:
+        if pill_id == bad:
+            raise RuntimeError("anchor gen blew up")
+        return {"pill_id": str(pill_id)}
+
+    monkeypatch.setattr(boot, "bootstrap_pill", _stub)
+    session = CatalogueFakeSession()
+    good = uuid.uuid4()
+    await enqueue_pill_bootstrap(session, pill_id=bad)
+    await enqueue_pill_bootstrap(session, pill_id=good)
+
+    result = await process_pending_bootstraps(session)
+    assert result == {"bootstrapped": 1, "failed": 1}
+    by_pill = {t.payload["pill_id"]: t.status for t in _bootstrap_tasks(session)}
+    assert by_pill[str(bad)] == ProcessingTaskStatus.failed
+    assert by_pill[str(good)] == ProcessingTaskStatus.done
 
 
 async def test_refiner_proposal_publish_still_works(

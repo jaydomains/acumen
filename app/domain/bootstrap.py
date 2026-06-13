@@ -226,13 +226,27 @@ async def process_pending_bootstraps(
         )
     )
     processed = 0
+    failed = 0
     for task in result.scalars().all():
         payload = task.payload or {}
         pid = payload.get("pill_id")
         if pid is None:
             continue
-        await bootstrap_pill(db, pill_id=uuid.UUID(str(pid)), http_client=http_client)
+        # Per-task isolation: the bootstrap does real AI/network work, and the
+        # op is idempotent (anchor top-up quota gate + link dedupe), so one bad
+        # pill must not poison the batch — mark it ``failed`` and continue rather
+        # than abort the whole drain (which would roll back the already-``done``
+        # tasks via the wrapper's un-run commit + let a persistently-failing pill
+        # block every other pill's bootstrap forever).
+        try:
+            await bootstrap_pill(db, pill_id=uuid.UUID(str(pid)), http_client=http_client)
+        except Exception:
+            logger.exception("pill_bootstrap failed for pill_id=%s", pid)
+            task.status = ProcessingTaskStatus.failed
+            task.finished_at = now_utc()
+            failed += 1
+            continue
         task.status = ProcessingTaskStatus.done
         task.finished_at = now_utc()
         processed += 1
-    return {"bootstrapped": processed}
+    return {"bootstrapped": processed, "failed": failed}
