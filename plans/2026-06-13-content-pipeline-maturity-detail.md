@@ -1,15 +1,20 @@
 # Content pipeline maturity — dual-path generation + audit-driven fixes — granular detail-plan
 
-**Status: draft — planner authoring; under three-party review.** This is the **planner's** detail-plan
-artifact, authored as a **non-draft** PR (per the session-opener instruction — a deliberate deviation
-from role §4.3's draft default, surfaced here and in the PR body) and hardened through the independent
-**plan-auditor** (content correctness) and **plan-overseer** (workflow-governance correctness) loop per
-`.claude/roles/*.md`, bound to Acumen by `plans/REQUIRED_READING.md`. Convergence is **three independent
-sign-offs at one whole-doc content-SHA** + the three-layer green gate + **explicit spec-author
-ratification** (this PR is class **(iv)**, §0.2) + the override window → the **overseer** squash-merges.
-The planner **never** flips draft→ready and **never** merges. When the planner judges the plan complete
-and reviewer threads resolved, this Status line flips to `**Status: final — approved by planner**` (the
-content-invariant final-marker on this canonical branch).
+**Status: final — approved by planner** — content-bound to whole-doc body-SHA `0bfc05a` (the §0–§13 +
+Loop-mechanics body). This Status block is **content-invariant**: flipping it leaves the reviewed body
+**byte-identical to `0bfc05a`**, so it does **not** re-stale the **plan-auditor's** content seal
+(final-marker content-bound to `0bfc05a`) nor the **plan-overseer's** pending governance marker (role
+files §8). Hardened through the **plan-auditor** (content: CA-1…CA-4 all **resolved** + CA-C1…CA-C11
+confirmed) + **plan-overseer** (governance: OV-1…OV-12 all **resolved/confirmed**) loop per
+`.claude/roles/*.md`, bound to Acumen by `plans/REQUIRED_READING.md`. **Convergence is not merge
+authorization:** this is a **class-(iv) ratification-class** PR (§0.2) — the **overseer** executes the
+squash-merge only after **(1)** its own governance final-marker at the `0bfc05a` body-SHA, **(2)**
+**explicit spec-author ratification through the authenticated channel** affirming the §0.3
+settled-rulings recording + the §10 DDP-1…DDP-27 resolutions + the §4 anchor numbering + the §3
+sequencing + the §12 launch-blocker map + the §4 framework-(iv) authoring-locus (OPEN-G1/G3/G4), and
+**(3)** the override window (collapsed to zero by a present ratifying spec author). The planner
+**never** flips draft→ready and **never** merges; stays subscribed through merge; stands down only on
+merge verified via `git ls-remote`.
 
 **Date:** 2026-06-13
 **Branch:** `claude/content-pipeline-detail-plan-vhfios` (this detail-plan PR — distinct from the
