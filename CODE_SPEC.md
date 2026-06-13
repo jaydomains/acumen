@@ -13,7 +13,7 @@
 > **Decision prefix:** `AC-CD{n}` for technical/code decisions, anchored in
 > §18 below. Product decisions remain `AC-D{n}` in `DECISIONS.md`.
 >
-> **Status:** v1 target. Paired with `SPEC.md` v1.9 / `DECISIONS.md` v1.9.
+> **Status:** v1 target. Paired with `SPEC.md` v1.10 / `DECISIONS.md` v1.10.
 >
 > **Portability stance:** standalone-first. Acumen ships as a standalone
 > app and later folds into the SiteMesh platform as a peer Workflow module
