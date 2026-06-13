@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.bootstrap import enqueue_pill_bootstrap
 from app.domain.catalogue import create_pill, record_audit
 from app.domain.self_review import DegradeMode, SelfReviewResult, self_review_draft
 from app.models import (
@@ -215,5 +216,12 @@ async def auto_publish_draft(db: AsyncSession, task: ProcessingTask) -> PublishR
         single_provider_verified=review.single_provider_verified,
     )
     db.add(record)
+
+    # F1 (AC-D7/AC-D23): every published pill bootstraps. Enqueue the per-pill
+    # incremental bootstrap (anchor pool + safety links) — async (a row insert,
+    # so publish stays fast; the worker drains it). Fires on both live and
+    # publish-with-warning (every published pill); the caller commits.
+    await enqueue_pill_bootstrap(db, pill_id=pill.id)
+
     await db.flush()
     return record

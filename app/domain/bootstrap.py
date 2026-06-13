@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -45,12 +46,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.calibration import generate_anchor_pool_for_pill
+from app.domain.catalogue import record_audit
 from app.domain.drive_rag import ingest_drive_folder
 from app.domain.safety_links import curate_links_for_pill
-from app.models import SEED_TENANT_ID, Pill
-from app.permissions import APIError
+from app.models import SEED_TENANT_ID, Pill, ProcessingTask, ProcessingTaskStatus
+from app.permissions import APIError, now_utc
 
 logger = logging.getLogger(__name__)
+
+# F1 (AC-D7/AC-D23, bootstrap-on-publish): the per-pill incremental bootstrap is
+# enqueued on auto-publish as a ``ProcessingTask`` of this name (the codebase's
+# async pattern — `pill_proposal` / `pill_generation` use the same row-enqueue,
+# no ``.delay()``), drained off-cron by the ``pill_generation.bootstrap`` worker
+# wrapper. Distinct from the all-pills :func:`run_bootstrap` admin orchestrator.
+BOOTSTRAP_TASK_NAME = "pill_bootstrap"
 
 
 async def _active_pills(db: AsyncSession) -> list[Pill]:
@@ -150,3 +159,80 @@ async def run_bootstrap(
         "drive_files_deleted": int(drive_telemetry.get("files_deleted", 0)),
         "duration_seconds": duration,
     }
+
+
+# --- F1: bootstrap-on-publish (per-pill incremental, AC-D7/AC-D23) -----
+# The autonomous pipeline has no admin approve gate (AC-D7), so the incremental
+# bootstrap fires on **auto-publish** (AC-D23 reframe). C2's ``auto_publish_draft``
+# enqueues a per-pill task (fast — a row insert, so publish returns immediately);
+# the worker drains it and runs the reuse-only primitives. Idempotent: the anchor
+# top-up's quota gate + the link curation's self-guard make a re-run a near-no-op.
+
+
+async def enqueue_pill_bootstrap(
+    db: AsyncSession, *, pill_id: uuid.UUID
+) -> ProcessingTask:
+    """Enqueue the on-publish per-pill bootstrap (F1) — a ``pending``
+    ``pill_bootstrap`` task carrying the pill id. The caller commits (the publish
+    path); the worker wrapper drains it **async** so publish stays fast."""
+    task = ProcessingTask(
+        tenant_id=SEED_TENANT_ID,
+        task_name=BOOTSTRAP_TASK_NAME,
+        status=ProcessingTaskStatus.pending,
+        payload={"pill_id": str(pill_id)},
+    )
+    db.add(task)
+    return task
+
+
+async def bootstrap_pill(
+    db: AsyncSession,
+    *,
+    pill_id: uuid.UUID,
+    http_client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Run the per-pill incremental bootstrap (F1 — AC-D23 steps 1 + 3 for one
+    pill): top-up the anchor pool (``top_up=True`` — skip-already-populated) and
+    curate safety links (``curate_links_for_pill`` self-guards non-safety pills).
+    Reuse-only; audited ``pill_generation.bootstrap``. Idempotent."""
+    anchors = await generate_anchor_pool_for_pill(db, pill_id, top_up=True)
+    links = await curate_links_for_pill(db, pill_id, http_client=http_client)
+    telemetry = {
+        "anchors_generated": int(anchors.get("anchors_generated", 0)),
+        "anchors_excluded": int(anchors.get("anchors_excluded", 0)),
+        "links_added": int(links.get("links_added", 0)),
+    }
+    await record_audit(
+        db,
+        actor_id=None,  # autonomous bootstrap — no human actor
+        action="pill_generation.bootstrap",
+        target_entity="pill",
+        target_id=pill_id,
+        detail=telemetry,
+    )
+    return {"pill_id": str(pill_id), **telemetry}
+
+
+async def process_pending_bootstraps(
+    db: AsyncSession, *, http_client: httpx.AsyncClient | None = None
+) -> dict[str, int]:
+    """Drain the pending on-publish bootstrap tasks (the worker wrapper's body):
+    run :func:`bootstrap_pill` for each + mark it ``done``. The caller commits."""
+    result = await db.execute(
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == BOOTSTRAP_TASK_NAME,
+            ProcessingTask.status == ProcessingTaskStatus.pending,
+        )
+    )
+    processed = 0
+    for task in result.scalars().all():
+        payload = task.payload or {}
+        pid = payload.get("pill_id")
+        if pid is None:
+            continue
+        await bootstrap_pill(db, pill_id=uuid.UUID(str(pid)), http_client=http_client)
+        task.status = ProcessingTaskStatus.done
+        task.finished_at = now_utc()
+        processed += 1
+    return {"bootstrapped": processed}

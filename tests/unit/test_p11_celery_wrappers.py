@@ -238,3 +238,35 @@ def test_catalogue_health_check_task_dispatches_and_commits(
     result = catalogue_health_check_task()
     assert result == {"generated": 1}
     assert "db" in called and commits["n"] >= 1
+
+
+def test_pill_bootstrap_task_drains_and_commits(
+    fake_session_factory: CatalogueFakeSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``pill_generation.bootstrap`` (F1, off-cron) wrapper drains the pending
+    ``pill_bootstrap`` tasks and **commits** so each pill's anchor pool + safety
+    links persist. The drain fn is stubbed (logic in
+    ``test_p14_bootstrap_on_publish.py``)."""
+    import app.domain.bootstrap as bmod
+
+    called: dict[str, Any] = {}
+
+    async def _fake_drain(db: Any) -> dict[str, int]:
+        called["db"] = db
+        return {"bootstrapped": 3}
+
+    monkeypatch.setattr(bmod, "process_pending_bootstraps", _fake_drain)
+    commits = {"n": 0}
+    original_commit = fake_session_factory.commit
+
+    async def _spy_commit() -> None:
+        commits["n"] += 1
+        await original_commit()
+
+    fake_session_factory.commit = _spy_commit  # type: ignore[method-assign]
+    from app.worker import pill_bootstrap_task
+
+    result = pill_bootstrap_task()
+    assert result == {"bootstrapped": 3}
+    assert "db" in called and commits["n"] >= 1
