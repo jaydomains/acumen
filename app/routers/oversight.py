@@ -1,14 +1,17 @@
-"""oversight router — admin retroactive-oversight dashboard READ API (AC-CD26, E1).
+"""oversight router — admin retroactive-oversight dashboard API (AC-CD26, E1+E2).
 
-Thin (AC-CD2): authz + query validation + envelope only; every read +
-aggregation lives in :mod:`app.domain.oversight`. Admin-role-gated (AC-CD5) — the
+Thin (AC-CD2): authz + validation + envelope only; every read/aggregation +
+rollback lives in :mod:`app.domain.oversight`. Admin-role-gated (AC-CD5) — the
 autonomous pipeline has no human pre-publish gate (AC-D31), so this is the
-*retroactive* governance surface (SPEC §4.11 / §6.5): observe recent publishes,
-each item's provenance chain, the source-authority breakdown, and a low-
-confidence-weighted spot-check sample. The rollback matrix (the *rein-in* writes)
-+ the ``demoted_sources`` source-override layer are E2; this half is read-only.
+*retroactive* governance surface (SPEC §4.11 / §6.5): **observe** (E1) recent
+publishes, each item's provenance chain, the source-authority breakdown, and a
+low-confidence-weighted spot-check sample; and **rein in** (E2) via the rollback
+matrix (per pill / question / batch / source — retract-not-delete) + the
+relocated AC-D21 safety-tag override. Per-source rollback writes a durable
+``demoted_sources`` demotion (DS13-a). Writes commit explicitly (``get_db`` does
+not auto-commit).
 
-Zero-network (AC-CD15 — pure DB reads, no AI call).
+Zero-network (AC-CD15 — no AI call).
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain import oversight
@@ -27,6 +31,25 @@ from app.permissions import ROLE_ADMINISTRATOR, require_role
 router = APIRouter(prefix="/v1/admin/oversight", tags=["admin"])
 
 _require_admin = require_role(ROLE_ADMINISTRATOR)
+
+
+class _RollbackRequest(BaseModel):
+    """Optional audited reason for a rollback (AC-D14 / §290)."""
+
+    reason: str | None = None
+
+
+class _SourceRollbackRequest(BaseModel):
+    """Per-source rollback target + optional reason."""
+
+    source_host: str
+    reason: str | None = None
+
+
+class _SafetyOverrideRequest(BaseModel):
+    """The relocated AC-D21 retroactive safety-tag retoggle."""
+
+    value: bool
 
 
 @router.get("/publishes")
@@ -87,3 +110,99 @@ async def get_spotcheck_sample(
     low-confidence-weighted sample of recent publishes for retroactive review."""
     sample = await oversight.sample_for_spotcheck(db, n=n, bias=bias, seed=seed)
     return {"sample": sample, "n": n, "bias": bias, "seed": seed}
+
+
+# --- Rollback matrix + safety override (E2 — AC-CD26 rollback half) ----
+# Admin-gated writes; the authenticated admin is the audited actor. Each
+# commits explicitly (``get_db`` does not auto-commit) so the retire/exclude +
+# audit + (per-source) demotion persist.
+
+
+@router.post("/publishes/{pill_id}/rollback")
+async def post_rollback_pill(
+    pill_id: UUID,
+    body: _RollbackRequest | None = None,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Per-pill rollback (AC-CD26): retire the published pill (retain + audit)."""
+    result = await oversight.rollback_pill(
+        db,
+        pill_id=pill_id,
+        reason=body.reason if body else None,
+        actor_id=_admin.id,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/questions/{question_id}/rollback")
+async def post_rollback_question(
+    question_id: UUID,
+    body: _RollbackRequest | None = None,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Per-question rollback (AC-CD26): exclude a generated anchor question."""
+    result = await oversight.rollback_question(
+        db,
+        question_id=question_id,
+        reason=body.reason if body else None,
+        actor_id=_admin.id,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/batches/{batch_id}/rollback")
+async def post_rollback_batch(
+    batch_id: str,
+    body: _RollbackRequest | None = None,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Per-batch rollback (AC-CD26): retire every pill of the B3 batch."""
+    result = await oversight.rollback_batch(
+        db,
+        batch_id=batch_id,
+        reason=body.reason if body else None,
+        actor_id=_admin.id,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/sources/rollback")
+async def post_rollback_source(
+    body: _SourceRollbackRequest,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Per-source rollback (AC-CD26): retract the pills a discredited source
+    grounded + write a durable ``denied`` demotion (DS13-a)."""
+    result = await oversight.rollback_source(
+        db,
+        source_host=body.source_host,
+        reason=body.reason,
+        actor_id=_admin.id,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/publishes/{pill_id}/safety-override")
+async def post_safety_override(
+    pill_id: UUID,
+    body: _SafetyOverrideRequest,
+    _admin: AppUser = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Relocated AC-D21 retroactive safety-tag override."""
+    result = await oversight.override_safety_relevant(
+        db,
+        pill_id=pill_id,
+        value=body.value,
+        actor_id=_admin.id,
+    )
+    await db.commit()
+    return result

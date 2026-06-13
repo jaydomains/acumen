@@ -33,15 +33,20 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.catalogue import override_pill_safety, record_audit
 from app.domain.generation import GENERATION_TASK_NAME
+from app.domain.source_authority import _normalise
 from app.models import (
     SEED_TENANT_ID,
+    AnchorQuestion,
+    DemotedSource,
     GenerationProvenance,
     Pill,
     ProcessingTask,
     PublishRecord,
     Subject,
 )
+from app.permissions import APIError, now_utc
 
 # Spot-check over-sampling weight: a low-confidence publish is this many times
 # more likely to surface in a ``bias="low_confidence"`` sample than a confident
@@ -333,3 +338,249 @@ async def sample_for_spotcheck(
         keyed.append((key, row["pill_id"], row))
     keyed.sort(key=lambda t: (t[0], t[1]), reverse=True)
     return [row for _, _, row in keyed[:n]]
+
+
+# --- Rollback matrix (E2 — AC-CD26 rollback half) ---------------------
+# The *rein-in* writes the no-pre-publish-gate posture (AC-D31) depends on.
+# All four rollbacks are **retract-not-delete** (retire per AC-D14 / exclude
+# per AC-D23 — the entity is retained for audit, never hard-deleted),
+# idempotent, and audit-logged (`pill_generation.rollback_*`, §290). Per-source
+# rollback additionally writes a durable `demoted_sources` demotion (DS13-a) so
+# the corpus builder stops re-acquiring the discredited host. The admin gate
+# (AC-CD5) + the authenticated actor live at the router.
+
+
+async def _pill_by_id(db: AsyncSession, pill_id: UUID) -> Pill | None:
+    result = await db.execute(
+        select(Pill).where(Pill.tenant_id == SEED_TENANT_ID, Pill.id == pill_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _retire_pill_row(
+    db: AsyncSession,
+    pill: Pill,
+    *,
+    reason: str | None,
+    actor_id: UUID,
+    action: str,
+) -> bool:
+    """Retire a pill (AC-D14 — set ``retired_at`` once, idempotent) + audit.
+    Returns ``True`` when this call newly retired it."""
+    newly = pill.retired_at is None
+    if newly:
+        pill.retired_at = now_utc()
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action=action,
+        target_entity="pill",
+        target_id=pill.id,
+        detail={"reason": reason, "newly_retired": newly},
+    )
+    return newly
+
+
+async def rollback_pill(
+    db: AsyncSession, *, pill_id: UUID, reason: str | None, actor_id: UUID
+) -> dict[str, Any]:
+    """Per-pill rollback (AC-CD26): retire the published pill, retained + audited.
+    Idempotent — re-rolling an already-retired pill re-audits but is a no-op."""
+    pill = await _pill_by_id(db, pill_id)
+    if pill is None:
+        raise APIError(404, "pill_not_found", "No such pill.")
+    newly = await _retire_pill_row(
+        db, pill, reason=reason, actor_id=actor_id, action="pill_generation.rollback_pill"
+    )
+    await db.flush()
+    return {"pill_id": str(pill_id), "retired": True, "newly_retired": newly}
+
+
+async def rollback_question(
+    db: AsyncSession, *, question_id: UUID, reason: str | None, actor_id: UUID
+) -> dict[str, Any]:
+    """Per-question rollback (AC-CD26): exclude a generated anchor-pool question
+    (AC-D23 ``excluded`` — retract-not-delete) + audit. Idempotent."""
+    result = await db.execute(
+        select(AnchorQuestion).where(
+            AnchorQuestion.tenant_id == SEED_TENANT_ID,
+            AnchorQuestion.id == question_id,
+        )
+    )
+    question = result.scalar_one_or_none()
+    if question is None:
+        raise APIError(404, "question_not_found", "No such anchor question.")
+    newly = not question.excluded
+    question.excluded = True
+    if reason is not None:
+        question.excluded_reason = reason
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action="pill_generation.rollback_question",
+        target_entity="anchor_question",
+        target_id=question.id,
+        detail={"reason": reason, "newly_excluded": newly},
+    )
+    await db.flush()
+    return {"question_id": str(question_id), "excluded": True, "newly_excluded": newly}
+
+
+async def rollback_batch(
+    db: AsyncSession, *, batch_id: str, reason: str | None, actor_id: UUID
+) -> dict[str, Any]:
+    """Per-batch rollback (AC-CD26): retire **every** pill of the B3 generation
+    batch (joined via ``PublishRecord.batch_id``) + audit. Idempotent."""
+    result = await db.execute(
+        select(PublishRecord).where(
+            PublishRecord.tenant_id == SEED_TENANT_ID,
+            PublishRecord.batch_id == batch_id,
+        )
+    )
+    pill_ids = {r.pill_id for r in result.scalars().all()}
+    newly_retired = 0
+    for pid in pill_ids:
+        pill = await _pill_by_id(db, pid)
+        if pill is None:
+            continue
+        if await _retire_pill_row(
+            db,
+            pill,
+            reason=reason,
+            actor_id=actor_id,
+            action="pill_generation.rollback_batch",
+        ):
+            newly_retired += 1
+    await db.flush()
+    return {
+        "batch_id": batch_id,
+        "pills_targeted": len(pill_ids),
+        "newly_retired": newly_retired,
+    }
+
+
+async def _pill_ids_for_source(db: AsyncSession, source_host: str) -> set[UUID]:
+    """The pills grounded on ``source_host`` — per-assertion precision (AC-D29 /
+    NS-3): provenance rows citing the host → their ``draft_ref``s → the published
+    pills (via the generation task's ``created_pill_id`` link)."""
+    result = await db.execute(
+        select(GenerationProvenance).where(
+            GenerationProvenance.tenant_id == SEED_TENANT_ID,
+            GenerationProvenance.source_host == source_host,
+        )
+    )
+    draft_refs = {r.draft_ref for r in result.scalars().all()}
+    if not draft_refs:
+        return set()
+    tasks = await db.execute(
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == GENERATION_TASK_NAME,
+        )
+    )
+    pill_ids: set[UUID] = set()
+    for task in tasks.scalars().all():
+        payload = task.payload or {}
+        draft = payload.get("draft") or {}
+        if draft.get("draft_ref") not in draft_refs:
+            continue
+        created = payload.get("created_pill_id")
+        if created is None:
+            continue
+        try:
+            pill_ids.add(UUID(str(created)))
+        except (ValueError, TypeError):
+            continue
+    return pill_ids
+
+
+async def rollback_source(
+    db: AsyncSession, *, source_host: str, reason: str | None, actor_id: UUID
+) -> dict[str, Any]:
+    """Per-source rollback (AC-CD26 — the killer feature): retract exactly the
+    pills a discredited source grounded **and** write a durable ``denied``
+    demotion (DS13-a) so the corpus builder stops re-acquiring it. Idempotent.
+
+    Provenance is matched on the ``source_host`` as stored (the value the E1
+    source-authority breakdown surfaces); the demotion is keyed by the
+    ``_normalise``-d host so the effective-allowlist join + corpus skip match.
+    """
+    pill_ids = await _pill_ids_for_source(db, source_host)
+    newly_retired = 0
+    for pid in pill_ids:
+        pill = await _pill_by_id(db, pid)
+        if pill is None:
+            continue
+        if await _retire_pill_row(
+            db,
+            pill,
+            reason=reason,
+            actor_id=actor_id,
+            action="pill_generation.rollback_source",
+        ):
+            newly_retired += 1
+
+    norm_host = _normalise(source_host)
+    existing = await db.execute(
+        select(DemotedSource).where(
+            DemotedSource.tenant_id == SEED_TENANT_ID,
+            DemotedSource.source_host == norm_host,
+        )
+    )
+    demotion = existing.scalar_one_or_none()
+    if demotion is None:
+        demotion = DemotedSource(
+            tenant_id=SEED_TENANT_ID,
+            source_host=norm_host,
+            denied=True,
+            reason=reason,
+            actor_id=actor_id,
+        )
+        db.add(demotion)
+    else:
+        demotion.denied = True
+        demotion.reason = reason
+        demotion.actor_id = actor_id
+    # Flush so the server-default PK is populated — the summary audit's
+    # target_id is the demotion row it wrote (matching target_entity); the
+    # retracted pills carry their own per-pill rollback_source audits.
+    await db.flush()
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action="pill_generation.rollback_source",
+        target_entity="demoted_sources",
+        target_id=demotion.id,
+        detail={
+            "source_host": norm_host,
+            "reason": reason,
+            "pills_targeted": len(pill_ids),
+            "newly_retired": newly_retired,
+        },
+    )
+    return {
+        "source_host": norm_host,
+        "pills_targeted": len(pill_ids),
+        "newly_retired": newly_retired,
+        "demoted": True,
+    }
+
+
+async def override_safety_relevant(
+    db: AsyncSession, *, pill_id: UUID, value: bool, actor_id: UUID
+) -> dict[str, Any]:
+    """The relocated AC-D21 admin safety-tag override (A2+C1+E2): retroactively
+    retoggle ``safety_relevant`` + stamp ``safety_relevant_overridden_at`` +
+    audit. Reuses the catalogue override path; lives here now because the
+    autonomous pipeline has no pre-publish gate (the override is retroactive)."""
+    pill = await _pill_by_id(db, pill_id)
+    if pill is None:
+        raise APIError(404, "pill_not_found", "No such pill.")
+    await override_pill_safety(db, pill, safety_relevant=value, actor_id=actor_id)
+    return {
+        "pill_id": str(pill_id),
+        "safety_relevant": value,
+        "overridden_at": pill.safety_relevant_overridden_at.isoformat()
+        if pill.safety_relevant_overridden_at
+        else None,
+    }

@@ -67,6 +67,12 @@ class _FakeResult:
     def all(self) -> list[tuple[str, str]]:
         return list(self._rows)
 
+    def scalars(self) -> _FakeResult:
+        # E2 added a ``denied_hosts`` (``DemotedSource``) read to the corpus
+        # acquire path; it runs before any ``add()`` here, so the result is
+        # empty — this just lets ``.scalars().all()`` resolve to ``[]``.
+        return self
+
 
 class _FakeSession:
     """Minimal AsyncSession stand-in for the batch corpus dedup query +

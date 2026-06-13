@@ -43,6 +43,7 @@ EXPECTED_TABLES = {
     "generation_provenance",  # AC-D29 per-assertion provenance chain (B2)
     "publish_record",  # AC-D31 autonomous auto-publish gate (C2)
     "gap_signal",  # SPEC §5 GapSignal — coverage-gap signal spine (D1-D2)
+    "demoted_sources",  # DS13-a DB source-override layer (AC-CD26 / AC-D28, E2)
     "realism_flag",
     "system_settings",
     "audit_log",
@@ -75,7 +76,7 @@ def _default(table_name: str, col: str) -> str:
 def test_table_set_is_exactly_p1() -> None:
     actual = {t.name for t in Base.metadata.tables.values()}
     assert actual == EXPECTED_TABLES
-    assert len(EXPECTED_TABLES) == 38
+    assert len(EXPECTED_TABLES) == 39
 
 
 def test_system_settings_v13_defaults() -> None:
@@ -206,12 +207,13 @@ def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
 def test_migration_offline_round_trip() -> None:
     up = _alembic("upgrade", "base:head", "--sql")
     assert up.returncode == 0, up.stderr
-    # +corpus_chunk (A2) +generation_provenance (B2) +publish_record (C2).
-    assert up.stdout.count("CREATE TABLE") >= 38
+    # +corpus_chunk (A2) +generation_provenance (B2) +publish_record (C2)
+    # +gap_signal (D1-D2) +demoted_sources (E2).
+    assert up.stdout.count("CREATE TABLE") >= 39
     assert "USING ivfflat" in up.stdout
     # 34 P1 + corpus_chunk (A2) + generation_provenance (B2) + publish_record
-    # (C2) carry the trigger.
-    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 38
+    # (C2) + demoted_sources (E2) carry the trigger (gap_signal carries it too).
+    assert up.stdout.count("CREATE TRIGGER trg_set_updated_at") == 39
     assert "TIMESTAMP WITH TIME ZONE" in up.stdout
     assert "INSERT INTO acumen.system_settings" in up.stdout
 
@@ -294,6 +296,27 @@ def test_migration_0007_question_position_round_trip() -> None:
     assert "DROP COLUMN attempt_position" in down.stdout
     assert "DROP CONSTRAINT uq_question_attempt_position" in down.stdout
     assert "DROP COLUMN reason" in down.stdout
+
+
+def test_migration_0013_demoted_sources_round_trip() -> None:
+    # E2 (DS13-a / AC-CD26 / AC-D28): the DB source-override layer table +
+    # its (tenant_id, source_host) unique key. Reversible per AC-CD3.
+    up = _alembic(
+        "upgrade",
+        "0012_d1_d2_gap_signal:0013_e2_demoted_sources",
+        "--sql",
+    )
+    assert up.returncode == 0, up.stderr
+    assert "CREATE TABLE acumen.demoted_sources" in up.stdout
+    assert "uq_demoted_sources_tenant_host" in up.stdout
+
+    down = _alembic(
+        "downgrade",
+        "0013_e2_demoted_sources:0012_d1_d2_gap_signal",
+        "--sql",
+    )
+    assert down.returncode == 0, down.stderr
+    assert "DROP TABLE acumen.demoted_sources" in down.stdout
 
 
 def test_migration_0012_gap_signal_round_trip() -> None:

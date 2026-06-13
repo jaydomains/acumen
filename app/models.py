@@ -929,6 +929,41 @@ class PublishRecord(Base, TimestampMixin):
     single_provider_verified: Mapped[bool] = mapped_column(nullable=False)
 
 
+class DemotedSource(Base, TimestampMixin):
+    """The DS13-a DB source-override layer (AC-CD26 / AC-D28, E2) — completes
+    AC-D28's [A1+E2] design.
+
+    A1's source-authority allowlist is a **code-VCS seed** (the AC-CD18 env
+    registry, DS1-d); runtime demotion can't edit code, so this table records
+    operator/rollback demotions that the AC-D28 ``is_allowlisted`` /
+    ``authority_tier`` checks consult **on top of** the seed: ``denied`` removes
+    a host from the effective allowlist, ``tier_override`` re-ranks it. The E2
+    per-source rollback (``rollback_source``) writes a ``denied`` row here so the
+    corpus builder (AC-CD25) stops re-acquiring the discredited host — making the
+    rollback **durable** rather than purely reactive. One row per
+    ``(tenant_id, source_host)`` — the unique key the override join reads.
+    """
+
+    __tablename__ = "demoted_sources"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "source_host", name="uq_demoted_sources_tenant_host"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    source_host: Mapped[str] = mapped_column(String(255), nullable=False)
+    # ``denied`` removes the host from the effective allowlist; ``tier_override``
+    # (nullable) re-ranks a still-allowed host to a specific tier.
+    denied: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
+    tier_override: Mapped[int | None]
+    reason: Mapped[str | None] = mapped_column(String(1024))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(f"{_SCHEMA}.app_user.id")
+    )
+
+
 class GapSignal(Base, TimestampMixin):
     """A coverage-gap signal feeding the autonomous gap-detection sweep (SPEC §5
     / §6.5, D1-D2) — a **single polymorphic store** (the Stage-D spine).
