@@ -26,7 +26,7 @@ and real Postgres).
 from __future__ import annotations
 
 import random
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -135,6 +135,12 @@ async def recent_publishes(
     pills = await _pill_index(db)
     subjects = await _subject_names(db)
 
+    # ``created_at`` is timestamptz (tz-aware); coerce a naive ``?since=`` to
+    # UTC-aware so the comparison can't raise "can't compare offset-naive and
+    # offset-aware datetimes" (a 500 on an otherwise valid query).
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+
     shaped: list[tuple[datetime, str, dict[str, Any]]] = []
     for rec in records:
         if low_confidence is not None and rec.low_confidence != low_confidence:
@@ -178,7 +184,10 @@ async def _draft_ref_for_pill(db: AsyncSession, pill_id: UUID) -> str | None:
     an empty provenance chain, correctly).
     """
     result = await db.execute(
-        select(ProcessingTask).where(ProcessingTask.task_name == GENERATION_TASK_NAME)
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == GENERATION_TASK_NAME,
+        )
     )
     target = str(pill_id)
     for task in result.scalars().all():
@@ -205,7 +214,8 @@ async def item_provenance(db: AsyncSession, *, pill_id: UUID) -> dict[str, Any]:
     if draft_ref is not None:
         result = await db.execute(
             select(GenerationProvenance).where(
-                GenerationProvenance.draft_ref == draft_ref
+                GenerationProvenance.tenant_id == SEED_TENANT_ID,
+                GenerationProvenance.draft_ref == draft_ref,
             )
         )
         rows = list(result.scalars().all())

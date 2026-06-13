@@ -144,6 +144,23 @@ async def test_recent_publishes_subject_filter() -> None:
     assert [r["pill_name"] for r in only_rigging["publishes"]] == ["Hitch"]
 
 
+async def test_recent_publishes_since_accepts_naive_datetime() -> None:
+    # ``created_at`` is tz-aware; a naive ``?since=`` must not raise
+    # "can't compare offset-naive and offset-aware datetimes" — it is coerced
+    # to UTC-aware and filters correctly.
+    session = CatalogueFakeSession()
+    subj = _subject(session)
+    old = _pill(session, subject=subj, name="Old")
+    new = _pill(session, subject=subj, name="New")
+    _publish(session, pill=old, created_offset_s=0)
+    _publish(session, pill=new, created_offset_s=100)
+
+    since_naive = (now_utc() + timedelta(seconds=50)).replace(tzinfo=None)
+    assert since_naive.tzinfo is None
+    page = await recent_publishes(session, since=since_naive)
+    assert [r["pill_name"] for r in page["publishes"]] == ["New"]
+
+
 async def test_item_provenance_returns_claim_source_tier_chain() -> None:
     session = CatalogueFakeSession()
     subj = _subject(session)

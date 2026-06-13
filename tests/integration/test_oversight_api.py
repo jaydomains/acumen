@@ -108,6 +108,25 @@ def test_recent_publishes_returns_paginated_page(
     assert [row["pill_name"] for row in low.json()["publishes"]] == ["MIG"]
 
 
+def test_provenance_and_source_authority_require_admin(
+    cat_client: TestClient, cat_session: CatalogueFakeSession
+) -> None:
+    testee = _testee(cat_session)
+    pill = _seed_publish(cat_session, name="Arc")
+    assert (
+        cat_client.get(
+            f"/v1/admin/oversight/publishes/{pill.id}/provenance", headers=bearer(testee)
+        ).status_code
+        == 403
+    )
+    assert (
+        cat_client.get(
+            "/v1/admin/oversight/source-authority", headers=bearer(testee)
+        ).status_code
+        == 403
+    )
+
+
 def test_item_provenance_returns_chain(
     cat_client: TestClient, cat_session: CatalogueFakeSession
 ) -> None:
