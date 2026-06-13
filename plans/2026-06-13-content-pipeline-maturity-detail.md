@@ -71,7 +71,7 @@ OPEN-G1 (§11) — confirm whole-doc is the right convergence shape here, or dir
   **Because every role-session writes under the shared identity**, the §0.3 recording of the
   session-opener's settled rulings reads, *to the auditor and overseer*, as a **relay** (role files
   §8.3): the class-(iv) ratification that clears this PR must **affirm the §0.3 settled-rulings recording
-  itself** + the §10 slice-DP resolutions + the §8 anchor numbering + the §3 sequencing + the §9
+  itself** + the §10 slice-DP resolutions + the §4 anchor numbering + the §3 sequencing + the §12
   launch-blocker map, reaching the **overseer** through the authenticated channel. *(Same posture as the
   parent plan PR #130 §0.2/§1.)*
 - **Gate 2 — each embedded anchor/spec amendment is ratified + authored separately, downstream.** The
@@ -99,9 +99,9 @@ surfaced in §10 (slice-level decision points **DDP-1…DDP-26**).
 | **DP-3** | Allowlist scoping (multi-tenant) | **Shared public base + per-tenant private additions** (parent lean confirmed). |
 | **DP-4** | FE-10 pilot disposition | **GATED PILOT — autonomy DISABLED for v1; generated drafts QUEUE for admin `/approve`; admin approves before live; FE-10 thin oversight is the NEXT workstream.** |
 | **DP-5** | Versioning | **v1.10 bump** (parent lean confirmed). |
-| **DP-6** | Anchor surface | **AC-D32** dual-path modes · **AC-D33** per-tenant mode config · **AC-CD27** LLM-direct provenance · **AC-CD28** content-validity gate (the four candidates **confirmed** as the next-available identifiers; §8). |
+| **DP-6** | Anchor surface | **AC-D32** dual-path modes · **AC-D33** per-tenant mode config · **AC-CD27** LLM-direct provenance · **AC-CD28** content-validity gate (the four candidates **confirmed** as the next-available identifiers; §4). |
 | **DP-7** | Slice sequencing within phases | Parent lean confirmed, refined into the §3 dependency graph. |
-| **DP-8** | Pilot launch criteria | **Launch-blockers = Phase 1 + Phase 2 (the pilot path) + P5.4 (FE-10/gated-pilot disposition)**; Phase 3 + Phase 4 are future-tenant work, NOT pilot launch-blockers (§9). |
+| **DP-8** | Pilot launch criteria | **Launch-blockers = Phase 1 + Phase 2 (the pilot path) + P5.4 (FE-10/gated-pilot disposition)**; Phase 3 + Phase 4 are future-tenant work, NOT pilot launch-blockers (§12). |
 | **DP-9** | Cost-idempotency (P1-#7) | **DEFERRED post-deploy** (R4 governs over the audit-blocker bundling; recorded in the §5/P5.2 carry-forward ledger). |
 | **DP-10** | Paywalled-source policy | **HYBRID — reject clear paywalls at the content-validity gate; tier-cap partial-content sources to T2 with a `paywalled` flag** (P3.1). |
 | **DP-11** | Contradiction posture | **Surface inter-source disagreement to the oversight/flag layer** (parent lean confirmed; P3.2). |
@@ -120,7 +120,7 @@ surfaced in §10 (slice-level decision points **DDP-1…DDP-26**).
 
 `P{phase}.{n}` IDs are carried verbatim from parent plan §4/§6 (traceability). **Class:** NORMAL = pure
 execution; **AMD-x** = blocked on amendment-PR *x* (§4 ledger); **(iv)** = framework-change
-ratification-class. **LB** = pilot-launch-blocker (§9).
+ratification-class. **LB** = pilot-launch-blocker (§12).
 
 | Slice | Name | Phase | Class | Blocks on | LB? |
 |---|---|---|---|---|---|
@@ -247,7 +247,7 @@ PHASE 5 (housekeeping — interleaves; P5.4 is LB):
   P2.1→P2.2→P2.4→P2.5→P2.6; P3.5 after P3.3; P4.2 after P4.1; P4.3 after P2.1+P4.1; P5.4 after P1.1+P2.6;
   P5.1 after the anchors mint (so it reflects final state).
 - **Front-loaded (pilot gate):** **Phase 1 then Phase 2** delivers the pilot. **Phase 3 and Phase 4 are
-  future-tenant work that need not block the pilot launch** (§9). Phase 5 interleaves, except **P5.4 is on
+  future-tenant work that need not block the pilot launch** (§12). Phase 5 interleaves, except **P5.4 is on
   the pilot critical path**.
 - **Cross-amendment coordination (the PR #108 OV-33 amend-once discipline):** **P2.4 and P3.4 both touch
   the `generation_provenance.corpus_chunk_id` nullability** — a synthetic LLM-direct provenance row
@@ -482,7 +482,7 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
 ## 7. Phase 3 — Corpus maturity (future-tenant; NOT pilot-blocking)
 
 > Phase 3 matures the corpus path for future tenants (R2). Under the gated LLM-direct pilot it does
-> **not** block launch (§9). Slices are mutually independent except P3.5 (after P3.3).
+> **not** block launch (§12). Slices are mutually independent except P3.5 (after P3.3).
 
 ### P3.1 — Content-validity gate (+ DP-10 paywall HYBRID)
 - **Phase:** 3. **Class:** **AMD-D** (AC-CD28 mint + AC-CD25 body). **BLOCKED** pending AMD-D; DP-10
@@ -628,7 +628,7 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
 ### P5.2 — `CARRY_FORWARD.md` ledger
 - **Phase:** 5. **Class:** **(iv)** framework change (new durable governance doc). **Discharges:** P1-#11
   (MEDIUM); DP-9 (records the deferred cost-idempotency).
-- **Files:** new `CARRY_FORWARD.md` (the §10 post-deploy deferrals + the audit's undiscoverable-ledger
+- **Files:** new `CARRY_FORWARD.md` (the parent §10 post-deploy deferrals + the audit's undiscoverable-ledger
   items — OV-6 / "15-sites" / F3 / DP-9 cost-idempotency); linked from SESSION_START (P5.1).
 - **Acceptance criteria:** (1) a discoverable root `CARRY_FORWARD.md` lists every post-deploy deferral
   (parent §10) + the audit's carry-forward items + the FE-10 deferral; (2) it is linked from
@@ -802,7 +802,7 @@ carry-forward ledger so they remain discoverable.
 - **PR posture:** opened **non-draft** per the session-opener instruction (deliberate deviation from role
   §4.3's draft default; surfaced here + in the PR body). Class **(iv) ratification-class** (§0.2): does
   **not** auto-merge on the three-sign-off gate; requires explicit spec-author ratification of the §0.3
-  settled-rulings recording + the §10 slice-DP resolutions + the §8/§4 anchor numbering + the §3
+  settled-rulings recording + the §10 slice-DP resolutions + the §4 anchor numbering + the §3
   sequencing + the §12 launch-blocker map, through the authenticated channel, before the overseer
   executes.
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = exact
