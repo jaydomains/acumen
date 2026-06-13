@@ -69,6 +69,15 @@ disposition — assigned to a phase, or explicitly deferred post-deploy — in t
   classification here is the spec author's call, surfaced as instructed and held as the safer
   posture — the overseer misclassifying a ratification-class change down is the load-bearing
   failure of the merge-executor role, overseer §8.3.)*
+  **That ratification must affirm the §1 R0–R4 recording *itself*** — not merely rule on
+  DP-1…DP-11 (§7). Because every role-session writes under the **shared identity**, the planner's §1
+  "authenticated in-session origin" citation reads, *to the auditor and overseer*, as a **relay**
+  (role files §8.3): the relay principle this section draws for *post-merge downstream sessions*
+  (next bullet) applies to the **overseer now**, not only later. R0–R4 are the strategic-pivot
+  scope/precedent that *is* the basis of the (iv) classification, so the class-(iv) affirmation
+  reaching the overseer through the authenticated channel is what clears **R0–R4** for this merge —
+  the planner's "ratified, does not re-surface" (§1) binds the planner's own authoring, **not** the
+  overseer's independent merge gate (OV-2).
 - **Each downstream amendment/execution PR is ratified/authored separately (Gate 2).** The §1
   direction settles the **architecture + the dual-path posture**; it does **not** pre-author the
   anchor/spec **bodies**. Each new AC-D / AC-CD mint (§8 candidates), each SPEC/DECISIONS/CODE_SPEC
@@ -120,8 +129,12 @@ when the spec author confirms it in-session, not when a prior chat drafted it).
 | **R3** | Fix scope | The five-phase fix workstream (§4): Phase 1 pilot blockers · Phase 2 LLM-direct mode · Phase 3 corpus maturity · Phase 4 multi-tenant prep · Phase 5 housekeeping. | (iii) |
 | **R4** | Deferral | The post-deploy items (§10) are **explicitly deferred, not dropped** — tracked for traceability, out of scope for this workstream. | (iii) |
 
-These are **ratified**; the planner does not re-surface them. Downstream items the rulings do
-**not** settle are surfaced in §7 (decision points DP-1…DP-8).
+These are **ratified to the planner** through the in-session channel; the planner does not
+re-surface them *as the planner's own basis to author*. But for **this PR's merge gate** they are,
+to the auditor and overseer, a recording under the shared role-session identity — a **relay**
+(role files §8.3) — so the class-(iv) ratification that clears this PR must **affirm the R0–R4
+recording itself** to the overseer through the authenticated channel (§0.2, Loop mechanics; OV-2).
+Downstream items the rulings do **not** settle are surfaced in §7 (decision points **DP-1…DP-11**).
 
 ---
 
@@ -210,13 +223,22 @@ path-independent fixes. They apply regardless of generation mode — they are wh
 autonomous publish safe and closed-loop. Phase 1 is the launch-critical phase (launch-blocker
 disposition surfaced as **DP-8**).
 
+**Wire-vs-enable invariant (CA-2 / CA-4 / OV-1).** P1.1 **wires** the loop closed; it does **not**
+by itself **enable** autonomous publish. Enabling autonomous publish is a **conditional** step,
+gated on (a) **P1.3** (the hard budget/volume cap + AI-keys fail-closed) landing *first* — so there
+is no uncapped window — and (b) the **trigger-model ruling** (autonomous-cron vs gated-`/approve`;
+the audit's fix-scope item-1 "decide the trigger model", surfaced at DP-4/DP-8). The intra-Phase-1
+ordering is therefore **P1.3 precedes enablement**, regardless of DP-7's "serialise behind P1.1"
+authoring lean (which orders *wiring*, not *enablement*).
+
 | Slice | Scope (one line) | Discharges |
 |---|---|---|
-| **P1.1** | **Drain orchestration** — wire the cron → `enqueue_generated_drafts` → drain → `auto_publish_draft` → bootstrap-on-publish loop closed for the chosen primary path, with timeout/retry on mid-self-review LLM failure | P1-#1 (CRITICAL); P1-#8 (timeout/retry — audit-bundled, see §9 note) |
+| **P1.1** | **Drain orchestration** — wire (not yet enable, see invariant above) the cron → `enqueue_generated_drafts` → drain → `auto_publish_draft` → bootstrap-on-publish loop closed for the chosen primary path, with timeout/retry on mid-self-review LLM failure. **The drain *trigger model* (autonomous-cron vs gated-`/approve`) is the audit's item-1 "decide the trigger model" — surfaced at DP-4/DP-8, not baked here** | P1-#1 (CRITICAL); P1-#8 (timeout/retry — audit-bundled, see §9 note) |
 | **P1.2** | **Concurrency locks** — `FOR UPDATE SKIP LOCKED` on the task-claim (drain + bootstrap) paths; row-lock on `POST /approve` | P2-#1 (HIGH); P2-#5 (MEDIUM) |
-| **P1.3** | **Hard budget/volume cap** — per-sweep batch ceiling and/or monthly budget kill-switch before the drain is enabled; **AI-keys fail-closed outside dev** (promote the WARN to an error) | P2-#2 (HIGH); P2-#10 (MEDIUM) |
+| **P1.3** | **Hard budget/volume cap** — per-sweep batch ceiling and/or monthly budget kill-switch; **AI-keys fail-closed outside dev** (promote the WARN to an error). **Precondition of *enabling* autonomous publish** (wire-vs-enable invariant) | P2-#2 (HIGH); P2-#10 (MEDIUM) |
 | **P1.4** | **Threshold clamp** — validate/clamp `pill_publish_confidence_threshold` to `[0,1]` | P1-#9 (MEDIUM) |
 | **P1.5** | **End-to-end pipeline tests** — drive cron→enqueue→drain→gate→publish→bootstrap end-to-end (not the direct `auto_publish_draft` call the v1.9 suite exercises) | P1-#10 (MEDIUM) |
+| **P1.6** | **Pilot publish-health observability** — publish-rate / flag-rate / confidence-distribution / drain-backlog metrics + **≥1 proactive alert**. **Both-mode pilot concern** (the auto-publish gate is shared across modes, §3), **moved here from Phase 3** (CA-7 / OV cross-lane): the LLM-direct pilot must not launch blind to the audit's Axis-3 "no one is paged at 3am" worry | P2-#7 (MEDIUM, path-independent) |
 
 ### 4.2 Phase 2 — LLM-direct mode (the new primary)
 
@@ -229,10 +251,10 @@ C2 "nothing held" gate + §290 completeness against the LLM-direct provenance sh
 | Slice | Scope (one line) | Discharges / surfaces |
 |---|---|---|
 | **P2.1** | **Mode setting on `pill_generation`** — `llm_direct \| corpus_grounded`, per-tenant configurable | DP-1; candidate AC-D32 |
-| **P2.2** | **Routing in `generate_grounded_drafts`** — dispatch by tenant mode | DP-1 |
-| **P2.3** | **LLM-direct prompts** — no corpus retrieval; ground on training; new prompt-registry version(s) | — |
+| **P2.2** | **Routing in `generate_grounded_drafts`** — dispatch by tenant mode; LLM-direct generation still routes `generate()` **through the `AIProvider` protocol, never a direct SDK call** | DP-1; **AC-CD8** (one `AIProvider` interface — existing) |
+| **P2.3** | **LLM-direct prompts** — no corpus retrieval; ground on training; new prompt-registry version(s); model resolution inherits env-default model IDs | **AC-CD8** (prompt-registry); **AC-CD18** (env-default model IDs — existing) |
 | **P2.4** | **Provenance shape for LLM-direct mode** — what provenance/audit a non-corpus draft records; verify oversight read-facet degradation (P1-#11 tail) | candidate AC-CD27; DP-2 |
-| **P2.5** | **Confidence math adjusted** — cross-model self-review agreement as the primary signal (corpus authority-weighting is absent in this mode) | DP-2 |
+| **P2.5** | **Confidence math adjusted** — cross-model self-review agreement as the primary signal (corpus authority-weighting is absent in this mode). **Must reckon with NS-7 (degrade-not-gate, `DECISIONS.md:776`):** a single-provider KBC pilot generating **safety-relevant** LLM-direct content cannot run cross-model and degrades to publish-with-warning + "single-provider verified" flag on same-model review — so cross-model agreement is the *primary* signal only where a second provider is configured | DP-2; **NS-7** (ratified, existing); AC-D30/31 body touch |
 | **P2.6** | **Default mode = `llm_direct` for the KBC tenant** | R1; DP-1 |
 
 ### 4.3 Phase 3 — Corpus maturity (for future tenants)
@@ -244,12 +266,13 @@ contradictory sources, keeps demoted hosts retrievable, and leaves stale confide
 
 | Slice | Scope (one line) | Discharges |
 |---|---|---|
-| **P3.1** | **Content-validity gate** on acquisition — reject login/preview pages + zero-text PDF extractions rather than stamping them T1; decide paywalled-source policy | P2-#4 (HIGH) |
-| **P3.2** | **Contradiction surfacing** — inter-source disagreement (T1-vs-T1) → oversight flag rather than silently grounding both | P2-#3 (HIGH) |
+| **P3.1** | **Content-validity gate** on acquisition — reject login/preview pages + zero-text PDF extractions rather than stamping them T1. The **paywalled-source policy** the audit says to *"decide"* is **surfaced at DP-10, not baked** | P2-#4 (HIGH); DP-10 |
+| **P3.2** | **Contradiction surfacing** — inter-source disagreement (T1-vs-T1). The **contradiction posture** the audit says to *"decide"* (flag-to-oversight vs other) is **surfaced at DP-11, not baked** | P2-#3 (HIGH); DP-11 |
 | **P3.3** | **Retrieval filter excludes demoted hosts** — `retrieve_corpus_for_topic` consults `denied_hosts`, not just acquisition-side `filter_demoted` | P1-#2 (HIGH) |
 | **P3.4** | **CASCADE → SET NULL** on `generation_provenance.corpus_chunk_id` so a corpus purge cannot erase published-pill provenance | P2-#8 (MEDIUM) |
 | **P3.5** | **Confidence recompute on demote** — refresh frozen `PublishRecord.confidence` + authority breakdown when a source is demoted | P2-#9 (MEDIUM) |
-| **P3.6** | **Observability metrics + alerting hook** — publish-rate/flag-rate/confidence-distribution/drain-backlog metrics + at least one proactive alert | P2-#7 (MEDIUM) |
+
+*(The v1.9 §4.3 draft's "P3.6 observability" slice **moved to Phase 1 / P1.6** — publish-health metrics + alert are a both-mode pilot concern, not future-tenant corpus work; CA-7 / OV cross-lane.)*
 
 ### 4.4 Phase 4 — Multi-tenant prep
 
@@ -261,21 +284,24 @@ threading, not RLS.)
 
 | Slice | Scope (one line) | Discharges / surfaces |
 |---|---|---|
-| **P4.1** | **Tenant threading** — replace `SEED_TENANT_ID` hard-codes with tenant-from-actor through the workstream's domain functions (~8 modules) | P2-#6 (MEDIUM) |
+| **P4.1** | **Tenant threading** — replace `SEED_TENANT_ID` hard-codes with tenant-from-actor through the workstream's domain functions (~8 modules). **Surface (CA-11): is the ~8-module threading consistent with AC-CD5's "auth one-file-swap" intent, or should tenant-from-actor resolution centralize?** The audit's Pass-2 Axis-2 names this AC-CD5 tension explicitly | P2-#6 (MEDIUM); **AC-CD3** (RLS stays seam) + **AC-CD5** (one-file-swap — reconcile) |
 | **P4.2** | **Cross-tenant guard tests** — oversight read / rollback / demotion scoped to the actor's tenant | P2-#6 |
-| **P4.3** | **Per-tenant mode configuration surface** — the config surface R1 requires (shares the mode setting from P2.1) | DP-1; candidate AC-D33 |
+| **P4.3** | **Per-tenant mode configuration surface** — the config surface R1 requires (shares the mode setting from P2.1) | DP-1/DP-3; candidate AC-D33 |
 
 ### 4.5 Phase 5 — Housekeeping
 
-**Rationale.** The audit's hygiene/awareness findings + the workstream's own doc-debt. Includes the
-FE-10 disposition the audit flags as pilot-gating.
+**Rationale.** The audit's hygiene/awareness findings + the workstream's own doc-debt. Most of
+Phase 5 is largely-independent housekeeping — **with one exception: P5.4 (FE-10 disposition) is a
+pilot launch-blocker** (it sits on the §5 pilot critical path and in the DP-8 launch set), not
+housekeeping. It lives in Phase 5 only because it shares the FE-10 subject; its *gating weight* is
+pilot-critical (CA-6).
 
 | Slice | Scope (one line) | Discharges / surfaces |
 |---|---|---|
 | **P5.1** | **SESSION_START.md refresh** to v1.10 (or v1.9-refinement — DP-5): AC-D28–31, AC-CD25–26, nine crons, the dual-path posture, FE-10 status | P1-#4 (HIGH) |
 | **P5.2** | **Carry-forward ledger surface** (`CARRY_FORWARD.md`) — make the deferred-debt ledger discoverable in-repo (OV-6 / "15-sites" / F3 / the §10 deferrals) | P1-#11 (MEDIUM) |
 | **P5.3** | **Audit doc path consistency** — reconcile `plans/` vs `audits/` for the audit docs (a path convention call) | governance hygiene |
-| **P5.4** | **FE-10 decision** — thin operable oversight+rollback surface, **or** formalize the gated-pilot posture (autonomy disabled, `/approve` as publish path until FE-10 lands) | P1-#3 (HIGH); DP-4 |
+| **P5.4** | **FE-10 decision** *(Phase-5 exception — pilot launch-blocker, on the §5 critical path)* — thin operable oversight+rollback surface, **or** formalize the gated-pilot posture (autonomy disabled, `/approve` as publish path until FE-10 lands) | P1-#3 (HIGH); DP-4/DP-8 |
 
 ---
 
@@ -283,9 +309,13 @@ FE-10 disposition the audit flags as pilot-gating.
 
 **Verified dependency chain:**
 
-- **Phase 1 is the foundation** — the drain (P1.1) closes the loop for *whichever* mode runs;
-  concurrency, cap, fail-closed keys, and tests gate any safe autonomous publish. Phase 1 must land
-  before autonomous publish is enabled in either mode.
+- **Phase 1 is the foundation** — the drain (P1.1) *wires* the loop closed for *whichever* mode
+  runs; concurrency, cap, fail-closed keys, observability, and tests gate any safe autonomous
+  publish. **Wire-vs-enable (CA-2/CA-4/OV-1):** P1.1 wires but does **not** enable; **enabling**
+  autonomous publish is conditional on P1.3 (cap + fail-closed keys) landing first **and** on the
+  **trigger-model ruling** (autonomous-cron vs gated-`/approve`; the audit's item-1 "decide the
+  trigger model", at DP-4/DP-8). Phase 1 must land — and the cap must precede enablement — before
+  autonomous publish is enabled in either mode.
 - **Phase 2 (LLM-direct) depends on Phase 1's drain** — the mode routing feeds the same
   drain→gate→publish spine. The LLM-direct *pilot* needs Phase 1 + Phase 2.
 - **Phase 3 (corpus maturity) is independent of the pilot** — it matures the corpus path for future
@@ -315,25 +345,25 @@ phases inherit the PR-025 auto-continue default unless a phase opener declares b
 | 1 | P1.3 | Hard budget/volume cap + AI-keys fail-closed | new config; possible AC-D18 body touch |
 | 1 | P1.4 | Threshold clamp | execution |
 | 1 | P1.5 | End-to-end pipeline tests | execution |
+| 1 | P1.6 | Pilot publish-health metrics + ≥1 alert (both-mode; moved from P3.6) | new config/hook (no new anchor); possible AC-D18 body touch |
 | **2** | P2.1 | Mode setting on `pill_generation` (per-tenant) | candidate **AC-D32** (dual-path modes); DP-1 |
-| 2 | P2.2 | Routing in `generate_grounded_drafts` | execution |
-| 2 | P2.3 | LLM-direct prompts (ground on training) | prompt-registry version |
+| 2 | P2.2 | Routing in `generate_grounded_drafts` | execution; **AC-CD8** (route via `AIProvider`) |
+| 2 | P2.3 | LLM-direct prompts (ground on training) | prompt-registry version; **AC-CD8** / **AC-CD18** (env-default models) |
 | 2 | P2.4 | Provenance shape for LLM-direct mode | candidate **AC-CD27** (LLM-direct provenance); DP-2 |
-| 2 | P2.5 | Confidence math (cross-model agreement primary) | AC-D31 body touch?; DP-2 |
+| 2 | P2.5 | Confidence math (cross-model agreement primary) | **NS-7** (degrade-not-gate, existing); AC-D30/31 body touch; DP-2 |
 | 2 | P2.6 | Default mode = `llm_direct` for KBC | per-tenant config (R1) |
-| **3** | P3.1 | Content-validity gate (reject login pages / empty PDFs) | candidate **AC-CD28** (content-validity gate); AC-CD25 body touch |
-| 3 | P3.2 | Contradiction surfacing (T1-vs-T1 → flag) | new AC-D or AC-D30 body touch; DP-2 |
+| **3** | P3.1 | Content-validity gate (reject login pages / empty PDFs) | candidate **AC-CD28** (content-validity gate); AC-CD25 body touch; **DP-10** (paywalled policy) |
+| 3 | P3.2 | Contradiction surfacing (T1-vs-T1 → posture) | new AC-D or AC-D30 body touch; **DP-11** (contradiction posture) |
 | 3 | P3.3 | Retrieval filter excludes demoted hosts | AC-D28 body touch (retrieval-side) |
 | 3 | P3.4 | CASCADE → SET NULL on provenance.corpus_chunk_id | migration; AC-CD26 body touch |
 | 3 | P3.5 | Confidence recompute on demote | AC-D30/31 body touch |
-| 3 | P3.6 | Observability metrics + alerting hook | new AC-CD or AC-D18 body touch |
-| **4** | P4.1 | Tenant threading (replace SEED_TENANT_ID) | AC-CD3 body touch (app-layer; RLS stays seam) |
+| **4** | P4.1 | Tenant threading (replace SEED_TENANT_ID) | AC-CD3 body touch (app-layer; RLS stays seam); **AC-CD5** reconcile (one-file-swap, CA-11) |
 | 4 | P4.2 | Cross-tenant guard tests | execution |
 | 4 | P4.3 | Per-tenant mode configuration surface | candidate **AC-D33** (per-tenant mode config); DP-1/DP-3 |
 | **5** | P5.1 | SESSION_START.md refresh (→ v1.10?) | framework change (iv); DP-5 |
 | 5 | P5.2 | Carry-forward ledger (`CARRY_FORWARD.md`) | new doc |
 | 5 | P5.3 | Audit doc path consistency (plans/ vs audits/) | path convention |
-| 5 | P5.4 | FE-10 decision (thin surface OR gated-pilot posture) | DP-4; fe-spec touch if thin surface |
+| 5 | P5.4 | FE-10 decision *(pilot launch-blocker)* (thin surface OR gated-pilot posture) | DP-4/DP-8; fe-spec touch if thin surface |
 
 Provisional; the detail-plan makes the per-slice concrete build choices against the live tree, and
 each ratification surface is authored by the spec author (Gate 2, §0.2).
@@ -369,12 +399,37 @@ channel. These are the residual decisions the §1 direction does **not** settle.
   verified AC-D31 / AC-CD26, §2 — these are the next-available identifiers.) *Class (i)/(ii).*
   Surfaced; awaiting ruling. See §8.
 - **DP-7 — Slice sequencing within phases.** Which slices parallelise? **Lean:** Phase 1 slices
-  mostly serialise behind P1.1 (the drain) except P1.4/P1.5; Phase 3 slices are largely independent
-  of each other; Phase 2 P2.1→P2.2→(P2.3‖P2.4‖P2.5)→P2.6. *Class (iii).* Surfaced; awaiting ruling.
+  mostly serialise behind P1.1 (the drain) except P1.4/P1.5 — **but the wire-vs-enable invariant
+  (§4.1) overrides the lean: P1.3 (cap + fail-closed) precedes *enablement* regardless** (CA-4);
+  Phase 3 slices are largely independent of each other; Phase 2 P2.1→P2.2→(P2.3‖P2.4‖P2.5)→P2.6.
+  *Class (iii).* Surfaced; awaiting ruling.
 - **DP-8 — Pilot launch criteria.** Which fixes are launch-**blockers** vs nice-to-have? **Lean:**
-  launch-blockers = all of Phase 1 + Phase 2 (the pilot path) + the P5.4 FE-10 disposition;
-  Phase 3/4 are future-tenant work, not pilot launch-blockers. *Class (iii).* Surfaced; awaiting
-  ruling. Interacts with DP-4.
+  launch-blockers = all of Phase 1 (incl. P1.6 observability + the wire-vs-enable cap/trigger gate)
+  + Phase 2 (the pilot path) + the P5.4 FE-10 disposition; Phase 3/4 are future-tenant work, not
+  pilot launch-blockers. **Includes the audit's item-1 "decide the trigger model"** (autonomous-cron
+  vs gated-`/approve`) and **DP-9** (the #7 cost-idempotency blocker-vs-defer call). *Class (iii).*
+  Surfaced; awaiting ruling. Interacts with DP-4.
+- **DP-9 — Cost-idempotency (P1-#7): audit-blocker vs ratified-defer (CA-3 / OV-3).** The audit's
+  pilot-launch **blocker** condition bundles #7 *into the same sentence* as the drain and timeout/
+  retry: *"Wire and test the drain end-to-end (1), with timeout/retry (8) and a cost-idempotency key
+  (7)"* (`AUDIT_OVERPASS_2026-06-13.md:192-194`); its severity roll-up separately scores #7 MEDIUM —
+  the audit is **internally ambiguous**. The session-opener's deferred set names "AI cost
+  idempotency" explicitly (R4), so the planner's §9 disposition is *deferred*; but routing an
+  audit-named blocker to post-deploy on the planner's reading of R4 is a **scope re-classification**
+  that the surface-not-bake discipline says to make visible, not absorb. **Lean:** deferrable for the
+  LLM-direct pilot (the cost-sink is on a *post-LLM DB-commit failure* — a rare path, and the budget
+  cap of P1.3 bounds total spend) — **but surfaced, not resolved under R4's cover.** **Ask:** the
+  spec author confirms either (a) #7 stays deferred (R4 governs over the audit-blocker bundling), or
+  (b) #7 folds into P1.1 as the audit framed it. *Class (iii).* Surfaced; awaiting ruling.
+- **DP-10 — Paywalled-source policy (P2-#4; CA-9).** The audit says to *"decide a paywalled-source
+  policy"* — a posture call (reject? tier-cap? flag-and-admit?) the content-validity gate (P3.1)
+  needs. **No strong planner lean** (future-tenant scope). *Class (i)/(ii).* Surfaced; awaiting
+  ruling.
+- **DP-11 — Contradiction posture (P2-#3; CA-9).** The audit says to *"decide a contradiction
+  posture"* — what happens when two T1 sources disagree (flag-to-oversight? block? prefer-newer?).
+  **Lean:** surface inter-source disagreement to the oversight/flag layer (the audit's framing). But
+  it is a safety/correctness posture the audit reserves for a decision. *Class (i)/(ii).* Surfaced;
+  awaiting ruling.
 
 ---
 
@@ -415,7 +470,7 @@ are layered on top.
 | **P1-#4** SESSION_START stale at v1.8 | HIGH | **Phase 5 / P5.1** |
 | **P1-#5** unbounded scans + N+1 on oversight paths | MEDIUM | **Deferred post-deploy (§10)** |
 | **P1-#6** GenerationProvenance/CorpusChunk unbounded growth; IVFFlat at scale | MEDIUM | **Deferred post-deploy (§10)** |
-| **P1-#7** AI cost sunk + untracked on commit failure | MEDIUM | **Deferred post-deploy (§10)** (cost-idempotency, explicitly deferred per R4) |
+| **P1-#7** AI cost sunk + untracked on commit failure | MEDIUM (audit roll-up); bundled into a blocker condition | **Surfaced as DP-9** (blocker-vs-defer) — planner *lean* deferred per R4, but the re-classification is **surfaced, not absorbed** (CA-3 / OV-3) |
 | **P1-#8** LLM timeout mid-review uncaught; no retry | MEDIUM | **Phase 1 / P1.1** (audit-bundled with the drain blocker; planner-folded — see note) |
 | **P1-#9** publish threshold unclamped | MEDIUM | **Phase 1 / P1.4** |
 | **P1-#10** tests exercise the gate directly, not pipeline closure | MEDIUM | **Phase 1 / P1.5** |
@@ -429,7 +484,7 @@ are layered on top.
 | **P2-#4** paywalled/scanned T1 → login-page-as-corpus / empty grounding | HIGH | **Phase 3 / P3.1** |
 | **P2-#5** `/approve` check-then-act without lock | MEDIUM | **Phase 1 / P1.2** |
 | **P2-#6** `SEED_TENANT_ID` hard-coded; cross-tenant leak | MEDIUM | **Phase 4 / P4.1 + P4.2** |
-| **P2-#7** no metrics/alerts for publish health | MEDIUM | **Phase 3 / P3.6** |
+| **P2-#7** no metrics/alerts for publish health | MEDIUM (path-independent) | **Phase 1 / P1.6** (both-mode pilot concern; moved from Phase 3 — CA-7 / OV cross-lane) |
 | **P2-#8** provenance→corpus_chunk ON DELETE CASCADE | MEDIUM | **Phase 3 / P3.4** |
 | **P2-#9** demotion doesn't recompute frozen confidence | MEDIUM | **Phase 3 / P3.5** |
 | **P2-#10** missing AI keys WARN-only outside dev | MEDIUM | **Phase 1 / P1.3** |
@@ -439,15 +494,25 @@ are layered on top.
 | **P2-#14** English-centric embeddings / content-type trust | LOW | **Deferred post-deploy (§10)** |
 | audit **CONFIRMED** set | — | No action (verified working: authz, migrations, §290, SSRF/redirect/size, dedup, feedback loops, 57-anchor MATCH) |
 
-**Note on P1-#8 (planner-folded, not scope-enumerated).** The session-opener Phase-1 scope listed
-the drain, concurrency locks, budget cap + fail-closed keys, threshold clamp, and e2e tests — it did
-**not** separately enumerate P1-#8 (timeout/retry mid-self-review). The audit's blocker condition
-**bundles** it with the drain ("Wire and test the drain end-to-end (1), with timeout/retry (8)…"),
-and a drain that does not handle a mid-self-review LLM timeout is not safely closed. The planner
-therefore folds P1-#8 into **P1.1** rather than dropping it — surfaced here explicitly as a
-planner inclusion (role files §7 — surface omissions/inclusions), not a silent scope expansion. If
-the spec author prefers it deferred or split out, that is a ruling to make; the lean is to keep it
-in P1.1 as the audit framed it.
+**Note on the audit's blocker bundle — P1-#8 (folded) vs P1-#7 (surfaced as DP-9).** The
+audit's pilot-launch blocker condition reads, **in full**:
+*"(blocker) Wire and test the … drain end-to-end **(1)**, with timeout/retry **(8)** and a
+cost-idempotency key **(7)**"* (`AUDIT_OVERPASS_2026-06-13.md:192-194`) — three items in one
+sentence. The session-opener Phase-1 scope enumerated only (1); it named neither (8) nor (7). The
+planner **folds (8) into P1.1** (a drain that does not handle a mid-self-review LLM timeout is not
+safely closed — surfaced as a planner inclusion, role files §7) and, for the **asymmetry with (7)**
+that this bundling exposes (CA-3 / OV-3), **surfaces (7) as DP-9** rather than discharging it under a
+generic R4 attribution. The earlier draft truncated this quote at "…timeout/retry (8)…", which hid
+the (7) clause and the asymmetry; it is restored here. The planner's lean on each is recorded
+(fold #8; defer #7) but #7's classification is the spec author's to confirm (DP-9).
+
+**Note on the audit's "decide the trigger model" (CA-2 / OV-1).** The audit's fix-scope item-1 is
+*"wire the drain for the chosen primary path **+ decide the trigger model**"*
+(`AUDIT_OVERPASS_2026-06-13.md:419-420`). That flagged sub-decision maps to: the **autonomy
+posture** (autonomous-cron vs gated-`/approve`) = **DP-4 / DP-8**; the per-slice **mechanism** = the
+detail-plan. P1.1 **wires but does not enable** (§4.1 wire-vs-enable invariant); enablement is
+conditional on that ruling + P1.3. Recorded here so the flagged sub-decision is visibly
+accounted-for, not implicitly absorbed.
 
 ---
 
@@ -465,11 +530,13 @@ in P1.1 as the audit framed it.
 - The per-slice concrete build choices — the future **detail-plan's** job.
 
 **Post-deploy DEFERRED (R4 — tracked for traceability, NOT in this workstream's scope):** unbounded
-scans + N+1s (P1-#5), cardinality / unbounded growth (P1-#6), AI cost idempotency (P1-#7), DNS
-rebinding (P1-#12), decompression ratio (P1-#13), F3 model-name wording (P1-#14), free-form
-rollback inputs (P2-#12), code/schema rollback ordering (P2-#13), English-centric embeddings /
-content-type trust (P2-#14), ZA-construction seed coupling removal (P2-#11, scoping-surface split
-to DP-3). These are recorded in the carry-forward ledger (P5.2) so they remain discoverable.
+scans + N+1s (P1-#5), cardinality / unbounded growth (P1-#6), DNS rebinding (P1-#12), decompression
+ratio (P1-#13), F3 model-name wording (P1-#14), free-form rollback inputs (P2-#12), code/schema
+rollback ordering (P2-#13), English-centric embeddings / content-type trust (P2-#14),
+ZA-construction seed coupling removal (P2-#11, scoping-surface split to DP-3). **AI cost idempotency
+(P1-#7)** is *lean-deferred* but, because the audit bundled it into a launch blocker, its
+defer-vs-blocker classification is **surfaced at DP-9** rather than flatly deferred here (CA-3 /
+OV-3). These are recorded in the carry-forward ledger (P5.2) so they remain discoverable.
 
 ---
 
@@ -494,5 +561,9 @@ to DP-3). These are recorded in the carry-forward ledger (P5.2) so they remain d
 - **Convergence:** three sign-offs at one whole-doc content-SHA + the three-layer green gate +
   **explicit spec-author ratification** (class (iv)) + the override window (collapsed to zero by a
   present spec author who ratifies) → the **overseer** flips draft→ready (moot if it stays
-  non-draft) and squash-merges. The planner **never** flips draft→ready and **never** merges; stays
-  subscribed through merge; stands down only on merge verified via `git ls-remote`.
+  non-draft) and squash-merges. **The class-(iv) ratification must affirm the §1 R0–R4 recording
+  itself** (the strategic-pivot scope/precedent), reaching the **overseer** through the
+  authenticated channel — because to the reviewers the planner's §1 origin-citation is a relay under
+  the shared identity (§0.2, §1; OV-2) — not merely a ruling on DP-1…DP-11. The planner **never**
+  flips draft→ready and **never** merges; stays subscribed through merge; stands down only on merge
+  verified via `git ls-remote`.
