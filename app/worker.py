@@ -261,6 +261,25 @@ def catalogue_health_check_task() -> dict[str, int]:
     return asyncio.run(_run())
 
 
+@celery_app.task(name="pill_generation.bootstrap")
+def pill_bootstrap_task() -> dict[str, int]:
+    """Celery wrapper for the F1 bootstrap-on-publish drain (AC-D7/AC-D23 —
+    off-cron, **not** in the beat schedule, so the canonical nine §8.9 crons are
+    unchanged). Drains the ``pill_bootstrap`` tasks ``auto_publish_draft``
+    enqueues and **commits** so each published pill's anchor pool + safety links
+    persist."""
+    from app.domain.bootstrap import process_pending_bootstraps
+    from app.models import worker_session
+
+    async def _run() -> dict[str, int]:
+        async with worker_session() as session:
+            result = await process_pending_bootstraps(session)
+            await session.commit()
+        return result
+
+    return asyncio.run(_run())
+
+
 @celery_app.task(name="realism.aggregate")
 def realism_aggregate_task() -> dict[str, object]:
     """Celery wrapper for the AC-D22 nightly Testee-feedback
