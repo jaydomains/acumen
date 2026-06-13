@@ -72,8 +72,8 @@ OPEN-G1 (§11) — confirm whole-doc is the right convergence shape here, or dir
   session-opener's settled rulings reads, *to the auditor and overseer*, as a **relay** (role files
   §8.3): the class-(iv) ratification that clears this PR must **affirm the §0.3 settled-rulings recording
   itself** + the §10 slice-DP resolutions + the §4 anchor numbering + the §3 sequencing + the §12
-  launch-blocker map, reaching the **overseer** through the authenticated channel. *(Same posture as the
-  parent plan PR #130 §0.2/§1.)*
+  launch-blocker map + the **§4 framework-(iv) authoring-locus** (OV-12 / OPEN-G4), reaching the
+  **overseer** through the authenticated channel. *(Same posture as the parent plan PR #130 §0.2/§1.)*
 - **Gate 2 — each embedded anchor/spec amendment is ratified + authored separately, downstream.** The
   candidate anchors (AC-D32, AC-D33, AC-CD27, AC-CD28) and every AC-D/AC-CD/SPEC **body** touch this plan
   identifies are **authored by the spec author** in their own amendment PRs (`SESSION_START.md` — "the
@@ -281,11 +281,17 @@ anchor is minted or body amended in this PR.** Each amendment is itself ratifica
 | **AMD-H** | **AC-CD3 body + AC-CD5 reconcile** — tenant threading | P4.1 | RLS stays a port-seam; CA-11 (DDP-21). |
 | **AMD-I** | contradiction anchor (new AC-D **or** AC-D30 body — DP-6 to confirm) | P3.2 | DP-11 posture settled (surface-to-oversight). |
 | **AMD-J** | **AC-D18 body** — hard cap + observability (visibility-only → hard-cap+metrics) | P1.3, P1.6 | Only if the cap/metrics change AC-D18 semantics; confirm at DP-6 / DDP-4. |
-| **AMD-K** | **AC-D31 body** — autonomy GATED for v1 (DP-4) | P5.4 | Records the gated-pilot posture in the anchor. |
+| **AMD-K** | **AC-D31 body + AC-D7 body — gated-pilot reconciliation (DP-4); verify AC-D23** | P5.4 | **CA-4 (HIGH):** not a mere "note." The gated pilot **reverses** load-bearing clauses — AC-D31's *"no human step / nothing held pre-publish / `approve_pill_proposal` removed"* **and** AC-D7's *"approve gate removed entirely; governance shifts from pre-publish approval to retroactive oversight"* (`DECISIONS.md:209`). Reconcile both: the approval **queue gates *entry* to** the auto-publish gate (an upstream hold), while the AC-D31 gate itself still **holds nothing once invoked** (the autonomous-mode invariant preserved for the *future* path). **Verify AC-D23** bootstrap fires on admin-`/approve`-publish under the gate (its reciprocal AC-D7 pair). |
 
 **Framework changes (iv)** — `SESSION_START.md` (P5.1), `CARRY_FORWARD.md` (P5.2), audit-doc path
-(P5.3) — are **not** anchor-body amendments; they are authored within their P5 execution slices but are
-ratification-class **(iv)** at those slices' own merge gates (not pre-blocking other slices).
+(P5.3) — are **not** anchor-body amendments; they are authored **within their P5 execution slices**
+(ratification-class **(iv)** at those slices' own merge gates, not pre-blocking other slices). **This
+execution-authored locus is a *deliberate, surfaced* choice (OV-12), not Gate-2 spec-author
+authoring** — defensible because none carries *novel undecided* content: P5.1 is a mechanical **sync**
+of already-ratified state, P5.2 **compiles** the already-determined §13 deferral set, P5.3's only
+substantive choice is **surfaced as DDP-25**. Because "who authors a framework-(iv) doc" is itself
+durable class-(iv) precedent, the **authoring-locus choice is added to the §0.2 class-(iv) ratification
+surface** (and surfaced as **OPEN-G4**) — ratified-explicit, not baked.
 
 ---
 
@@ -605,9 +611,9 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
 ## 9. Phase 5 — Housekeeping (interleaves; P5.4 is a launch-blocker)
 
 ### P5.4 — FE-10 / gated-pilot disposition *(pilot launch-blocker)*
-- **Phase:** 5 (exception — on the pilot critical path). **Class:** **AMD-K** (AC-D31 body — records the
-  gated-pilot posture). **BLOCKED** pending AMD-K; DP-4 settled (gated pilot). **Discharges:** P1-#3
-  (HIGH); DP-4/DP-8.
+- **Phase:** 5 (exception — on the pilot critical path). **Class:** **AMD-K** (AC-D31 body **+ AC-D7
+  body** — gated-pilot reconciliation, CA-4; **verify AC-D23** bootstrap-trigger). **BLOCKED** pending
+  AMD-K; DP-4 settled (gated pilot). **Discharges:** P1-#3 (HIGH); DP-4/DP-8.
 - **Files:** `app/worker.py` / `app/beat_schedule.py` (the P1.1 drain task stays **registered but
   unscheduled** — autonomy off); `app/routers/catalogue.py` (an admin **list** endpoint for pending
   generated `pill_generation` drafts — the approval queue, DDP-26 — alongside the existing `/approve` at
@@ -623,7 +629,9 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
   *blind* approve (list-and-click without the flag reasons) re-creates the audit's Pass-1 Axis-10
   inoperable-control gap DP-4 was chosen to close; (4) the `/approve` path is row-locked (P1.2);
   (5) **FE-10 thin oversight is explicitly deferred to the next workstream** (recorded in the
-  carry-forward ledger, P5.2); (6) the gated posture is documented (and recorded in AC-D31 via AMD-K).
+  carry-forward ledger, P5.2); (6) the gated posture is documented and the **AMD-K reconciliation
+  (CA-4)** records it across **AC-D31 + AC-D7** (the queue gates *entry* to the gate; the gate still
+  holds nothing once invoked) with **AC-D23**'s bootstrap-trigger verified — not a single-clause note.
 - **Dependencies:** **P1.1** (drain wired), **P2.6** (mode); **AMD-K**.
 - **Decision points:** **DDP-26** (the generated-draft approval queue — does `/approve` list `pill_generation`
   tasks like it does `pill_proposal`, or a new queue endpoint? — a real gap: `/approve` today is
@@ -785,13 +793,16 @@ authenticated channel. **A/B/C form** per the session-opener.
   their slice-blocking map are the planner's surfacing of the Gate-2 dependency; the spec author confirms
   the set, the authoring order, and the amend-once groupings (AMD-C across P2.5+P3.5; the P2.4↔P3.4
   migration). *Class (i)/(ii).*
-- **OPEN-G4 — Framework-(iv) doc authoring: spec-author vs execution-authored (auditor cross-lane).** The
-  plan has the **P5.1 / P5.2 / P5.3** execution slices *author* `SESSION_START.md` / `CARRY_FORWARD.md` /
-  the audit-doc-path change (ratification-class (iv) at their own merge gates). Whether a framework-(iv)
-  doc should instead be **spec-author-authored** (parallel to the AMD anchor bodies under Gate-2), or
-  execution-authored-then-ratified is acceptable for framework docs, is an **overseer-lane governance
-  question** the auditor flagged (cross-lane). *Surfaced for the overseer / spec author; not baked.*
-  *Class (iv) — governance precedent.*
+- **OPEN-G4 — Framework-(iv) doc authoring: spec-author vs execution-authored (auditor cross-lane →
+  overseer OV-12).** The plan has the **P5.1 / P5.2 / P5.3** execution slices *author* `SESSION_START.md`
+  / `CARRY_FORWARD.md` / the audit-doc-path change (ratification-class (iv) at their own merge gates).
+  Whether a framework-(iv) doc should instead be **spec-author-authored** (parallel to the AMD anchor
+  bodies under Gate-2), or execution-authored-then-ratified is acceptable, is an **overseer-lane
+  governance question**. The overseer (**OV-12**) judges the execution-authored locus **defensible on the
+  merits** (P5.1 mechanical sync / P5.2 compiles §13 / P5.3's choice is DDP-25 — none reproduces Gate-2's
+  novel-clarification hazard) but **a durable class-(iv) precedent that must be surfaced, not baked** —
+  so the §4 framework-changes note now marks the locus *deliberate-and-surfaced* and §0.2 adds it to the
+  ratification surface. *Surfaced for the spec author; not baked.* *Class (iv) — governance precedent.*
 
 ---
 
