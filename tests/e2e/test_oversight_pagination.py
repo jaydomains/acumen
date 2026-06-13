@@ -45,9 +45,13 @@ def test_recent_publishes_sql_pagination_against_real_postgres() -> None:
 
     async def _seed() -> None:
         async with worker_session() as session:
+            # Flush each FK parent before its children — no ORM relationship is
+            # declared, so the unit-of-work's insert order isn't guaranteed to
+            # put Subject before Pill (CI hit pill_subject_id_fkey otherwise).
             session.add(
                 Subject(id=subject_id, tenant_id=SEED_TENANT_ID, name=f"e2e-{subject_id}")
             )
+            await session.flush()
             for i, pid in enumerate(pill_ids):
                 session.add(
                     Pill(
@@ -59,6 +63,8 @@ def test_recent_publishes_sql_pagination_against_real_postgres() -> None:
                         available_difficulty_max=10,
                     )
                 )
+            await session.flush()
+            for i, pid in enumerate(pill_ids):
                 rec = PublishRecord(
                     tenant_id=SEED_TENANT_ID,
                     pill_id=pid,
