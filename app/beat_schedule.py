@@ -1,17 +1,16 @@
 """Celery beat schedule — the SPEC §8.9 crons (CODE_SPEC §8 / AC-CD7).
 
-The canonical cron count is **nine** (AC-CD7 / §8.9 v1.9). This slice (A3)
-performs the **net-0 beat-entry swap** the spec assigns to A3: it removes the
-``drive_rag.ingest`` schedule entry and adds ``corpus.refresh`` (Drive ingest
-→ corpus refresh, NS-1) → **seven registered**. The two D4 crons
-(``gap_detection.sweep`` + ``catalogue_health.check``) add the last two →
-the canonical nine. The ``drive_rag.ingest`` *task wrapper* + ``drive_rag.py``
-module + ``drive_chunk`` table remain **dormant** (registered but unscheduled)
-until the separate NS-1 code-removal slice (SPEC §7.3) — A3 swaps the *cron
-entry*, NS-1 removes the *code*.
+The canonical cron count is **nine** (AC-CD7 / §8.9 v1.9). A3 performed the
+**net-0 beat-entry swap** (removed ``drive_rag.ingest``, added ``corpus.refresh``
+— Drive ingest → corpus refresh, NS-1) → seven registered. This slice (D4) adds
+the last two crons — ``gap_detection.sweep`` + ``catalogue_health.check`` (the
+schedulers that fire D3's autonomous trigger) → the **canonical nine**. The
+``drive_rag.ingest`` *task wrapper* + ``drive_rag.py`` module + ``drive_chunk``
+table remain **dormant** (registered but unscheduled) until the separate NS-1
+code-removal slice (SPEC §7.3) — A3 swaps the *cron entry*, NS-1 removes the
+*code*.
 
-The seven currently-registered crons cover every scheduled background
-process built so far:
+The nine registered crons cover every scheduled background process:
 
 ==================== ====================== ==============================
 Task name             Cadence (UTC)          Domain callable
@@ -23,6 +22,8 @@ safety_links.check    monthly (day 1 05:00)  check_safety_links
 cost.budget_sweep     daily 06:00            maybe_fire_budget_alert
 engagement.sweep      daily 07:00            run_engagement_sweep
 corpus.refresh        weekly (Mon 08:00)     refresh_corpus_all
+gap_detection.sweep   daily 09:00            gap_detection_sweep
+catalogue_health.check weekly (Sun 10:00)    catalogue_health_check
 ==================== ====================== ==============================
 
 The daily-hour offsets keep the daily set
@@ -87,5 +88,21 @@ beat_schedule: dict[str, dict[str, Any]] = {
         # (AC-CD25 / AC-CD7, A3); extends the sequential daily-offset
         # convention past the 07:00 engagement sweep.
         "schedule": crontab(minute=0, hour=8, day_of_week=1),
+    },
+    "gap_detection.sweep": {
+        "task": "gap_detection.sweep",
+        # Daily at 09:00 UTC — the §6.5 autonomous gap-detection sweep
+        # (D4 schedules D3's ``gap_detection_sweep``); extends the
+        # sequential daily-offset convention past the corpus refresh.
+        # Operational default cadence (not spec-locked).
+        "schedule": crontab(minute=0, hour=9),
+    },
+    "catalogue_health.check": {
+        "task": "catalogue_health.check",
+        # Weekly on Sunday at 10:00 UTC — the NS-4 proactive
+        # catalogue-health check (D4 schedules D3's
+        # ``catalogue_health_check``); weekly to avoid over-generating
+        # ("rein in if it breaks"). Operational default cadence.
+        "schedule": crontab(minute=0, hour=10, day_of_week=0),
     },
 }
