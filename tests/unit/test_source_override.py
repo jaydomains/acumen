@@ -58,6 +58,14 @@ async def test_tier_override_reranks_host() -> None:
     assert await effective_is_allowlisted(session, "osha.gov") is True
 
 
+async def test_invalid_tier_override_falls_back_to_seed() -> None:
+    # A free-form ``tier_override`` outside {1,2,3} must not crash — fall back
+    # to the code-seed tier (osha.gov = T2).
+    session = CatalogueFakeSession()
+    _demote(session, host="osha.gov", denied=False, tier_override=99)
+    assert await effective_authority_tier(session, "osha.gov") == Tier.T2
+
+
 async def test_denied_hosts_and_filter_demoted() -> None:
     session = CatalogueFakeSession()
     _demote(session, host="osha.gov", denied=True)

@@ -34,6 +34,7 @@ current behaviour and is untouched by A1.
 from __future__ import annotations
 
 import enum
+import logging
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -43,6 +44,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.domain.web_search import WebSearchResult, _host_of
 from app.models import SEED_TENANT_ID, DemotedSource
+
+logger = logging.getLogger(__name__)
 
 
 class Tier(enum.IntEnum):
@@ -252,7 +255,18 @@ async def effective_authority_tier(
     if override.denied:
         return None
     if override.tier_override is not None:
-        return Tier(override.tier_override)
+        # ``tier_override`` is a free-form int column (no DB CHECK); a value
+        # outside the {1,2,3} Tier ordinals must not crash the corpus acquire
+        # path / any reader — fall back to the seed tier with a WARN.
+        try:
+            return Tier(override.tier_override)
+        except ValueError:
+            logger.warning(
+                "demoted_sources tier_override %r for %r is not a valid Tier; using seed",
+                override.tier_override,
+                host,
+            )
+            return seed
     return seed
 
 

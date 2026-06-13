@@ -473,7 +473,10 @@ async def _pill_ids_for_source(db: AsyncSession, source_host: str) -> set[UUID]:
     if not draft_refs:
         return set()
     tasks = await db.execute(
-        select(ProcessingTask).where(ProcessingTask.task_name == GENERATION_TASK_NAME)
+        select(ProcessingTask).where(
+            ProcessingTask.tenant_id == SEED_TENANT_ID,
+            ProcessingTask.task_name == GENERATION_TASK_NAME,
+        )
     )
     pill_ids: set[UUID] = set()
     for task in tasks.scalars().all():
@@ -538,15 +541,16 @@ async def rollback_source(
         demotion.denied = True
         demotion.reason = reason
         demotion.actor_id = actor_id
+    # Flush so the server-default PK is populated — the summary audit's
+    # target_id is the demotion row it wrote (matching target_entity); the
+    # retracted pills carry their own per-pill rollback_source audits.
+    await db.flush()
     await record_audit(
         db,
         actor_id=actor_id,
         action="pill_generation.rollback_source",
         target_entity="demoted_sources",
-        # The source-level summary audit; the retracted pills carry their own
-        # per-pill rollback_source audits. No single entity id, so the tenant
-        # anchors the summary — the source lives in target_entity + detail.
-        target_id=SEED_TENANT_ID,
+        target_id=demotion.id,
         detail={
             "source_host": norm_host,
             "reason": reason,
@@ -554,7 +558,6 @@ async def rollback_source(
             "newly_retired": newly_retired,
         },
     )
-    await db.flush()
     return {
         "source_host": norm_host,
         "pills_targeted": len(pill_ids),
