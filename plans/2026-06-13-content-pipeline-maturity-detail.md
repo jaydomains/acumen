@@ -89,7 +89,7 @@ Handed to the planner through the **direct, authenticated in-session channel** (
 role files §8.3 — the in-session human channel is the reference), **explicit and current**. The planner
 records these citing **this session** as authenticated origin (the parent-plan §1 / PR #107 §1 pattern).
 **These are SETTLED — the planner does not re-litigate them**; downstream items they do not settle are
-surfaced in §10 (slice-level decision points **DDP-1…DDP-26**).
+surfaced in §10 (slice-level decision points **DDP-1…DDP-27**).
 
 | # | Decision | Settled ruling (this session) |
 |---|---|---|
@@ -371,9 +371,14 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
   `process_pending_bootstraps` — and asserts a `Pill` + `PublishRecord` + bootstrap result (not the
   direct `auto_publish_draft` call the v1.9 suite exercises, per the audit's Axis-8 gap); (2) covers both
   the live (≥ threshold) and publish-with-warning (< threshold) branches; (3) covers the P1.2
-  no-double-claim concurrency path; (4) covers the **gated-pilot** path — generated drafts queue and are
-  published via the `/approve` route (P5.4), the drain being unscheduled.
-- **Dependencies:** **P1.1, P1.2**.
+  no-double-claim concurrency path; (4) **the gated-pilot publish-path coverage lands with P5.4** (CA-1):
+  the autonomous-drain path (1)–(3) is P1.5's own testable surface at its sequence position; asserting a
+  generated draft **queues and is published via `/approve`** depends on the P5.4 `/approve`-queue for
+  `pill_generation` drafts (DDP-26), which does **not** exist at P1.5's position — so AC(4) is authored as
+  a **cross-phase extension that lands with P5.4** (the drain staying unscheduled), not a P1.5-position
+  requirement.
+- **Dependencies:** **P1.1, P1.2** (for AC 1–3); **P5.4 / DDP-26** for the AC(4) gated-pilot
+  publish-path coverage (cross-phase — AC(4) lands with P5.4, per CA-1).
 - **Decision points:** none.
 
 ### P1.6 — Pilot publish-health observability + ≥1 alert
@@ -505,12 +510,18 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
 - **Files:** `app/domain/corpus_builder.py:262–267` (extend the corroboration logic to also detect
   T1-vs-T1 *disagreement*) **or** `app/domain/self_review.py` (a surfacing pass); `app/domain/oversight.py`
   (a contradiction facet on the read surface); tests.
-- **Acceptance criteria:** (1) two T1 sources whose embeddings diverge (cosine below the corroboration
-  threshold) on the same topic are **detected** as a disagreement; (2) the disagreement is **surfaced to
-  the oversight/flag layer** (DP-11) — not silently both-grounded; (3) a genuinely corroborating pair is
-  **not** falsely flagged (no regression on `_corroboration_counts`).
+- **Acceptance criteria:** (1) a **genuine semantic contradiction between two T1 sources on the same
+  claim** is **detected** — the AC is **mechanism-neutral pending DDP-17** and "disagreement" means a
+  conflicting assertion on the *same* claim, **not** mere embedding distance (CA-3: low cosine also
+  covers different sub-topics / differently-worded non-conflicting facts, so a distance-only rule
+  over-flags and floods the oversight layer; the chosen mechanism must distinguish contradiction from
+  topical distance); (2) the disagreement is **surfaced to the oversight/flag layer** (DP-11) — not
+  silently both-grounded; (3) a genuinely corroborating pair, **and** two T1 sources that merely cover
+  different sub-topics, are **not** falsely flagged (no regression on `_corroboration_counts`; the
+  false-positive bar from CA-3).
 - **Dependencies:** **AMD-I**.
-- **Decision points:** **DDP-17** (detection mechanism — embedding-distance vs LLM cross-check pass) (§10).
+- **Decision points:** **DDP-17** (detection mechanism — embedding-distance [weak proxy, over-flags] vs
+  LLM cross-check pass vs both) (§10).
 
 ### P3.3 — Retrieval filter excludes demoted hosts
 - **Phase:** 3. **Class:** **AMD-E** (AC-D28 body, retrieval-side). **BLOCKED** pending AMD-E.
@@ -604,14 +615,20 @@ ratification-class **(iv)** at those slices' own merge gates (not pre-blocking o
 - **Acceptance criteria:** (1) autonomous publish is **disabled** for the v1 pilot — the drain cron is
   not scheduled (wire-vs-enable holds, DP-4); (2) generation **enqueues `pending` `pill_generation`
   rows** that form an **admin approval queue** rather than being auto-drained; (3) an admin can **list**
-  pending generated drafts and **`/approve`** them to publish via the existing gate (`auto_publish_draft`,
-  `catalogue.py:396`); (4) the `/approve` path is row-locked (P1.2); (5) **FE-10 thin oversight is
-  explicitly deferred to the next workstream** (recorded in the carry-forward ledger, P5.2); (6) the
-  gated posture is documented (and recorded in AC-D31 via AMD-K).
+  pending generated drafts **with the publish-gate signals surfaced** — `confidence`, the
+  `low_confidence` reason (below-threshold / `safety_failed` / NS-7 degrade), and
+  `single_provider_verified` — and **`/approve`** them to publish via the existing gate
+  (`auto_publish_draft`, `catalogue.py:396`); **the gate-signal exposure is DDP-27 (CA-2 HIGH)** — under
+  DP-4 this `/approve` queue is the pilot's **only** compensating safety control (FE-10 deferred), so a
+  *blind* approve (list-and-click without the flag reasons) re-creates the audit's Pass-1 Axis-10
+  inoperable-control gap DP-4 was chosen to close; (4) the `/approve` path is row-locked (P1.2);
+  (5) **FE-10 thin oversight is explicitly deferred to the next workstream** (recorded in the
+  carry-forward ledger, P5.2); (6) the gated posture is documented (and recorded in AC-D31 via AMD-K).
 - **Dependencies:** **P1.1** (drain wired), **P2.6** (mode); **AMD-K**.
 - **Decision points:** **DDP-26** (the generated-draft approval queue — does `/approve` list `pill_generation`
   tasks like it does `pill_proposal`, or a new queue endpoint? — a real gap: `/approve` today is
-  per-`pill_proposal`, generated drafts are `pill_generation` tasks) (§10).
+  per-`pill_proposal`, generated drafts are `pill_generation` tasks) + **DDP-27** (gated-queue gate-signal
+  exposure — CA-2) (§10).
 
 ### P5.1 — `SESSION_START.md` refresh (→ v1.10)
 - **Phase:** 5. **Class:** **(iv)** framework change; DP-5 settled (v1.10). **Discharges:** P1-#4 (HIGH).
@@ -741,6 +758,15 @@ authenticated channel. **A/B/C form** per the session-opener.
   **This is a real gap**: today `/approve` (`catalogue.py:378`) operates on `pill_proposal` tasks, while
   generated drafts are `pill_generation` tasks — the gated pilot needs an admin queue that lists the
   latter. *Class (ii)/(iii).*
+- **DDP-27 — Gated-pilot `/approve`-queue information (P5.4; CA-2 HIGH).** Under DP-4 the admin
+  `/approve` queue is the pilot's **only** compensating safety control (FE-10 deferred to the next
+  workstream), and `auto_publish_draft` holds nothing — so the admin's decision *whether to approve* **is**
+  the entire safety gate. **A)** the thin queue **surfaces the publish-gate signals** — `confidence`, the
+  `low_confidence` reason (below-threshold / `safety_failed` / NS-7 degrade), `single_provider_verified` —
+  so the admin approves with eyes open *(lean — a blind list-and-click gate re-creates the audit's Pass-1
+  Axis-10 inoperable-control gap DP-4 was chosen to close)*; **B)** ship the queue **blind-until-FE-10**
+  (list + approve only) and explicitly record + accept that the pilot's gate is initially uninformed.
+  *Class (iii) — product / pilot-safety-risk; surfaced for spec-author ruling.*
 
 ---
 
@@ -759,6 +785,13 @@ authenticated channel. **A/B/C form** per the session-opener.
   their slice-blocking map are the planner's surfacing of the Gate-2 dependency; the spec author confirms
   the set, the authoring order, and the amend-once groupings (AMD-C across P2.5+P3.5; the P2.4↔P3.4
   migration). *Class (i)/(ii).*
+- **OPEN-G4 — Framework-(iv) doc authoring: spec-author vs execution-authored (auditor cross-lane).** The
+  plan has the **P5.1 / P5.2 / P5.3** execution slices *author* `SESSION_START.md` / `CARRY_FORWARD.md` /
+  the audit-doc-path change (ratification-class (iv) at their own merge gates). Whether a framework-(iv)
+  doc should instead be **spec-author-authored** (parallel to the AMD anchor bodies under Gate-2), or
+  execution-authored-then-ratified is acceptable for framework docs, is an **overseer-lane governance
+  question** the auditor flagged (cross-lane). *Surfaced for the overseer / spec author; not baked.*
+  *Class (iv) — governance precedent.*
 
 ---
 
