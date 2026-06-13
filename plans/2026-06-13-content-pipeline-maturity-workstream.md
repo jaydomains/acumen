@@ -1,11 +1,15 @@
 # Content pipeline maturity — dual-path generation + audit-driven fixes — workstream plan
 
-**Status: draft — under three-party plan review (planner authoring)**
-
-Authored through the plan-review loop (`.claude/roles/{planner,plan-auditor,plan-overseer}.md`,
-bound to Acumen by `plans/REQUIRED_READING.md`). This planner marker flips to
-**final — approved by planner** only at convergence (§ Loop mechanics); until then the document
-is under active auditor (content) + overseer (governance) review.
+**Status: final — approved by planner** — all three sign-offs at content-SHA `cc649a7` (plan-auditor
+FINAL-marker review `4491523601` + plan-overseer FINAL-marker review `4491523807`, both content-bound
+to `cc649a7`; this planner marker is **content-invariant** — only this Status block changed, the
+§0–§10 body is byte-identical to `cc649a7`, so it does **not** re-stale the reviewers' markers, role
+files §8). Hardened through the plan-auditor (content: CA-1…CA-18 / CA-2,3,4,6,7,9,11,14 — all
+confirmed/resolved) + plan-overseer (governance: OV-1/OV-2/OV-3 — all resolved) loop per
+`.claude/roles/*.md`, bound to Acumen by `plans/REQUIRED_READING.md`. **Convergence is not merge
+authorization:** this is a **class-(iv) ratification-class** PR (§0.2) — the overseer executes the
+squash-merge only after **explicit spec-author ratification affirming R0–R4 + DP-1…DP-11 through the
+authenticated channel** (criterion #4, OV-2) + the override window, on the planner's re-trigger.
 
 **Date:** 2026-06-13
 **Branch:** `claude/content-pipeline-maturity-plan-zqte3y` (this parent-plan PR).
