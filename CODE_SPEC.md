@@ -1336,6 +1336,16 @@ dashboard (AC-CD8 invariant); the NS-1 shared-primitive relocation (so corpus +
 retrieval keep `chunk_document` / `content_hash` / `cosine_top_k` after Drive
 retirement) is a coupled execution step. **Confidence:** confident default.
 
+**Amended in v1.10** — content-pipeline-maturity Gate-2 chain, **AMD-D**. The
+acquisition pipeline gains a **content-validity gate (AC-CD28)** between
+extraction and `CorpusChunk` persist: a zero-text / below-minimum extraction or a
+clear paywall / login / preview page (detected by content heuristics **+ HTTP
+402 / login-redirect signals**, DDP-15 ruled C) is **rejected** (never stamped,
+never persisted), and a partial-content paywalled source is **tier-capped to T2 +
+`paywalled`-flagged** (DP-10 HYBRID) rather than stamped at its allowlist tier —
+closing the audit P2-#4 gap where a 200-OK login page or a scanned-image PDF was
+stamped authoritative. `CorpusChunk` gains a `paywalled` column (DDP-16 ruled A).
+
 ---
 
 ### AC-CD26 — Oversight dashboard (retroactive read surface + rollback matrix + source-override layer)
@@ -1413,5 +1423,25 @@ confident default.
 
 ---
 
+### AC-CD28 — Content-validity gate (corpus acquisition)
+
+> **Minted in v1.10** — content-pipeline-maturity Gate-2 chain, **AMD-D**. Ratified through the authenticated in-session channel (detail-plan **PR #131** §4 AMD-D; DP-10 paywall HYBRID settled; DDP-15 ruled **C**, DDP-16 ruled **A**). Materialises the audit **P2-#4 (HIGH)** fix — corpus acquisition must not stamp login/preview pages or empty-text PDFs as authoritative. Blocks execution slice P3.1.
+
+**Decision.** Before the corpus builder (AC-CD25) stamps an acquired document's authority tier and persists a `CorpusChunk`, a **content-validity gate** classifies each candidate **valid / paywalled-partial / invalid**:
+
+- **invalid → rejected** (no `CorpusChunk` persisted): a **zero-text / below-minimum extraction** (the scanned-image-PDF and empty-shell cases), or a **clear paywall / login / preview page** (DDP-15 heuristic). Fail-soft — logged, skipped, never stamped, never grounded on.
+- **paywalled-partial → tier-capped (DP-10 HYBRID):** a source yielding *partial* real content behind a paywall is **capped to T2** (never T1, regardless of allowlist tier) and **`paywalled`-flagged** (DDP-16) so confidence scoring (AC-D31) and the oversight authority breakdown (AC-CD26) see the degraded provenance.
+- **valid → stamped normally** at its real allowlist tier (AC-D28).
+
+**Paywall detection (DDP-15 ruled C — both signals, cheap-first).** Detection combines **HTTP signals** (a `402` or a login-redirect, rejected **early** — before the extraction + embedding spend) **and content heuristics** (login-form / paywall DOM markers + a minimum-body-length threshold) as the backstop for the audit's flagged **200-OK** login/preview page that HTTP status alone does not catch. Defense-in-depth, cheap-signal-first ordering.
+
+**Paywalled-flag storage (DDP-16 ruled A).** A new **`CorpusChunk.paywalled`** boolean column (migration) carries the tier-cap arm's flag, so a tier-capped chunk is explicitly distinguishable from a genuine native-T2 source — the distinction the oversight breakdown and any future re-promotion logic need.
+
+**Rationale.** The v1.9 audit (Pass 2 Axis 10 / P2-#4) found the pilot's highest-authority ZA sources (SABS/SANS/`*.gov.za`) are frequently paywalled or scanned-image PDFs that acquisition silently stamped T1 (a login page chunked + embedded at authority 1.0) or fell through to empty grounding. This gate is the corpus-path defence that makes `corpus_grounded` mode safe for tenants whose content demands it (it is **not** pilot-blocking — the KBC pilot rides `llm_direct`, AC-D32 — but it is part of corpus maturity, Phase 3). DP-10's HYBRID — **reject** clear paywalls, **tier-cap** partial sources to T2 — keeps useful-but-degraded sources available at reduced authority rather than discarding or over-trusting them; the cheap HTTP signal rejects clear paywalls before any extraction/embedding spend is incurred.
+
+**Implications.** `app/domain/corpus_builder.py` gains the classifier between extraction (`_extract_*`, ~`:171–202`) and persist (`acquire_for_topic`, ~`:217–271`): the HTTP-signal check guards the fetch path early; rejected candidates are skipped fail-soft; tier-capped candidates persist with `authority_tier=T2` + `paywalled=True`. `CorpusChunk` gains a `paywalled` column + migration (P3.1 execution deliverable). The gate is exercised by offline tests (AC-CD15, no live fetch). **Confidence:** confident default.
+
+---
+
 *End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.10
-and `DECISIONS.md` v1.10. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30". **AC-CD26 minted at v1.9 (autonomous-content cycle PR-D, the final link)** — the retroactive oversight dashboard (read surface + rollback matrix + the DB source-override layer completing AC-D28's [A1+E2] design); confident-default from inception; the GapSignal §5 entity rides SPEC §5 + AC-D29/§6.5 (no separate AC-CD). The PR-A→PR-D amendment chain is complete. **AC-CD27 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-B)** — the LLM-direct (non-corpus) provenance shape for the AC-D32 `llm_direct` mode; confident-default from inception; no open technical anchors.).*
+and `DECISIONS.md` v1.10. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30". **AC-CD26 minted at v1.9 (autonomous-content cycle PR-D, the final link)** — the retroactive oversight dashboard (read surface + rollback matrix + the DB source-override layer completing AC-D28's [A1+E2] design); confident-default from inception; the GapSignal §5 entity rides SPEC §5 + AC-D29/§6.5 (no separate AC-CD). The PR-A→PR-D amendment chain is complete. **AC-CD27 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-B)** — the LLM-direct (non-corpus) provenance shape for the AC-D32 `llm_direct` mode; confident-default from inception. **AC-CD28 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-D)** — the content-validity gate on corpus acquisition (reject empty/paywall, tier-cap partial to T2 + `paywalled` flag; DP-10 HYBRID, DDP-15 C / DDP-16 A), amending AC-CD25; confident-default from inception; no open technical anchors.).*
