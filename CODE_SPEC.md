@@ -1407,6 +1407,22 @@ The admin **FE** is a deferred deliverable — its surface spec is authored
 (`fe-specs/FE-10-admin-oversight.md`); the build lands separately. **Confidence:**
 confident default.
 
+**Amended in v1.10** — content-pipeline-maturity Gate-2 chain, **AMD-F**
+(ratified through the authenticated in-session channel; detail-plan **PR #131**
+§4 AMD-F). The `generation_provenance.corpus_chunk_id` FK (AC-D29) is changed
+from **`ON DELETE CASCADE` to `ON DELETE SET NULL`** (and the column is made
+**nullable**), so **deleting a `CorpusChunk` preserves the `GenerationProvenance`
+row** (nulling only the chunk FK) rather than cascade-deleting it. This closes the
+audit **P2-#8 (MEDIUM)** trap: under CASCADE, purging a discredited source's
+chunks would erase the claim→source audit trail of pills **already published**
+from that source — the very provenance this retroactive-oversight surface depends
+on. The **retract-not-delete** principle of the rollback matrix now extends to
+corpus-chunk deletion: the audit trail survives a corpus purge. *(The `0014`+
+migration making the column nullable + SET NULL is the P3.4 execution deliverable;
+with DDP-13 ruled A — `llm_direct` writes no provenance rows — the P2.4↔P3.4
+nullable-column coordination (DDP-19) collapses and P3.4 owns the migration
+alone.)*
+
 ---
 
 ### AC-CD27 — LLM-direct provenance shape (non-corpus generation)
@@ -1444,4 +1460,4 @@ confident default.
 ---
 
 *End of Acumen CODE_SPEC. Status: v1 target. Paired with `SPEC.md` v1.10
-and `DECISIONS.md` v1.10. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30". **AC-CD26 minted at v1.9 (autonomous-content cycle PR-D, the final link)** — the retroactive oversight dashboard (read surface + rollback matrix + the DB source-override layer completing AC-D28's [A1+E2] design); confident-default from inception; the GapSignal §5 entity rides SPEC §5 + AC-D29/§6.5 (no separate AC-CD). The PR-A→PR-D amendment chain is complete. **AC-CD27 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-B)** — the LLM-direct (non-corpus) provenance shape for the AC-D32 `llm_direct` mode; confident-default from inception. **AC-CD28 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-D)** — the content-validity gate on corpus acquisition (reject empty/paywall, tier-cap partial to T2 + `paywalled` flag; DP-10 HYBRID, DDP-15 C / DDP-16 A), amending AC-CD25; confident-default from inception; no open technical anchors.).*
+and `DECISIONS.md` v1.10. No open technical anchors (AC-CD11 closed at v1.7; AC-CD10 closed at v1.8; AC-CD19 added at PR-032 as confident-default from inception; AC-CD20..24 added at PR-033 — Session 2 of the frontend canonical-doc drafting — codifying routing/guards (20), query+form+error patterns (21), SSE consumption (22), theming+primitives (23), and visual-content deferral (24)); AC-CD25 minted at v1.9 (autonomous-content cycle PR-A) — reference corpus builder, confident-default from inception. v1.9 (autonomous-content cycle PR-B) mints no AC-CD; it amends the AC-CD8 operation-enum prose seven→nine (`pill_generation`, `content_self_review`) — the provenance store rides the new AC-D29. v1.9 (autonomous-content cycle PR-C) mints no AC-CD either — the self-review protocol (`content_self_review`), the auto-publish gate, and the `PublishRecord` store ride the new AC-D30 + AC-D31; PR-C only updates the AC-CD8 `content_self_review` caveat to "protocol per AC-D30". **AC-CD26 minted at v1.9 (autonomous-content cycle PR-D, the final link)** — the retroactive oversight dashboard (read surface + rollback matrix + the DB source-override layer completing AC-D28's [A1+E2] design); confident-default from inception; the GapSignal §5 entity rides SPEC §5 + AC-D29/§6.5 (no separate AC-CD). The PR-A→PR-D amendment chain is complete. **AC-CD27 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-B)** — the LLM-direct (non-corpus) provenance shape for the AC-D32 `llm_direct` mode; confident-default from inception. **AC-CD28 minted at v1.10 (content-pipeline-maturity Gate-2 chain, AMD-D)** — the content-validity gate on corpus acquisition (reject empty/paywall, tier-cap partial to T2 + `paywalled` flag; DP-10 HYBRID, DDP-15 C / DDP-16 A), amending AC-CD25. **AC-CD26 amended at v1.10 (AMD-F)** — `generation_provenance.corpus_chunk_id` FK CASCADE → SET NULL (corpus purge preserves the published-pill provenance audit trail; audit P2-#8). All content-pipeline-maturity technical anchors confident-default from inception; no open technical anchors.).*
