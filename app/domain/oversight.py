@@ -128,18 +128,41 @@ async def recent_publishes(
     per-type telemetry, and the retired (rolled-back) flag.
 
     Filterable by ``low_confidence`` (ruling 2 publish-with-warning), ``since``
-    (published-at lower bound), and ``subject_id``. Returns the page plus the
-    pre-pagination ``total`` so the FE can render the pager.
-    """
-    records = await _publish_records(db)
-    pills = await _pill_index(db)
-    subjects = await _subject_names(db)
+    (published-at lower bound), and ``subject_id``. Returns the page plus a
+    ``has_more`` sentinel so the FE can render the pager.
 
+    **B3 / CA-D3-2 dual-pattern (CA-E1-2a):** the append-heavy publish-log is
+    bounded in **SQL** for production — ``ORDER BY created_at DESC`` +
+    ``LIMIT offset+limit+1`` (the ``+1`` is the ``has_more`` sentinel) — so the
+    common (unfiltered) hot read doesn't hydrate the whole log. The Python
+    filter/sort/window below **stays** as the authoritative re-check for the
+    WHERE-blind AC-CD15 fake (which ignores ``ORDER``/``LIMIT``) and is an
+    idempotent no-op over an already-bounded prod result. The three filters stay
+    Python-side: ``since`` is a range and ``subject_id`` a ``Pill`` join (the
+    fake mis-parses / chokes on both), and ``low_confidence == bool`` renders a
+    SQLAlchemy ``True_``/``False_`` literal the fake can't read — so when **any**
+    filter is active the SQL ``LIMIT`` is skipped (it would drop a matching older
+    row that the Python filter would have kept). Exact ``total`` is intentionally
+    not returned — a precise count needs an unbounded scan / a ``COUNT`` query the
+    fake can't model, which would defeat the bound; ``has_more`` is the
+    bounded-pagination-compatible primitive.
+    """
     # ``created_at`` is timestamptz (tz-aware); coerce a naive ``?since=`` to
     # UTC-aware so the comparison can't raise "can't compare offset-naive and
     # offset-aware datetimes" (a 500 on an otherwise valid query).
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=UTC)
+
+    stmt = select(PublishRecord).where(PublishRecord.tenant_id == SEED_TENANT_ID)
+    stmt = stmt.order_by(PublishRecord.created_at.desc())
+    # Bound the prod fetch only on the unfiltered hot path; an active filter
+    # (Python-side) falls back to the full ordered fetch + Python paginate.
+    if low_confidence is None and since is None and subject_id is None:
+        stmt = stmt.limit(offset + limit + 1)
+    records = list((await db.execute(stmt)).scalars().all())
+
+    pills = await _pill_index(db)
+    subjects = await _subject_names(db)
 
     shaped: list[tuple[datetime, str, dict[str, Any]]] = []
     for rec in records:
@@ -160,10 +183,11 @@ async def recent_publishes(
         )
 
     shaped.sort(key=lambda t: (t[0], t[1]), reverse=True)
-    total = len(shaped)
-    page = [row for _, _, row in shaped[offset : offset + limit]]
+    window = shaped[offset : offset + limit + 1]
+    has_more = len(window) > limit
+    page = [row for _, _, row in window[:limit]]
     return {
-        "total": total,
+        "has_more": has_more,
         "limit": limit,
         "offset": offset,
         "publishes": page,

@@ -95,10 +95,11 @@ async def test_recent_publishes_newest_first_and_paginated() -> None:
         _publish(session, pill=pill, created_offset_s=i * 10)
 
     page = await recent_publishes(session, limit=2, offset=0)
-    assert page["total"] == 3
+    assert page["has_more"] is True  # a third row exists beyond the page of 2
     assert [r["pill_name"] for r in page["publishes"]] == ["P2", "P1"]
 
     page2 = await recent_publishes(session, limit=2, offset=2)
+    assert page2["has_more"] is False
     assert [r["pill_name"] for r in page2["publishes"]] == ["P0"]
 
 
@@ -128,7 +129,7 @@ async def test_recent_publishes_low_confidence_filter() -> None:
 
     only_low = await recent_publishes(session, low_confidence=True)
     assert [r["pill_name"] for r in only_low["publishes"]] == ["Shaky"]
-    assert only_low["total"] == 1
+    assert only_low["has_more"] is False
 
 
 async def test_recent_publishes_subject_filter() -> None:

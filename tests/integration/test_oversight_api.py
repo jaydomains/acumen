@@ -95,7 +95,7 @@ def test_recent_publishes_returns_paginated_page(
     r = cat_client.get("/v1/admin/oversight/publishes", headers=bearer(admin))
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] == 2
+    assert body["has_more"] is False  # both rows fit one default page
     assert {row["pill_name"] for row in body["publishes"]} == {"Arc", "MIG"}
     # Confidence facet embedded in each row.
     assert all(
