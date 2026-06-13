@@ -13,8 +13,8 @@ content-invariant final-marker on this canonical branch).
 
 **Date:** 2026-06-13
 **Branch:** `claude/content-pipeline-detail-plan-vhfios` (this detail-plan PR — distinct from the
-reviewers' branches: plan-auditor `claude/content-pipeline-plan-audit-hkn81t`, plan-overseer
-`claude/content-pipeline-plan-overseer-rwr61c`).
+reviewers' branches: plan-auditor `claude/content-pipeline-detail-audit-z92m4l`, plan-overseer
+`claude/content-pipeline-detail-overseer-vna8iq`).
 **Authoritative source:** the merged **parent plan**
 `plans/2026-06-13-content-pipeline-maturity-workstream.md` (PR #130, squashed on `main` at `9cd58d2`) —
 the five-phase shape, R0–R4 rulings, DP-1…DP-11 decision points, the candidate-anchor surface, and the
@@ -807,7 +807,8 @@ carry-forward ledger so they remain discoverable.
   executes.
 - **Watcher:** `counterpart-change-detector` skill, active iteration. `SELF_EXCLUDE` = exact
   `claude/content-pipeline-detail-plan-vhfios`; `WATCH_INCLUDE` = both reviewers' branches
-  (`claude/content-pipeline-plan-audit-hkn81t` + `claude/content-pipeline-plan-overseer-rwr61c`),
+  (`claude/content-pipeline-detail-audit-z92m4l` + `claude/content-pipeline-detail-overseer-vna8iq`;
+  scope to the `content-pipeline-detail` token to catch a moved/renamed reviewer ref),
   backstopped by the broad new-ref arm + a manual `git ls-remote` scan at each re-arm. Proactive re-arm
   ~25 min; the planner is the standing re-initiator.
 - **On every wake:** `git ls-remote` + fetch + diff reviewer commits **and** read **both** reviewers' PR
